@@ -19,5 +19,6 @@ export interface RunDetailDto {
   result?: Record<string, any>;
   errorMessage?: string;
   allowedActions: RunAction[];
+  debug: boolean;
   extra?: Record<string, any>;
 }

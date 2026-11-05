@@ -31,4 +31,11 @@ public class MagratheaStartRequest {
      * need to thread the username through every request.
      */
     private @Nullable String startedBy;
+
+    /**
+     * Start in debug mode: the run halts before each state and waits to be
+     * stepped from the run view. Real calls — debug is not a dry run.
+     * Absent means a normal run.
+     */
+    private @Nullable Boolean debug;
 }

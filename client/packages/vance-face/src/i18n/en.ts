@@ -1136,7 +1136,7 @@ export default {
     loadingDetail: 'Loading run…',
     count: '{n} runs',
     filter: { allSources: 'All sources' },
-    action: { PAUSE: 'Pause', RESUME: 'Resume', STOP: 'Stop' },
+    action: { PAUSE: 'Pause', RESUME: 'Resume', STOP: 'Stop', STEP: 'Step' },
     link: { definition: 'Open definition', session: 'Open session', document: 'Open document' },
     empty: {
       headline: 'No runs',
@@ -1148,6 +1148,9 @@ export default {
     },
     detail: {
       steps: 'Steps',
+      debug: 'Debug',
+      debugHint:
+        'Debug run: it halts before each step. Step runs the next step, Resume runs on without halting.',
       stepOutput: 'Output',
       outputTruncated: 'Shortened — the journal holds the complete output.',
       variables: 'Variables',

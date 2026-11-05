@@ -10,6 +10,7 @@ import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.magrathea.MagratheaJournalService;
 import de.mhus.vance.shared.magrathea.MagratheaParameterSpec;
+import de.mhus.vance.shared.magrathea.MagratheaRunBinding;
 import de.mhus.vance.shared.magrathea.MagratheaStateProjector;
 import de.mhus.vance.shared.magrathea.MagratheaWorkflowLoader;
 import de.mhus.vance.shared.magrathea.MagratheaWorkflowParseException;
@@ -57,10 +58,7 @@ import org.springframework.web.server.ResponseStatusException;
  */
 @RestController
 @RequestMapping("/brain/{tenant}/project/{project}")
-@ConditionalOnProperty(
-        value = "vance.services.magrathea",
-        havingValue = "true",
-        matchIfMissing = false)
+@ConditionalOnProperty(value = "vance.services.magrathea", havingValue = "true", matchIfMissing = false)
 @RequiredArgsConstructor
 @Slf4j
 public class MagratheaWorkflowController {
@@ -98,9 +96,10 @@ public class MagratheaWorkflowController {
             HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, project), Action.READ);
         String norm = name.trim().toLowerCase(Locale.ROOT);
-        ResolvedMagratheaWorkflow r = workflowLoader.load(tenant, project, norm)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Workflow '" + norm + "' not found in project '" + project + "'"));
+        ResolvedMagratheaWorkflow r = workflowLoader
+                .load(tenant, project, norm)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Workflow '" + norm + "' not found in project '" + project + "'"));
         return toDto(r);
     }
 
@@ -129,14 +128,19 @@ public class MagratheaWorkflowController {
         String runId;
         try {
             runId = workflowService.start(
-                    tenant, project, name,
+                    tenant,
+                    project,
+                    name,
                     body == null ? null : body.getParams(),
-                    startedBy);
+                    startedBy,
+                    /* parent */ null, /* parentState */
+                    null,
+                    MagratheaRunBinding.headless(),
+                    body != null && Boolean.TRUE.equals(body.getDebug()));
         } catch (MagratheaWorkflowService.MagratheaWorkflowException ex) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, ex.getMessage(), ex);
         } catch (MagratheaWorkflowParseException ex) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Workflow YAML invalid: " + ex.getMessage(), ex);
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Workflow YAML invalid: " + ex.getMessage(), ex);
         }
 
         Map<String, Object> result = new LinkedHashMap<>();
@@ -172,20 +176,24 @@ public class MagratheaWorkflowController {
         String runId;
         try {
             runId = workflowService.startFromDocument(
-                    tenant, project, body.getPath(), body.getParams(), startedBy);
+                    tenant,
+                    project,
+                    body.getPath(),
+                    body.getParams(),
+                    startedBy,
+                    MagratheaRunBinding.headless(),
+                    Boolean.TRUE.equals(body.getDebug()));
         } catch (MagratheaWorkflowService.MagratheaWorkflowException ex) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, ex.getMessage(), ex);
         } catch (MagratheaWorkflowParseException ex) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Workflow YAML invalid: " + ex.getMessage(), ex);
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Workflow YAML invalid: " + ex.getMessage(), ex);
         }
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("workflowRunId", runId);
         // The stem, not the path: that is the name the service journalled
         // and the only one `GET /workflows/runs?workflow=<name>` matches.
-        result.put("workflowName",
-                MagratheaWorkflowService.workflowNameFromPath(body.getPath()));
+        result.put("workflowName", MagratheaWorkflowService.workflowNameFromPath(body.getPath()));
         return result;
     }
 
@@ -197,13 +205,13 @@ public class MagratheaWorkflowController {
             HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, project), Action.READ);
 
-        MagratheaProcessDto dto = projector.project(tenant, project, runId)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND, "Workflow run not found: " + runId));
+        MagratheaProcessDto dto = projector
+                .project(tenant, project, runId)
+                .orElseThrow(
+                        () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Workflow run not found: " + runId));
         if (!tenant.equals(dto.getTenantId()) || !project.equals(dto.getProjectId())) {
             // Don't leak run existence to a wrong tenant/project — same shape as 404.
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
-                    "Workflow run not found: " + runId);
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Workflow run not found: " + runId);
         }
         return dto;
     }
@@ -212,8 +220,8 @@ public class MagratheaWorkflowController {
     public List<MagratheaProcessDto> listRuns(
             @PathVariable("tenant") String tenant,
             @PathVariable("project") String project,
-            @org.springframework.web.bind.annotation.RequestParam(
-                    name = "workflow", required = false) String workflowName,
+            @org.springframework.web.bind.annotation.RequestParam(name = "workflow", required = false)
+                    String workflowName,
             HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, project), Action.READ);
 
@@ -253,11 +261,13 @@ public class MagratheaWorkflowController {
             params = new LinkedHashMap<>();
             for (Map.Entry<String, MagratheaParameterSpec> e : r.parameters().entrySet()) {
                 MagratheaParameterSpec spec = e.getValue();
-                params.put(e.getKey(), MagratheaParameterDto.builder()
-                        .type(spec.type())
-                        .required(spec.required())
-                        .defaultValue(spec.defaultValue())
-                        .build());
+                params.put(
+                        e.getKey(),
+                        MagratheaParameterDto.builder()
+                                .type(spec.type())
+                                .required(spec.required())
+                                .defaultValue(spec.defaultValue())
+                                .build());
             }
         }
         return MagratheaWorkflowDto.builder()
@@ -268,8 +278,7 @@ public class MagratheaWorkflowController {
                 .version(r.version())
                 .start(r.startState())
                 .parameters(params)
-                .allowedTools(r.allowedTools() == null || r.allowedTools().isEmpty()
-                        ? null : r.allowedTools())
+                .allowedTools(r.allowedTools() == null || r.allowedTools().isEmpty() ? null : r.allowedTools())
                 .tags(r.tags() == null || r.tags().isEmpty() ? null : r.tags())
                 .build();
     }

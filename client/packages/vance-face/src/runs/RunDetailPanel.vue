@@ -8,7 +8,7 @@
  */
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { VAlert, VButton, VCard, VIcon } from '@/components';
+import { VAlert, VBadge, VButton, VCard, VIcon } from '@/components';
 import type { RunDetailDto } from '@vance/generated';
 import RunStatusBadge from './RunStatusBadge.vue';
 import RunExtraBlock from './RunExtraBlock.vue';
@@ -47,6 +47,7 @@ function render(value: unknown): string {
       <div class="title-row">
         <h2>{{ detail.summary.name }}</h2>
         <RunStatusBadge :status="detail.summary.status" />
+        <VBadge v-if="detail.debug" variant="info" size="sm">{{ t('runs.detail.debug') }}</VBadge>
       </div>
       <p class="meta">
         <span class="mono">{{ detail.summary.runId }}</span>
@@ -77,6 +78,11 @@ function render(value: unknown): string {
     </header>
 
     <VAlert v-if="detail.errorMessage" variant="error">{{ detail.errorMessage }}</VAlert>
+
+    <!-- A halted debug run needs one sentence: the two buttons look alike. -->
+    <VAlert v-if="detail.debug && detail.summary.status === 'PAUSED'" variant="info">
+      {{ t('runs.detail.debugHint') }}
+    </VAlert>
 
     <!-- Waiting on a person: the useful action is answering the item, not
          doing anything to the run. -->

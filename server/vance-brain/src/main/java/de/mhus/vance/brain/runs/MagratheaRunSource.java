@@ -108,7 +108,8 @@ public class MagratheaRunSource implements RunSource {
                 .children(readChildren(tenantId, projectId, nativeId))
                 .links(readLinks(tenantId, projectId, nativeId, run))
                 .waitingOnInboxItemId(waitingOnInboxItem(tenantId, nativeId, run.getStatus()))
-                .allowedActions(actionsFor(run.getStatus()))
+                .allowedActions(actionsFor(run.getStatus(), run.isDebug()))
+                .debug(run.isDebug())
                 .errorMessage(terminalReason(tenantId, projectId, nativeId, run.getStatus()))
                 .result(run.getResult())
                 .extra(Map.of("params", run.getParams() == null ? Map.of() : run.getParams()))
@@ -120,15 +121,19 @@ public class MagratheaRunSource implements RunSource {
         return projector
                 .project(tenantId, projectId, nativeId)
                 .filter(r -> tenantId.equals(r.getTenantId()) && projectId.equals(r.getProjectId()))
-                .map(r -> actionsFor(r.getStatus()))
+                .map(r -> actionsFor(r.getStatus(), r.isDebug()))
                 .orElseGet(Set::of);
     }
 
-    private static Set<RunAction> actionsFor(@Nullable MagratheaRunStatus status) {
+    private static Set<RunAction> actionsFor(@Nullable MagratheaRunStatus status, boolean debug) {
         if (status == null) return Set.of(RunAction.PAUSE, RunAction.STOP);
         return switch (status) {
             case RUNNING -> Set.of(RunAction.PAUSE, RunAction.STOP);
-            case PAUSED -> Set.of(RunAction.RESUME, RunAction.STOP);
+            // A halted debug run can be stepped; Resume then runs it on.
+            case PAUSED ->
+                debug
+                        ? Set.of(RunAction.STEP, RunAction.RESUME, RunAction.STOP)
+                        : Set.of(RunAction.RESUME, RunAction.STOP);
             case DONE, FAILED, TERMINATED -> Set.of();
         };
     }
@@ -141,10 +146,11 @@ public class MagratheaRunSource implements RunSource {
                 .orElseThrow(() -> new IllegalArgumentException("No such run: " + nativeId));
         // Not-applicable is a no-op: the button came from a snapshot and
         // the run may have moved on in the meantime.
-        if (!actionsFor(run.getStatus()).contains(action)) return;
+        if (!actionsFor(run.getStatus(), run.isDebug()).contains(action)) return;
         switch (action) {
             case PAUSE -> workflowService.pauseRun(tenantId, projectId, nativeId);
             case RESUME -> workflowService.resumeRun(tenantId, projectId, nativeId);
+            case STEP -> workflowService.stepRun(tenantId, projectId, nativeId);
             case STOP -> workflowService.stopRun(tenantId, projectId, nativeId, reason);
         }
     }

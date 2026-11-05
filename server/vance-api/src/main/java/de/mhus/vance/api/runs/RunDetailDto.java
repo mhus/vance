@@ -66,6 +66,12 @@ public class RunDetailDto {
     @Builder.Default
     private Set<RunAction> allowedActions = Set.of();
 
+    /**
+     * The run was started in debug mode and halts before its states. Only the
+     * workflow source has such runs; for the others this stays {@code false}.
+     */
+    private boolean debug;
+
     /** Source-specific payload for the detail page's extra block. */
     private @Nullable Map<String, Object> extra;
 }

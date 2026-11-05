@@ -51,6 +51,9 @@ public class MagratheaProcessDto {
     /** Caller of {@code start} — user id, scheduler key, or hook origin. */
     private @Nullable String startedBy;
 
+    /** Started in debug mode: the run halts before each state until it is stepped. */
+    private boolean debug;
+
     private @Nullable Instant createdAt;
     private @Nullable Instant updatedAt;
 

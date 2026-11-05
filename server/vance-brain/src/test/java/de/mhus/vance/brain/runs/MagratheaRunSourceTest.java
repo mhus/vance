@@ -189,6 +189,57 @@ class MagratheaRunSourceTest {
     }
 
     @Test
+    void aHaltedDebugRunOffersStepNextToResume() {
+        var dto = run("r1", MagratheaRunStatus.PAUSED);
+        dto.setDebug(true);
+        when(projector.project("acme", "proj", "r1")).thenReturn(Optional.of(dto));
+
+        var detail = source.get("acme", "proj", "r1").orElseThrow();
+
+        assertThat(detail.getAllowedActions())
+                .containsExactlyInAnyOrder(RunAction.STEP, RunAction.RESUME, RunAction.STOP);
+        assertThat(detail.isDebug()).isTrue();
+    }
+
+    @Test
+    void aPlainPausedRunOffersNoStep() {
+        when(projector.project("acme", "proj", "r1")).thenReturn(Optional.of(run("r1", MagratheaRunStatus.PAUSED)));
+
+        assertThat(source.allowedActions("acme", "proj", "r1"))
+                .containsExactlyInAnyOrder(RunAction.RESUME, RunAction.STOP);
+    }
+
+    @Test
+    void aRunningDebugRunOffersNoStepEither() {
+        var dto = run("r1", MagratheaRunStatus.RUNNING);
+        dto.setDebug(true);
+        when(projector.project("acme", "proj", "r1")).thenReturn(Optional.of(dto));
+
+        assertThat(source.allowedActions("acme", "proj", "r1"))
+                .containsExactlyInAnyOrder(RunAction.PAUSE, RunAction.STOP);
+    }
+
+    @Test
+    void performingStepStepsTheRun() {
+        var dto = run("r1", MagratheaRunStatus.PAUSED);
+        dto.setDebug(true);
+        when(projector.project("acme", "proj", "r1")).thenReturn(Optional.of(dto));
+
+        source.perform("acme", "proj", "r1", RunAction.STEP, "why");
+
+        verify(workflows).stepRun("acme", "proj", "r1");
+    }
+
+    @Test
+    void steppingARunThatDoesNotOfferItIsANoOp() {
+        when(projector.project("acme", "proj", "r1")).thenReturn(Optional.of(run("r1", MagratheaRunStatus.PAUSED)));
+
+        source.perform("acme", "proj", "r1", RunAction.STEP, "why");
+
+        verify(workflows, never()).stepRun(any(), any(), any());
+    }
+
+    @Test
     void linksToTheDocumentTheRunCameFrom() {
         stubDetail("r1");
         when(journal.readLast("acme", "proj", "r1", StartRecord.class))

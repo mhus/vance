@@ -43,4 +43,7 @@ public class MagratheaStartDocumentRequest {
 
     /** Audit hint; the controller defaults it to the authenticated user when blank. */
     private @Nullable String startedBy;
+
+    /** Start in debug mode — see {@link MagratheaStartRequest#getDebug()}. */
+    private @Nullable Boolean debug;
 }

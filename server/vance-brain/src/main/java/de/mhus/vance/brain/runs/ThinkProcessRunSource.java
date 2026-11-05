@@ -174,6 +174,9 @@ public class ThinkProcessRunSource implements RunSource {
             case PAUSE -> sessionLifecycle.pauseProcess(process);
             case RESUME -> sessionLifecycle.resumeProcess(process, processEventEmitter);
             case STOP -> sessionLifecycle.stopProcess(process);
+            // Stepping is a debug-run verb; a process never offers it, and the
+            // applicability check above has already returned.
+            case STEP -> {}
         }
         log.info("Run action {} performed on process '{}' (reason: {})", action, nativeId, reason);
     }

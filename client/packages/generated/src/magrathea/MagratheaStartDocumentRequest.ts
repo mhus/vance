@@ -7,4 +7,5 @@ export interface MagratheaStartDocumentRequest {
   path: string;
   params?: Record<string, any>;
   startedBy?: string;
+  debug?: boolean;
 }

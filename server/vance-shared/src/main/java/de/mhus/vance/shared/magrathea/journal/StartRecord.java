@@ -93,4 +93,13 @@ public class StartRecord implements JournalRecord {
      * expected, and the one thing the parameter list cannot show.
      */
     private @Nullable Set<String> derivedParamKeys;
+
+    /**
+     * The run was started in debug mode: it halts before each state and
+     * waits to be stepped. Absent in records written before the mode existed,
+     * which reads as {@code false}. Whether it is stepping <em>right now</em>
+     * is the latest {@link DebugRecord}, not this flag — resuming ends the
+     * stepping, the run stays a debug run.
+     */
+    private boolean debug;
 }

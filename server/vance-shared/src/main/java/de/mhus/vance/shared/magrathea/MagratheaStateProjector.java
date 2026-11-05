@@ -32,10 +32,7 @@ import tools.jackson.databind.ObjectMapper;
  * Inconsistencies always favour the journal.
  */
 @Service
-@ConditionalOnProperty(
-        value = "vance.services.magrathea",
-        havingValue = "true",
-        matchIfMissing = false)
+@ConditionalOnProperty(value = "vance.services.magrathea", havingValue = "true", matchIfMissing = false)
 @RequiredArgsConstructor
 public class MagratheaStateProjector {
 
@@ -47,10 +44,8 @@ public class MagratheaStateProjector {
      * {@link Optional#empty()} when there is no {@link StartRecord}
      * yet — i.e. the run id is unknown.
      */
-    public Optional<MagratheaProcessDto> project(
-            String scopeTenantId, String scopeProjectId, String workflowRunId) {
-        List<MagratheaJournalEntry> entries =
-                journalService.read(scopeTenantId, scopeProjectId, workflowRunId);
+    public Optional<MagratheaProcessDto> project(String scopeTenantId, String scopeProjectId, String workflowRunId) {
+        List<MagratheaJournalEntry> entries = journalService.read(scopeTenantId, scopeProjectId, workflowRunId);
         if (entries.isEmpty()) return Optional.empty();
 
         // Accumulators
@@ -59,6 +54,7 @@ public class MagratheaStateProjector {
         String workflowName = "";
         @Nullable String workflowVersion = null;
         @Nullable String startedBy = null;
+        boolean debug = false;
         @Nullable Map<String, Object> params = null;
         Map<String, Object> vars = new LinkedHashMap<>();
         @Nullable String currentState = null;
@@ -89,6 +85,7 @@ public class MagratheaStateProjector {
                 workflowName = r.getWorkflowName();
                 workflowVersion = r.getWorkflowVersion();
                 startedBy = r.getStartedBy();
+                debug = r.isDebug();
                 if (r.getParams() != null) {
                     params = Map.copyOf(r.getParams());
                 }
@@ -128,6 +125,7 @@ public class MagratheaStateProjector {
                 .params(params)
                 .vars(vars.isEmpty() ? null : Map.copyOf(vars))
                 .startedBy(startedBy)
+                .debug(debug)
                 .createdAt(createdAt)
                 .updatedAt(updatedAt)
                 .terminatedAt(terminatedAt)
@@ -143,7 +141,8 @@ public class MagratheaStateProjector {
      * first explicit transition).
      */
     public MagratheaRunStatus projectStatus(String tenantId, String projectId, String workflowRunId) {
-        return journalService.readLast(tenantId, projectId, workflowRunId, StatusRecord.class)
+        return journalService
+                .readLast(tenantId, projectId, workflowRunId, StatusRecord.class)
                 .map(StatusRecord::getStatus)
                 .orElse(MagratheaRunStatus.RUNNING);
     }
@@ -154,8 +153,7 @@ public class MagratheaStateProjector {
      */
     public Map<String, Object> projectVars(String tenantId, String projectId, String workflowRunId) {
         Map<String, Object> out = new LinkedHashMap<>();
-        for (VarRecord record : journalService.readAll(
-                tenantId, projectId, workflowRunId, VarRecord.class)) {
+        for (VarRecord record : journalService.readAll(tenantId, projectId, workflowRunId, VarRecord.class)) {
             out.put(record.getKey(), unwrap(record.getValue()));
         }
         return out;

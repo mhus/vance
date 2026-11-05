@@ -26,5 +26,11 @@ public enum RunAction {
     /** Undo a {@link #PAUSE} — and only that. */
     RESUME,
     /** Pause, unwind what can be unwound, mark it ended. */
-    STOP
+    STOP,
+    /**
+     * Debug runs only: run exactly the next state, then halt again. Offered
+     * while a debug run is halted, next to {@link #RESUME}, which runs on
+     * without halting.
+     */
+    STEP
 }

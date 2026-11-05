@@ -19,6 +19,7 @@ import de.mhus.vance.shared.magrathea.MagratheaTaskDocument;
 import de.mhus.vance.shared.magrathea.MagratheaTaskService;
 import de.mhus.vance.shared.magrathea.MagratheaWorkflowLoader;
 import de.mhus.vance.shared.magrathea.ResolvedMagratheaWorkflow;
+import de.mhus.vance.shared.magrathea.journal.DebugRecord;
 import de.mhus.vance.shared.magrathea.journal.ResultRecord;
 import de.mhus.vance.shared.magrathea.journal.StartRecord;
 import de.mhus.vance.shared.magrathea.journal.StateEnteredRecord;
@@ -197,6 +198,33 @@ public class MagratheaWorkflowService {
             @Nullable String parentMagratheaProcessId,
             @Nullable String parentState,
             MagratheaRunBinding binding) {
+        return start(
+                tenantId,
+                projectId,
+                workflowName,
+                callerParams,
+                startedBy,
+                parentMagratheaProcessId,
+                parentState,
+                binding, /* debug */
+                false);
+    }
+
+    /**
+     * Start with the debug flag: the run halts before each state and waits to
+     * be stepped from the run view (see {@link #stepRun}). The calls are real —
+     * debug is not a dry run.
+     */
+    public String start(
+            String tenantId,
+            String projectId,
+            String workflowName,
+            @Nullable Map<String, Object> callerParams,
+            @Nullable String startedBy,
+            @Nullable String parentMagratheaProcessId,
+            @Nullable String parentState,
+            MagratheaRunBinding binding,
+            boolean debug) {
         ResolvedMagratheaWorkflow workflow = workflowLoader
                 .load(tenantId, projectId, workflowName)
                 .orElseThrow(() -> new MagratheaWorkflowException("Workflow '" + workflowName
@@ -210,7 +238,8 @@ public class MagratheaWorkflowService {
                 startedBy,
                 parentMagratheaProcessId,
                 parentState,
-                binding);
+                binding,
+                debug);
     }
 
     /**
@@ -257,6 +286,18 @@ public class MagratheaWorkflowService {
             @Nullable Map<String, Object> callerParams,
             @Nullable String startedBy,
             MagratheaRunBinding binding) {
+        return startFromDocument(tenantId, projectId, path, callerParams, startedBy, binding, /* debug */ false);
+    }
+
+    /** {@link #startFromDocument} with the debug flag — see {@link #start}. */
+    public String startFromDocument(
+            String tenantId,
+            String projectId,
+            String path,
+            @Nullable Map<String, Object> callerParams,
+            @Nullable String startedBy,
+            MagratheaRunBinding binding,
+            boolean debug) {
         String norm = path == null ? "" : path.trim();
         if (norm.isEmpty()) {
             throw new MagratheaWorkflowException("Document path is required");
@@ -283,7 +324,8 @@ public class MagratheaWorkflowService {
                 startedBy, /* parent */
                 null, /* parentState */
                 null,
-                binding);
+                binding,
+                debug);
     }
 
     /**
@@ -311,7 +353,8 @@ public class MagratheaWorkflowService {
             @Nullable String startedBy,
             @Nullable String parentMagratheaProcessId,
             @Nullable String parentState,
-            MagratheaRunBinding binding) {
+            MagratheaRunBinding binding,
+            boolean debug) {
         Map<String, Object> resolvedParams = applyDefaultsAndValidate(workflow, callerParams);
         requireCapabilities(workflow, binding);
         String runId = MagratheaRunIdGenerator.fresh();
@@ -334,7 +377,8 @@ public class MagratheaWorkflowService {
                                     sourcePath,
                                     parentMagratheaProcessId,
                                     parentState,
-                                    binding))
+                                    binding,
+                                    debug))
                     .get(START_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS);
         } catch (java.util.concurrent.ExecutionException e) {
             Throwable cause = e.getCause() == null ? e : e.getCause();
@@ -456,8 +500,18 @@ public class MagratheaWorkflowService {
     public boolean resumeRun(String tenantId, String projectId, String workflowRunId) {
         MagratheaRunStatus status = currentStatus(tenantId, projectId, workflowRunId);
         if (status != MagratheaRunStatus.PAUSED) return false;
+        boolean debugRun = isDebugRun(tenantId, projectId, workflowRunId);
         onLane(projectId, () -> {
-            long released = taskService.releaseRun(workflowRunId);
+            // A debug run that is resumed runs on: end the stepping before the
+            // queue is released, so no completion can halt it again.
+            if (debugRun) {
+                journalService.append(
+                        tenantId,
+                        projectId,
+                        workflowRunId,
+                        DebugRecord.builder().stepping(false).build());
+            }
+            long released = releaseAndDispatch(workflowRunId);
             journalService.append(
                     tenantId,
                     projectId,
@@ -469,6 +523,89 @@ public class MagratheaWorkflowService {
             log.info("Magrathea run {} resumed — {} task(s) released", workflowRunId, released);
         });
         return true;
+    }
+
+    /**
+     * Debug runs: run exactly the next state, then halt again. Only a halted
+     * debug run can be stepped; anything else is a no-op, because the button
+     * was drawn from a snapshot the run may have moved on from.
+     *
+     * <p>The stepping is switched on first (a previous resume may have ended
+     * it), then the queue is released, then the status flips — the same order
+     * as {@link #resumeRun}, so a crash in between leaves a run that still
+     * says PAUSED but makes progress.
+     *
+     * @return {@code true} if this call did the stepping
+     */
+    public boolean stepRun(String tenantId, String projectId, String workflowRunId) {
+        if (currentStatus(tenantId, projectId, workflowRunId) != MagratheaRunStatus.PAUSED) return false;
+        if (!isDebugRun(tenantId, projectId, workflowRunId)) return false;
+        onLane(projectId, () -> {
+            journalService.append(
+                    tenantId,
+                    projectId,
+                    workflowRunId,
+                    DebugRecord.builder().stepping(true).build());
+            long released = releaseAndDispatch(workflowRunId);
+            journalService.append(
+                    tenantId,
+                    projectId,
+                    workflowRunId,
+                    StatusRecord.builder()
+                            .status(MagratheaRunStatus.RUNNING)
+                            .reason("debug: step")
+                            .build());
+            log.info("Magrathea run {} stepped — {} task(s) released", workflowRunId, released);
+        });
+        return true;
+    }
+
+    /** Whether the run was started in debug mode (the flag on its start record). */
+    public boolean isDebugRun(String tenantId, String projectId, String workflowRunId) {
+        return journalService
+                .readLast(tenantId, projectId, workflowRunId, StartRecord.class)
+                .map(StartRecord::isDebug)
+                .orElse(false);
+    }
+
+    /**
+     * A debug run halts before each state until a resume ends the stepping;
+     * a step puts it back. Without a {@link DebugRecord} a debug run is
+     * stepping.
+     */
+    private boolean isStepping(String tenantId, String projectId, String workflowRunId, StartRecord start) {
+        if (!start.isDebug()) return false;
+        return journalService
+                .readLast(tenantId, projectId, workflowRunId, DebugRecord.class)
+                .map(DebugRecord::isStepping)
+                .orElse(true);
+    }
+
+    /** Say, in the journal, that the run now stands before {@code stateName}. */
+    private void haltBeforeState(String tenantId, String projectId, String workflowRunId, String stateName) {
+        journalService.append(
+                tenantId,
+                projectId,
+                workflowRunId,
+                StatusRecord.builder()
+                        .status(MagratheaRunStatus.PAUSED)
+                        .reason("debug: before state '" + stateName + "'")
+                        .build());
+    }
+
+    /**
+     * Release the held queue of a run and hand the released tasks to the
+     * local lane right away. Without the dispatch a released task waits for
+     * the claimer's next scan, which would make every debug step lag.
+     */
+    private long releaseAndDispatch(String workflowRunId) {
+        long released = taskService.releaseRun(workflowRunId);
+        for (MagratheaTaskDocument task : taskService.findByRun(workflowRunId)) {
+            if (task.getStatus() == MagratheaTaskStatus.PENDING) {
+                localDispatch.dispatch(task);
+            }
+        }
+        return released;
     }
 
     /**
@@ -664,7 +801,8 @@ public class MagratheaWorkflowService {
             @Nullable String sourcePath,
             @Nullable String parentMagratheaProcessId,
             @Nullable String parentState,
-            MagratheaRunBinding binding) {
+            MagratheaRunBinding binding,
+            boolean debug) {
 
         journalService.append(
                 tenantId,
@@ -688,6 +826,7 @@ public class MagratheaWorkflowService {
                                 binding.derivedParamKeys().isEmpty()
                                         ? null
                                         : new java.util.LinkedHashSet<>(binding.derivedParamKeys()))
+                        .debug(debug)
                         .build());
 
         journalService.append(
@@ -698,6 +837,11 @@ public class MagratheaWorkflowService {
 
         MagratheaStateSpec startState = workflow.states().get(workflow.startState());
         applyCounters(tenantId, projectId, runId, startState);
+        // A debug run stands before its first state: say so first, then
+        // park the task — the order enqueueNextTask uses for every later one.
+        if (debug) {
+            haltBeforeState(tenantId, projectId, runId, workflow.startState());
+        }
         MagratheaTaskDocument task = MagratheaTaskDocument.builder()
                 .tenantId(tenantId)
                 .projectId(projectId)
@@ -705,7 +849,7 @@ public class MagratheaWorkflowService {
                 .workflowName(workflow.name())
                 .stateName(workflow.startState())
                 .taskType(startState.type())
-                .status(MagratheaTaskStatus.PENDING)
+                .status(debug ? MagratheaTaskStatus.HELD : MagratheaTaskStatus.PENDING)
                 .createdAt(Instant.now())
                 .nextAttemptAt(Instant.now())
                 .attemptCount(0)
@@ -913,7 +1057,7 @@ public class MagratheaWorkflowService {
             writeRunFailed(event, "no transition for outcome '" + event.outcome() + "'");
             return;
         }
-        enqueueNextTask(event, workflow, nextState);
+        enqueueNextTask(event, workflow, nextState, start.get());
     }
 
     private static boolean canRetry(MagratheaStateSpec state, MagratheaTaskDocument task, TaskCompletedEvent event) {
@@ -1007,7 +1151,8 @@ public class MagratheaWorkflowService {
         }
     }
 
-    private void enqueueNextTask(TaskCompletedEvent prev, ResolvedMagratheaWorkflow workflow, String nextStateName) {
+    private void enqueueNextTask(
+            TaskCompletedEvent prev, ResolvedMagratheaWorkflow workflow, String nextStateName, StartRecord start) {
         MagratheaStateSpec next = workflow.states().get(nextStateName);
         if (next == null) {
             log.error(
@@ -1023,10 +1168,17 @@ public class MagratheaWorkflowService {
                 prev.workflowRunId(),
                 StateEnteredRecord.builder().state(nextStateName).build());
         applyCounters(prev.tenantId(), prev.projectId(), prev.workflowRunId(), next);
+        // A debug run that is stepping halts here, before the new state runs.
+        boolean halted = isStepping(prev.tenantId(), prev.projectId(), prev.workflowRunId(), start);
+        if (halted
+                && currentStatus(prev.tenantId(), prev.projectId(), prev.workflowRunId())
+                        != MagratheaRunStatus.PAUSED) {
+            haltBeforeState(prev.tenantId(), prev.projectId(), prev.workflowRunId(), nextStateName);
+        }
         // A task created while the run is paused must not slip past the
         // hold: pausing moved the queue to HELD, but this row is new.
-        boolean paused =
-                currentStatus(prev.tenantId(), prev.projectId(), prev.workflowRunId()) == MagratheaRunStatus.PAUSED;
+        boolean paused = halted
+                || currentStatus(prev.tenantId(), prev.projectId(), prev.workflowRunId()) == MagratheaRunStatus.PAUSED;
         MagratheaTaskDocument task = MagratheaTaskDocument.builder()
                 .tenantId(prev.tenantId())
                 .projectId(prev.projectId())

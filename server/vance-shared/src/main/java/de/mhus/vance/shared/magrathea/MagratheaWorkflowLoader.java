@@ -259,14 +259,24 @@ public class MagratheaWorkflowLoader {
                 description,
                 version,
                 startState,
-                Map.copyOf(parameters),
-                Map.copyOf(states),
+                orderedCopy(parameters),
+                orderedCopy(states),
                 bounds,
                 allowedTools,
                 tags);
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * Unmodifiable copy that keeps the order things were declared in.
+     * {@code Map.copyOf} does not: its iteration order is unspecified, so a
+     * form built from the parameters showed them in a different order than
+     * the document lists them — the required one last.
+     */
+    private static <K, V> Map<K, V> orderedCopy(Map<K, V> source) {
+        return java.util.Collections.unmodifiableMap(new LinkedHashMap<>(source));
+    }
+
     private static Map<String, MagratheaParameterSpec> parseParameters(@Nullable Object raw) {
         if (raw == null) return Map.of();
         if (!(raw instanceof Map<?, ?> pm)) {

@@ -19,6 +19,38 @@ class MagratheaWorkflowLoaderTest {
     private final MagratheaWorkflowLoader loader = new MagratheaWorkflowLoader(null);
 
     @Test
+    void parameters_and_states_keep_the_order_they_are_declared_in() {
+        // A start form is built from the parameters. Their order is the author's
+        // (the required one first), not whatever a hash map happens to give.
+        String yaml = """
+                start: zeta
+                parameters:
+                  title: { type: string, required: true }
+                  count: { type: integer }
+                  meta:  { type: object }
+                  alpha: { type: string }
+                  zulu:  { type: string }
+                states:
+                  zeta:
+                    type: condition_task
+                    transitions:
+                      - else: mid
+                  mid:
+                    type: condition_task
+                    transitions:
+                      - else: end
+                  end:
+                    type: terminal
+                    outcome: success
+                """;
+
+        ResolvedMagratheaWorkflow workflow = loader.validateYaml("demo", yaml);
+
+        assertThat(workflow.parameters().keySet()).containsExactly("title", "count", "meta", "alpha", "zulu");
+        assertThat(workflow.states().keySet()).containsExactly("zeta", "mid", "end");
+    }
+
+    @Test
     void parses_full_workflow_with_all_task_types() {
         String yaml = """
                 description: PR review workflow
@@ -121,8 +153,8 @@ class MagratheaWorkflowLoaderTest {
         MagratheaStateSpec checks = wf.states().get("run_checks");
         assertThat(checks.type()).isEqualTo(MagratheaTaskType.SHELL_TASK);
         assertThat(checks.retry().maxAttempts()).isEqualTo(2);
-        assertThat(checks.retry().onErrorKinds()).containsExactlyInAnyOrder(
-                MagratheaErrorKind.TECHNICAL_ERROR, MagratheaErrorKind.TIMEOUT);
+        assertThat(checks.retry().onErrorKinds())
+                .containsExactlyInAnyOrder(MagratheaErrorKind.TECHNICAL_ERROR, MagratheaErrorKind.TIMEOUT);
         assertThat(checks.retry().backoffSeconds()).isEqualTo(60);
 
         MagratheaStateSpec route = wf.states().get("route_by_risk");

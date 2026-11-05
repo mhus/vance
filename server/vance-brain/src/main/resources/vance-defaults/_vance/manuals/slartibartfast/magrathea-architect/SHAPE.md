@@ -94,6 +94,12 @@ gate title/body, or terminal result — e.g. `agent_task` with
 `storeAs: plan`, then a later `agent_task` prompt
 `"Implement: ${state.plan}"`.
 
+A value that is **exactly one placeholder** (`"${state.list}"`) keeps
+its type — list, object, number, boolean — in the `params:` of a
+`tool_task` or `workflow_task` and in a `workflow_task`'s `items:`;
+everywhere else (prompts, titles, bodies) it becomes text. Lists can be
+indexed with fixed indexes: `${state.rows[0].id}`.
+
 This is **distinct** from `condition_task` branching, which uses SpEL
 (`#state['k']` / `#params['k']`, see below), not `${…}`.
 
@@ -108,7 +114,7 @@ This is **distinct** from `condition_task` branching, which uses SpEL
 | `gate_task` | no | `inbox: {kind, title, assignedTo, criticality, options}` | depends on the user answer |
 | `timer_task` | no | `duration:` (`7d`/`4h`/`30m`/ISO-8601) | fired |
 | `condition_task` | yes | `transitions: [{if:<SpEL>, to}, …, {else}]` | (sets next state directly) |
-| `workflow_task` | no | `workflow:`, `params:` | success / failure |
+| `workflow_task` | no | `workflow:`, `params:`, optional `items:` (for-each) | success / failure |
 | `terminal` | yes | `outcome: success\|failure`, `result?` | (ends the run) |
 
 Notes:
@@ -121,6 +127,15 @@ Notes:
   `ford`.
 - `workflow_task.workflow` names another workflow; it blocks until
   that sub-run reaches a terminal state.
+- **For-each:** `workflow_task` with `items: "${params.list}"` starts
+  one sub-run per element, sequentially. Keys: `as:` (param name of the
+  element, default `item`), `onItemError: fail|continue` (default
+  `fail`), `maxItems:` (default 100, hard limit 1000). The sub-workflow
+  reads the element as `${params.<as>...}` plus `index` and `count`;
+  `storeAs:` receives the **list** of sub-run results in element order.
+  An empty list succeeds at once with `[]`; a non-list `items:` fails
+  the state. Prefer this over hand-built counter loops for "do X for
+  each Y".
 
 ## Rules of thumb
 

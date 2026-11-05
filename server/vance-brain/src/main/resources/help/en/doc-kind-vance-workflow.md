@@ -117,7 +117,7 @@ the workflow, where it shows up in the diagram and counts against
 | `gate_task` | Asks a person, via an inbox item, and waits |
 | `timer_task` | Waits for a duration (`7d`, `4h`, `30m`) |
 | `condition_task` | Branches on an expression, no side effects |
-| `workflow_task` | Runs another workflow and waits for it |
+| `workflow_task` | Runs another workflow and waits for it — with `items:` once per list element |
 | `terminal` | Ends the run with `success` or `failure` |
 
 ## Passing data along
@@ -127,6 +127,17 @@ later state reads it as `${state.<key>}` — in a prompt, a tool
 parameter, a gate title, anywhere a string appears. Caller arguments
 declared under `parameters:` read as `${params.<key>}`. A missing key
 becomes an empty string rather than an error.
+
+## For each element
+
+Give a `workflow_task` an `items:` list and it runs the other workflow
+once per element, one after the other. The element arrives as the
+parameter named by `as:` (default `item`), together with `index` and
+`count`. `storeAs:` collects the results as a list in the same order.
+`onItemError: continue` keeps going past a failed element (it appears in
+the list as `failed: true`); the default stops at the first one.
+`maxItems:` caps the list (default 100, at most 1000). In the run view
+each element is a run of its own, and debugging steps into them.
 
 ## Starting one
 

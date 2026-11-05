@@ -121,7 +121,7 @@ Workflow, wo er im Diagramm auftaucht und gegen `bounds` zählt.
 | `gate_task` | Fragt einen Menschen per Inbox-Item und wartet |
 | `timer_task` | Wartet eine Dauer ab (`7d`, `4h`, `30m`) |
 | `condition_task` | Verzweigt über einen Ausdruck, ohne Seiteneffekt |
-| `workflow_task` | Startet einen anderen Workflow und wartet auf ihn |
+| `workflow_task` | Startet einen anderen Workflow und wartet auf ihn — mit `items:` einmal pro Listenelement |
 | `terminal` | Beendet den Lauf mit `success` oder `failure` |
 
 ## Daten weiterreichen
@@ -131,6 +131,18 @@ Variable. Ein späterer liest sie als `${state.<key>}` — im Prompt, in
 einem Tool-Parameter, im Gate-Titel, überall wo ein String steht.
 Aufruf-Argumente aus `parameters:` liest du als `${params.<key>}`.
 Ein fehlender Key wird zum leeren String, nicht zum Fehler.
+
+## Für jedes Element
+
+Gib einem `workflow_task` eine `items:`-Liste, und er startet den anderen
+Workflow einmal pro Element, nacheinander. Das Element kommt als Parameter
+mit dem Namen aus `as:` an (Standard `item`), dazu `index` und `count`.
+`storeAs:` sammelt die Ergebnisse als Liste in derselben Reihenfolge.
+Mit `onItemError: continue` läuft die Schleife an einem gescheiterten
+Element vorbei (es steht in der Liste als `failed: true`); standardmäßig
+endet sie am ersten. `maxItems:` begrenzt die Liste (Standard 100, höchstens
+1000). In der Run-Ansicht ist jedes Element ein eigener Lauf, und der
+Debugger steigt in sie hinein.
 
 ## Starten
 

@@ -60,18 +60,13 @@ import org.springframework.stereotype.Component;
  * bean registered".
  */
 @Component
-@ConditionalOnProperty(
-        value = "vance.services.magrathea",
-        havingValue = "true",
-        matchIfMissing = false)
+@ConditionalOnProperty(value = "vance.services.magrathea", havingValue = "true", matchIfMissing = false)
 @RequiredArgsConstructor
 @Slf4j
 public class MagratheaArchitect implements SchemaArchitect {
 
-    public static final String RULE_WORKFLOW_PARSES =
-            "magrathea-workflow-parses";
-    public static final String RULE_AGENT_TASK_RECIPES_EXIST =
-            "magrathea-agent-task-recipes-exist";
+    public static final String RULE_WORKFLOW_PARSES = "magrathea-workflow-parses";
+    public static final String RULE_AGENT_TASK_RECIPES_EXIST = "magrathea-agent-task-recipes-exist";
 
     private static final String SYSTEM_PROMPT = """
             You are the PROPOSING node of the Slartibartfast engine.
@@ -177,6 +172,15 @@ public class MagratheaArchitect implements SchemaArchitect {
                 workflow: <workflow-name>
                 params: { ... }
                 Outcomes: success | failure
+                FOR-EACH — add `items:` to run the sub-workflow once per
+                list element, one after the other:
+                  items: "${params.tickets}"   # a list; keeps its type
+                  as: ticket                   # param name of the element (default: item)
+                  onItemError: fail | continue # default fail
+                  maxItems: 50                 # default 100, hard limit 1000
+                  storeAs: handled             # list of the sub-run results, in order
+                Each sub-run also gets `index` (from 0) and `count`.
+                The sub-workflow reads the element as ${params.ticket.name}.
             - terminal       — end state.
                 outcome: success | failure         # MANDATORY
                 result: { ... }                    # optional result payload
@@ -193,6 +197,11 @@ public class MagratheaArchitect implements SchemaArchitect {
               agent_task's result with `storeAs: plan`, then reference
               ${state.plan} in a later agent_task prompt, tool_task
               param, gate_task title, or terminal result.
+              A value that is exactly one placeholder ("${state.list}")
+              keeps its type — list, object, number — in the `params:`
+              of a tool_task or workflow_task and in `items:`; anywhere
+              else it becomes text. Lists can be indexed: ${state.rows[0].id}
+              (fixed indexes only).
               This is DIFFERENT from condition_task `if:`, which uses
               SpEL (#state['k'] / #params['k']), not ${...}.
 
@@ -288,23 +297,23 @@ public class MagratheaArchitect implements SchemaArchitect {
     }
 
     @Override
-    public void appendProposingContext(
-            StringBuilder sb, ArchitectState state,
-            List<ResolvedRecipe> availableRecipes) {
-        sb.append("Available recipes for agent_task.recipe references "
-                + "(excluding the _slart/* generated bucket):\n");
+    public void appendProposingContext(StringBuilder sb, ArchitectState state, List<ResolvedRecipe> availableRecipes) {
+        sb.append(
+                "Available recipes for agent_task.recipe references " + "(excluding the _slart/* generated bucket):\n");
         if (availableRecipes.isEmpty()) {
             sb.append("  (none) — use 'ford' as the generalist worker.\n");
             return;
         }
         for (ResolvedRecipe r : availableRecipes) {
-            sb.append("  - ").append(r.name())
-                    .append(" [engine=").append(r.engine()).append("]: ")
+            sb.append("  - ")
+                    .append(r.name())
+                    .append(" [engine=")
+                    .append(r.engine())
+                    .append("]: ")
                     .append(abbrev(r.description(), 100))
                     .append("\n");
         }
-        sb.append("\nUse ONLY names from this list in "
-                + "agent_task.recipe. Default to 'ford' when unsure.\n");
+        sb.append("\nUse ONLY names from this list in " + "agent_task.recipe. Default to 'ford' when unsure.\n");
     }
 
     @Override
@@ -317,22 +326,25 @@ public class MagratheaArchitect implements SchemaArchitect {
 
     @Override
     public @Nullable ValidationCheck validateDraftShape(
-            RecipeDraft draft, @Nullable Map<String, Object> recipeMap,
-            ThinkProcessDocument process, List<ValidationCheck> report) {
+            RecipeDraft draft,
+            @Nullable Map<String, Object> recipeMap,
+            ThinkProcessDocument process,
+            List<ValidationCheck> report) {
         // recipeMap is null for non-recipe schemas — work off the raw
         // YAML in draft.getYaml() through the Magrathea parser.
         ResolvedMagratheaWorkflow workflow;
         try {
             workflow = workflowLoader.validateYaml(draft.getName(), draft.getYaml());
             report.add(ValidationCheck.builder()
-                    .rule(RULE_WORKFLOW_PARSES).passed(true)
+                    .rule(RULE_WORKFLOW_PARSES)
+                    .passed(true)
                     .message("workflow YAML parses cleanly")
                     .build());
         } catch (MagratheaWorkflowParseException e) {
             ValidationCheck v = ValidationCheck.builder()
-                    .rule(RULE_WORKFLOW_PARSES).passed(false)
-                    .message("MagratheaWorkflowLoader rejected the "
-                            + "workflow: " + e.getMessage())
+                    .rule(RULE_WORKFLOW_PARSES)
+                    .passed(false)
+                    .message("MagratheaWorkflowLoader rejected the " + "workflow: " + e.getMessage())
                     .build();
             report.add(v);
             return v;
@@ -361,8 +373,7 @@ public class MagratheaArchitect implements SchemaArchitect {
      * tool (e.g. {@code doc_edit}) where a recipe is required. Mirrors
      * {@link VogonArchitect}'s worker-recipe check.
      */
-    private ValidationCheck validateAgentTaskRecipes(
-            ResolvedMagratheaWorkflow workflow, ThinkProcessDocument process) {
+    private ValidationCheck validateAgentTaskRecipes(ResolvedMagratheaWorkflow workflow, ThinkProcessDocument process) {
         Set<String> recipesUsed = new LinkedHashSet<>();
         for (MagratheaStateSpec s : workflow.states().values()) {
             if (s.type() != MagratheaTaskType.AGENT_TASK) continue;
@@ -373,23 +384,24 @@ public class MagratheaArchitect implements SchemaArchitect {
         }
         if (recipesUsed.isEmpty()) {
             return ValidationCheck.builder()
-                    .rule(RULE_AGENT_TASK_RECIPES_EXIST).passed(true)
+                    .rule(RULE_AGENT_TASK_RECIPES_EXIST)
+                    .passed(true)
                     .message("no agent_task recipe references to validate")
                     .build();
         }
 
         Set<String> available = new LinkedHashSet<>();
         try {
-            for (ResolvedRecipe r : recipeLoader.listAll(
-                    process.getTenantId(), process.getProjectId())) {
+            for (ResolvedRecipe r : recipeLoader.listAll(process.getTenantId(), process.getProjectId())) {
                 if (!r.name().startsWith("_slart/")) {
                     available.add(r.name());
                 }
             }
         } catch (RuntimeException e) {
-            log.warn("Slartibartfast id='{}' VALIDATING failed listing "
-                            + "recipes for agent_task-check: {}",
-                    process.getId(), e.toString());
+            log.warn(
+                    "Slartibartfast id='{}' VALIDATING failed listing " + "recipes for agent_task-check: {}",
+                    process.getId(),
+                    e.toString());
         }
 
         List<String> unknown = new ArrayList<>();
@@ -398,20 +410,20 @@ public class MagratheaArchitect implements SchemaArchitect {
         }
         if (unknown.isEmpty()) {
             return ValidationCheck.builder()
-                    .rule(RULE_AGENT_TASK_RECIPES_EXIST).passed(true)
-                    .message(recipesUsed.size() + " agent_task recipe "
-                            + "reference(s) resolve to known recipes")
+                    .rule(RULE_AGENT_TASK_RECIPES_EXIST)
+                    .passed(true)
+                    .message(recipesUsed.size() + " agent_task recipe " + "reference(s) resolve to known recipes")
                     .build();
         }
         StringBuilder msg = new StringBuilder();
         msg.append("Workflow agent_task references unknown recipe(s): ")
-                .append(unknown).append(".\n\n");
+                .append(unknown)
+                .append(".\n\n");
         msg.append("Common mistake: using a TOOL name (e.g. doc_edit, "
                 + "web_search) where a RECIPE name is required. For a "
                 + "single direct tool call use a tool_task, not an "
                 + "agent_task.\n\n");
-        msg.append("AVAILABLE RECIPES (pick exactly one verbatim for "
-                + "each agent_task.recipe):\n");
+        msg.append("AVAILABLE RECIPES (pick exactly one verbatim for " + "each agent_task.recipe):\n");
         List<String> ordered = new ArrayList<>();
         if (available.contains("ford")) ordered.add("ford");
         for (String name : available) {
@@ -421,10 +433,10 @@ public class MagratheaArchitect implements SchemaArchitect {
         for (String name : ordered) {
             msg.append("- '").append(name).append("'\n");
         }
-        msg.append("\nDefault when in doubt: 'ford' (generalist "
-                + "single-task worker).");
+        msg.append("\nDefault when in doubt: 'ford' (generalist " + "single-task worker).");
         return ValidationCheck.builder()
-                .rule(RULE_AGENT_TASK_RECIPES_EXIST).passed(false)
+                .rule(RULE_AGENT_TASK_RECIPES_EXIST)
+                .passed(false)
                 .message(msg.toString())
                 .build();
     }

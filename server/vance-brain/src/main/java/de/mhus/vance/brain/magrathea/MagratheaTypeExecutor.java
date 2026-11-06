@@ -60,6 +60,14 @@ public interface MagratheaTypeExecutor {
     }
 
     /**
+     * End what {@link #execute} started outside its own thread — called when a task that runs off the lane is
+     * stopped or aborted, after its thread was interrupted. An interrupt alone ends a call that waits, but not a
+     * program the call started: a shell command keeps running on the host until somebody kills it. Default: nothing
+     * to end beyond the interrupt.
+     */
+    default void cancelRunning(MagratheaTaskContext context) {}
+
+    /**
      * What stands in the way of this state running for the user it would run as, known
      * <em>before</em> the run begins — a login the user has not made. One sentence per problem; empty
      * (the default) when nothing does.

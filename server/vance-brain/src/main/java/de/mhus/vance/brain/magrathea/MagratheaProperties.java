@@ -67,10 +67,10 @@ public class MagratheaProperties {
     private Duration watchdogInterval = Duration.ofHours(1);
 
     /**
-     * How many calls to outside services ({@code tool_task}) a single project has in flight at once.
-     * Such a call runs off the project lane, so a slow one does not hold up the project's other steps; this
-     * bounds how many a project may start together, so a burst of runs cannot hammer one service. A call
-     * past the limit waits for a free place, it is not refused. Zero or less: no limit.
+     * How many calls of one kind a single project has in flight at once — tool calls, shell commands and scripts
+     * are counted apart. Such a task runs off the project lane, so a slow one does not hold up the project's other
+     * steps; this bounds how many a project may start together, so a burst of runs cannot hammer one service or the
+     * host. A call past the limit waits for a free place, it is not refused. Zero or less: no limit.
      */
     private int maxConcurrentCalls = 5;
 }

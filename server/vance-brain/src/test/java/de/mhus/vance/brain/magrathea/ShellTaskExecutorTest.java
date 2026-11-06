@@ -30,7 +30,231 @@ class ShellTaskExecutorTest {
 
     private final ObjectMapper objectMapper = JsonMapper.builder().build();
     private final ExecManager execManager = mock(ExecManager.class);
-    private final ShellTaskExecutor executor = new ShellTaskExecutor(execManager, objectMapper);
+    private final de.mhus.vance.brain.tools.runner.RunnerWork runner =
+            mock(de.mhus.vance.brain.tools.runner.RunnerWork.class);
+    private final de.mhus.vance.shared.workspace.WorkspaceService workspace =
+            mock(de.mhus.vance.shared.workspace.WorkspaceService.class);
+    private final ShellTaskExecutor executor = new ShellTaskExecutor(execManager, objectMapper, runner, workspace);
+
+    ShellTaskExecutorTest() {
+        // No runner bound unless a test says so; a task without dirName gets a RootDir of its own.
+        de.mhus.vance.exec.RootDirHandle temp = mock(de.mhus.vance.exec.RootDirHandle.class);
+        when(temp.getDirName()).thenReturn("tmp-1");
+        when(workspace.getOrCreateTempRootDir(any(), any(), any())).thenReturn(temp);
+    }
+
+    // ──────── the runner ────────
+
+    private void runnerBound() {
+        when(runner.available("acme", "proj")).thenReturn(true);
+    }
+
+    private static Map<String, Object> done(int exit) {
+        return Map.of(
+                "id",
+                "job-1",
+                "status",
+                "COMPLETED",
+                "exitCode",
+                exit,
+                "stdout",
+                "ok\n",
+                "stderr",
+                "",
+                "durationMs",
+                3L);
+    }
+
+    @Test
+    void with_a_runner_bound_the_command_runs_there_and_not_on_the_brain() {
+        runnerBound();
+        when(runner.call(any(), eq("exec.start"), any())).thenReturn(done(0));
+
+        TaskOutcome outcome =
+                executor.execute(ctx(scriptState("make", "build", null))).get();
+
+        assertThat(outcome.outcome()).isEqualTo(TaskCompletedEvent.OUTCOME_SUCCESS);
+        org.mockito.Mockito.verifyNoInteractions(execManager);
+        // The deadline goes to the runner, which kills the job there.
+        org.mockito.ArgumentCaptor<Map<String, Object>> args = org.mockito.ArgumentCaptor.captor();
+        org.mockito.Mockito.verify(runner).call(any(), eq("exec.start"), args.capture());
+        assertThat(args.getValue()).containsEntry("command", "make").containsEntry("dirName", "build");
+        assertThat(args.getValue().get("deadlineSeconds")).isEqualTo(30L);
+    }
+
+    @Test
+    void a_named_directory_is_used_as_it_is_and_never_created_or_deleted() {
+        runnerBound();
+        when(runner.call(any(), eq("exec.start"), any())).thenReturn(done(0));
+
+        executor.execute(ctx(scriptState("make", "build", null)));
+
+        org.mockito.Mockito.verify(runner, org.mockito.Mockito.never()).call(any(), eq("root.create"), any());
+        org.mockito.Mockito.verify(runner, org.mockito.Mockito.never()).call(any(), eq("root.delete"), any());
+    }
+
+    @Test
+    void without_a_directory_the_task_gets_one_of_its_own_on_the_runner_and_it_is_removed_afterwards() {
+        runnerBound();
+        when(runner.call(any(), eq("root.create"), any())).thenReturn(Map.of("dirName", "tmp-r1"));
+        when(runner.call(any(), eq("exec.start"), any())).thenReturn(done(0));
+
+        executor.execute(ctx(scriptState("make", null, null)));
+
+        org.mockito.ArgumentCaptor<Map<String, Object>> started = org.mockito.ArgumentCaptor.captor();
+        org.mockito.Mockito.verify(runner).call(any(), eq("exec.start"), started.capture());
+        assertThat(started.getValue()).containsEntry("dirName", "tmp-r1");
+        org.mockito.Mockito.verify(runner).call(any(), eq("root.delete"), eq(Map.of("dirName", "tmp-r1")));
+    }
+
+    @Test
+    void its_directory_is_removed_even_when_the_command_fails() {
+        runnerBound();
+        when(runner.call(any(), eq("root.create"), any())).thenReturn(Map.of("dirName", "tmp-r1"));
+        when(runner.call(any(), eq("exec.start"), any())).thenReturn(done(2));
+
+        TaskOutcome outcome =
+                executor.execute(ctx(scriptState("false", null, null))).get();
+
+        assertThat(outcome.outcome()).isEqualTo("business_error");
+        org.mockito.Mockito.verify(runner).call(any(), eq("root.delete"), any());
+    }
+
+    @Test
+    void a_command_still_running_after_the_first_wait_is_followed_until_it_has_ended() {
+        runnerBound();
+        when(runner.call(any(), eq("exec.start"), any()))
+                .thenReturn(Map.of("id", "job-1", "status", "RUNNING", "stdout", "", "stderr", "", "durationMs", 1L));
+        when(runner.call(any(), eq("exec.stat"), any())).thenReturn(Map.of("id", "job-1", "status", "COMPLETED"));
+        when(runner.call(any(), eq("exec.status"), any())).thenReturn(done(0));
+
+        TaskOutcome outcome =
+                executor.execute(ctx(scriptState("sleep 2", "build", null))).get();
+
+        assertThat(outcome.outcome()).isEqualTo(TaskCompletedEvent.OUTCOME_SUCCESS);
+        assertThat(outcome.output().get("stdout").asString()).contains("ok");
+    }
+
+    @Test
+    void a_runner_that_refuses_is_a_technical_error_and_the_brain_is_not_used_instead() {
+        runnerBound();
+        when(runner.call(any(), eq("exec.start"), any()))
+                .thenThrow(new de.mhus.vance.brain.tools.runner.RunnerRefusedException(
+                        "exec-unsandboxed", "no exec wrapper"));
+
+        TaskOutcome outcome =
+                executor.execute(ctx(scriptState("make", "build", null))).get();
+
+        assertThat(outcome.outcome()).isEqualTo("technical_error");
+        assertThat(outcome.errorMessage()).contains("no exec wrapper");
+        org.mockito.Mockito.verifyNoInteractions(execManager);
+    }
+
+    @Test
+    void a_runner_that_does_not_answer_is_unavailable_and_the_brain_is_not_used_instead() {
+        runnerBound();
+        when(runner.call(any(), eq("exec.start"), any()))
+                .thenThrow(new de.mhus.vance.toolpack.ToolException("connection refused"));
+
+        TaskOutcome outcome =
+                executor.execute(ctx(scriptState("make", "build", null))).get();
+
+        assertThat(outcome.outcome()).isEqualTo("unavailable");
+        org.mockito.Mockito.verifyNoInteractions(execManager);
+    }
+
+    @Test
+    void cancelling_a_command_on_the_runner_kills_its_job_there() throws Exception {
+        runnerBound();
+        java.util.concurrent.CountDownLatch started = new java.util.concurrent.CountDownLatch(1);
+        when(runner.call(any(), eq("exec.start"), any())).thenAnswer(inv -> {
+            started.countDown();
+            return Map.of("id", "job-1", "status", "RUNNING", "stdout", "", "stderr", "", "durationMs", 1L);
+        });
+        when(runner.call(any(), eq("exec.stat"), any())).thenReturn(Map.of("id", "job-1", "status", "KILLED"));
+        when(runner.call(any(), eq("exec.status"), any()))
+                .thenReturn(Map.of("id", "job-1", "status", "KILLED", "stdout", "", "stderr", "", "durationMs", 2L));
+        when(runner.call(any(), eq("exec.kill"), any())).thenReturn(Map.of("id", "job-1", "killed", true));
+        Thread waiting = Thread.ofVirtual().start(() -> executor.execute(ctx(scriptState("sleep 600", "build", null))));
+        assertThat(started.await(2, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+        Thread.sleep(200); // the job is registered as soon as exec.start has answered
+
+        executor.cancelRunning(ctx(scriptState("sleep 600", "build", null)));
+
+        // Interrupting the thread would not have ended the program on the runner; the kill does.
+        org.mockito.Mockito.verify(runner).call(any(), eq("exec.kill"), eq(Map.of("id", "job-1")));
+        waiting.join(5000);
+    }
+
+    @Test
+    void without_a_runner_a_task_without_a_directory_gets_one_of_its_own_on_the_brain_and_it_is_removed() {
+        when(execManager.submitTrackedAndRender(
+                        any(), any(), any(), any(), any(), any(), any(Long.class), any(SubmitOptions.class), any()))
+                .thenReturn(done(0));
+
+        executor.execute(ctx(scriptState("ls", null, null)));
+
+        org.mockito.Mockito.verify(workspace).getOrCreateTempRootDir(eq("acme"), eq("proj"), any());
+        org.mockito.Mockito.verify(workspace).disposeByCreator(eq("acme"), eq("proj"), any());
+    }
+
+    @Test
+    void a_shell_command_runs_off_the_lane() {
+        assertThat(executor.runsOffLane()).isTrue();
+    }
+
+    @Test
+    void cancelling_a_running_command_kills_its_job_not_just_the_waiting_thread() {
+        // The job id is announced right after submit, before the wait; the wait is what is still going.
+        when(execManager.submitTrackedAndRender(
+                        any(), any(), any(), any(), any(), any(), any(Long.class), any(SubmitOptions.class), any()))
+                .thenAnswer(inv -> {
+                    java.util.function.Consumer<String> onJobId = inv.getArgument(8);
+                    onJobId.accept("job-77");
+                    // Still running while the test cancels: nothing to return yet.
+                    executor.cancelRunning(ctx(scriptState("sleep 600", null, null)));
+                    return Map.of("id", "job-77", "status", "KILLED", "stdout", "", "stderr", "", "durationMs", 5L);
+                });
+
+        executor.execute(ctx(scriptState("sleep 600", null, null)));
+
+        org.mockito.Mockito.verify(execManager).kill("acme", "proj", "job-77");
+    }
+
+    @Test
+    void cancelling_a_task_with_no_running_job_kills_nothing() {
+        executor.cancelRunning(ctx(scriptState("ls", null, null)));
+
+        org.mockito.Mockito.verify(execManager, org.mockito.Mockito.never()).kill(any(), any(), any());
+    }
+
+    @Test
+    void a_finished_command_leaves_nothing_to_cancel() {
+        when(execManager.submitTrackedAndRender(
+                        any(), any(), any(), any(), any(), any(), any(Long.class), any(SubmitOptions.class), any()))
+                .thenAnswer(inv -> {
+                    java.util.function.Consumer<String> onJobId = inv.getArgument(8);
+                    onJobId.accept("job-1");
+                    return Map.of(
+                            "id",
+                            "job-1",
+                            "status",
+                            "COMPLETED",
+                            "exitCode",
+                            0,
+                            "stdout",
+                            "",
+                            "stderr",
+                            "",
+                            "durationMs",
+                            1L);
+                });
+        executor.execute(ctx(scriptState("true", null, null)));
+
+        executor.cancelRunning(ctx(scriptState("true", null, null)));
+
+        org.mockito.Mockito.verify(execManager, org.mockito.Mockito.never()).kill(any(), any(), any());
+    }
 
     @Test
     void completed_exit_zero_yields_success() {
@@ -42,7 +266,8 @@ class ShellTaskExecutorTest {
                         any(),
                         eq("ls -la"),
                         eq(30_000L),
-                        any(SubmitOptions.class)))
+                        any(SubmitOptions.class),
+                        any()))
                 .thenReturn(Map.of(
                         "id", "abc",
                         "status", "COMPLETED",
@@ -62,7 +287,7 @@ class ShellTaskExecutorTest {
     @Test
     void completed_nonzero_exit_yields_business_error() {
         when(execManager.submitTrackedAndRender(
-                        any(), any(), any(), any(), any(), any(), any(Long.class), any(SubmitOptions.class)))
+                        any(), any(), any(), any(), any(), any(), any(Long.class), any(SubmitOptions.class), any()))
                 .thenReturn(Map.of(
                         "id", "abc",
                         "status", "COMPLETED",
@@ -80,7 +305,7 @@ class ShellTaskExecutorTest {
     @Test
     void killed_status_yields_timeout() {
         when(execManager.submitTrackedAndRender(
-                        any(), any(), any(), any(), any(), any(), any(Long.class), any(SubmitOptions.class)))
+                        any(), any(), any(), any(), any(), any(), any(Long.class), any(SubmitOptions.class), any()))
                 .thenReturn(Map.of(
                         "id", "abc",
                         "status", "KILLED",
@@ -97,7 +322,7 @@ class ShellTaskExecutorTest {
     @Test
     void running_at_wait_exhaustion_yields_timeout() {
         when(execManager.submitTrackedAndRender(
-                        any(), any(), any(), any(), any(), any(), any(Long.class), any(SubmitOptions.class)))
+                        any(), any(), any(), any(), any(), any(), any(Long.class), any(SubmitOptions.class), any()))
                 .thenReturn(Map.of(
                         "id", "abc",
                         "status", "RUNNING",
@@ -114,7 +339,7 @@ class ShellTaskExecutorTest {
     @Test
     void failed_status_yields_technical_error() {
         when(execManager.submitTrackedAndRender(
-                        any(), any(), any(), any(), any(), any(), any(Long.class), any(SubmitOptions.class)))
+                        any(), any(), any(), any(), any(), any(), any(Long.class), any(SubmitOptions.class), any()))
                 .thenReturn(Map.of(
                         "id", "abc",
                         "status", "FAILED",
@@ -130,7 +355,7 @@ class ShellTaskExecutorTest {
     @Test
     void exec_manager_RuntimeException_yields_technical_error() {
         when(execManager.submitTrackedAndRender(
-                        any(), any(), any(), any(), any(), any(), any(Long.class), any(SubmitOptions.class)))
+                        any(), any(), any(), any(), any(), any(), any(Long.class), any(SubmitOptions.class), any()))
                 .thenThrow(new RuntimeException("Unknown workspace RootDir"));
 
         Optional<TaskOutcome> outcome = executor.execute(ctx(scriptState("ls", "missing", null)));
@@ -150,7 +375,7 @@ class ShellTaskExecutorTest {
     @Test
     void timeoutSeconds_converted_to_waitMs() {
         when(execManager.submitTrackedAndRender(
-                        any(), any(), any(), any(), any(), any(), eq(60_000L), any(SubmitOptions.class)))
+                        any(), any(), any(), any(), any(), any(), eq(60_000L), any(SubmitOptions.class), any()))
                 .thenReturn(Map.of(
                         "id", "x", "status", "COMPLETED", "exitCode", 0, "stdout", "", "stderr", "", "durationMs", 1L));
 

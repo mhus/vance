@@ -72,6 +72,8 @@ public class MagratheaTaskExecutor {
     private static final class InFlight {
         final java.util.concurrent.atomic.AtomicBoolean cancelled = new java.util.concurrent.atomic.AtomicBoolean();
         volatile java.util.concurrent.@org.jspecify.annotations.Nullable Future<?> future;
+        volatile @org.jspecify.annotations.Nullable MagratheaTypeExecutor executor;
+        volatile @org.jspecify.annotations.Nullable MagratheaTaskContext context;
     }
 
     private final java.util.concurrent.ScheduledExecutorService heartbeatScheduler =
@@ -293,6 +295,8 @@ public class MagratheaTaskExecutor {
             java.util.concurrent.ScheduledFuture<?> heartbeat,
             long started) {
         InFlight flight = new InFlight();
+        flight.executor = executor;
+        flight.context = ctx;
         inFlight.put(task.getId(), flight);
         flight.future = callPool.submit(() -> runOffLane(task, type, executor, ctx, heartbeat, flight, started));
     }
@@ -306,7 +310,7 @@ public class MagratheaTaskExecutor {
             InFlight flight,
             long started) {
         Optional<TaskOutcome> outcome;
-        java.util.concurrent.Semaphore place = placesFor(task.getProjectId());
+        java.util.concurrent.Semaphore place = placesFor(task.getProjectId(), type);
         boolean acquired = false;
         try {
             if (place != null) {
@@ -340,10 +344,13 @@ public class MagratheaTaskExecutor {
     }
 
     /** The places for this project's calls, or {@code null} when the limit is off. */
-    private java.util.concurrent.@org.jspecify.annotations.Nullable Semaphore placesFor(String projectId) {
+    private java.util.concurrent.@org.jspecify.annotations.Nullable Semaphore placesFor(
+            String projectId, MagratheaTaskType type) {
         int max = properties.getMaxConcurrentCalls();
         if (max <= 0) return null;
-        return callPlaces.computeIfAbsent(projectId, id -> new java.util.concurrent.Semaphore(max, true));
+        // Per project and per kind: five long shell commands must not keep a tool call from starting.
+        return callPlaces.computeIfAbsent(
+                projectId + "/" + type.name(), id -> new java.util.concurrent.Semaphore(max, true));
     }
 
     /** Whether a call of this task is running off the lane on this pod. */
@@ -362,6 +369,16 @@ public class MagratheaTaskExecutor {
         flight.cancelled.set(true);
         java.util.concurrent.Future<?> future = flight.future;
         if (future != null) future.cancel(true);
+        // What the call started outside its thread — a shell command on the host — is not ended by an interrupt.
+        MagratheaTypeExecutor executor = flight.executor;
+        MagratheaTaskContext context = flight.context;
+        if (executor != null && context != null) {
+            try {
+                executor.cancelRunning(context);
+            } catch (RuntimeException ex) {
+                log.warn("Magrathea task {}: could not end what the call started: {}", taskId, ex.toString());
+            }
+        }
         return true;
     }
 

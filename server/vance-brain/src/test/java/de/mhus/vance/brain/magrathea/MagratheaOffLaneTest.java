@@ -44,6 +44,11 @@ class MagratheaOffLaneTest {
                 params: {}
                 on:
                   success: done
+              run:
+                type: shell_task
+                run: "sleep 600"
+                on:
+                  success: done
               done:
                 type: terminal
                 outcome: success
@@ -62,7 +67,8 @@ class MagratheaOffLaneTest {
     private final ObjectProvider<de.mhus.vance.shared.thinkprocess.ThinkProcessService> processes =
             mock(ObjectProvider.class);
 
-    private final BlockingCall call = new BlockingCall();
+    private final BlockingCall call = new BlockingCall(MagratheaTaskType.TOOL_TASK);
+    private final BlockingCall shell = new BlockingCall(MagratheaTaskType.SHELL_TASK);
 
     private MagratheaTaskExecutor executor(int maxConcurrentCalls) {
         MagratheaProperties properties = new MagratheaProperties();
@@ -81,7 +87,7 @@ class MagratheaOffLaneTest {
                 workflowLoader,
                 eventBus,
                 taskService,
-                List.of(call),
+                List.of(call, shell),
                 progress,
                 processes,
                 properties);
@@ -150,6 +156,33 @@ class MagratheaOffLaneTest {
     }
 
     @Test
+    void cancellingAlsoEndsWhatTheCallStartedOutsideItsThread() throws Exception {
+        MagratheaTaskExecutor executor = executor(5);
+        executor.execute(task("task-1", "run", MagratheaTaskType.SHELL_TASK));
+        assertThat(shell.started.await(2, TimeUnit.SECONDS)).isTrue();
+
+        assertThat(executor.cancelInFlight("task-1")).isTrue();
+
+        // The interrupt ends the wait; the executor is also asked to end the program it started.
+        assertThat(shell.interrupted.await(2, TimeUnit.SECONDS)).isTrue();
+        assertThat(shell.cancelledRunning.get()).isEqualTo(1);
+    }
+
+    @Test
+    void thePlacesAreCountedPerKindSoLongShellsDoNotKeepAToolCallFromStarting() throws Exception {
+        MagratheaTaskExecutor executor = executor(1);
+
+        executor.execute(task("shell-1", "run", MagratheaTaskType.SHELL_TASK));
+        assertThat(shell.started.await(2, TimeUnit.SECONDS)).isTrue();
+        // The only shell place is taken; a tool call still has its own.
+        executor.execute(task("tool-1"));
+
+        assertThat(call.started.await(2, TimeUnit.SECONDS)).isTrue();
+        assertThat(call.running.get()).isEqualTo(1);
+        assertThat(shell.running.get()).isEqualTo(1);
+    }
+
+    @Test
     void aCallThatIsNotRunningCannotBeCancelled() {
         assertThat(executor(5).cancelInFlight("nobody")).isFalse();
     }
@@ -167,14 +200,18 @@ class MagratheaOffLaneTest {
     }
 
     private static MagratheaTaskDocument task(String id) {
+        return task(id, "call", MagratheaTaskType.TOOL_TASK);
+    }
+
+    private static MagratheaTaskDocument task(String id, String state, MagratheaTaskType type) {
         return MagratheaTaskDocument.builder()
                 .id(id)
                 .tenantId("t")
                 .projectId("p")
                 .workflowRunId("run-1")
                 .workflowName("demo")
-                .stateName("call")
-                .taskType(MagratheaTaskType.TOOL_TASK)
+                .stateName(state)
+                .taskType(type)
                 .status(MagratheaTaskStatus.CLAIMED)
                 .build();
     }
@@ -186,11 +223,22 @@ class MagratheaOffLaneTest {
         final CountDownLatch interrupted = new CountDownLatch(1);
         final AtomicInteger running = new AtomicInteger();
         final AtomicInteger peak = new AtomicInteger();
+        final AtomicInteger cancelledRunning = new AtomicInteger();
+        final MagratheaTaskType type;
         volatile boolean fail;
+
+        BlockingCall(MagratheaTaskType type) {
+            this.type = type;
+        }
 
         @Override
         public MagratheaTaskType type() {
-            return MagratheaTaskType.TOOL_TASK;
+            return type;
+        }
+
+        @Override
+        public void cancelRunning(MagratheaTaskContext context) {
+            cancelledRunning.incrementAndGet();
         }
 
         @Override

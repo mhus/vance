@@ -69,6 +69,16 @@ public class ScriptTaskExecutor implements MagratheaTypeExecutor {
         return MagratheaTaskType.SCRIPT_TASK;
     }
 
+    /**
+     * A script may wait on a model or a document write for as long as its timeout allows: it runs off the project
+     * lane. Stopping it is an interrupt of the thread running it, which the script engine honours at its own
+     * checkpoints — best effort, where a shell command can be killed outright.
+     */
+    @Override
+    public boolean runsOffLane() {
+        return true;
+    }
+
     @Override
     public Optional<TaskOutcome> execute(MagratheaTaskContext context) {
         MagratheaStateSpec state = context.state();

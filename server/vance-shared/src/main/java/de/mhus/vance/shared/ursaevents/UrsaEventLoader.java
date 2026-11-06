@@ -40,6 +40,9 @@ public class UrsaEventLoader implements RunAsReader {
     /** File suffix kept on the document path; the event name itself does not carry it. */
     public static final String EVENT_PATH_SUFFIX = ".yaml";
 
+    /** What a name of an event made by the server may be: it becomes a document path, a setting key and a URL segment. */
+    public static final java.util.regex.Pattern NAME = java.util.regex.Pattern.compile("[a-z0-9][a-z0-9._-]{0,63}");
+
     private final DocumentService documentService;
 
     /**

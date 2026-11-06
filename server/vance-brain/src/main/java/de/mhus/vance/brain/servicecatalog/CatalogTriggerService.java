@@ -41,10 +41,6 @@ public class CatalogTriggerService {
 
     private static final String EVENTS_PREFIX = "_vance/events/";
 
-    /** What an event name may be: it becomes a document path, a setting key and a URL segment. */
-    private static final java.util.regex.Pattern EVENT_NAME =
-            java.util.regex.Pattern.compile("[a-z0-9][a-z0-9._-]{0,63}");
-
     private static final String SCHEDULER_PREFIX = "_vance/scheduler/";
     private static final String WORKFLOW_PREFIX = "_vance/workflows/";
 
@@ -105,7 +101,7 @@ public class CatalogTriggerService {
         String eventName = (name == null || name.isBlank() ? entry.name() + "-" + t.name() : name)
                 .trim()
                 .toLowerCase(Locale.ROOT);
-        if (!EVENT_NAME.matcher(eventName).matches()) {
+        if (!UrsaEventLoader.NAME.matcher(eventName).matches()) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
                     "An event name is lowercase letters, digits, '-', '_' or '.', and starts with a letter or digit");

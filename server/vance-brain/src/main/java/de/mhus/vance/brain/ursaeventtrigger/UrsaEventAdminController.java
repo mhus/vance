@@ -3,6 +3,8 @@ package de.mhus.vance.brain.ursaeventtrigger;
 import de.mhus.vance.api.ursaevents.EventDto;
 import de.mhus.vance.api.ursaevents.EventSummary;
 import de.mhus.vance.api.ursaevents.EventTriggerResponse;
+import de.mhus.vance.api.ursaevents.WebhookCreateRequest;
+import de.mhus.vance.api.ursaevents.WebhookCreateResponse;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
@@ -18,6 +20,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -49,6 +53,7 @@ public class UrsaEventAdminController {
 
     private final UrsaEventLoader eventLoader;
     private final UrsaEventService eventService;
+    private final WebhookEventService webhooks;
     private final RequestAuthority authority;
 
     // ─── List ─────────────────────────────────────────────────────────────
@@ -83,6 +88,44 @@ public class UrsaEventAdminController {
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "Event '" + norm + "' not found in project '" + project + "'"));
         return toDto(r);
+    }
+
+    // ─── Create / delete a plain webhook ──────────────────────────────────
+
+    /**
+     * Makes an event that starts a workflow when its URL is called with a generated bearer token. The token is
+     * returned here and nowhere else. Project ADMIN, like writing a scheduler: the event runs as its author.
+     */
+    @PostMapping("/events")
+    public ResponseEntity<WebhookCreateResponse> createWebhook(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("project") String project,
+            @RequestBody WebhookCreateRequest body,
+            HttpServletRequest request) {
+        authority.enforce(request, new Resource.Project(tenant, project), Action.ADMIN);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(webhooks.create(
+                        tenant,
+                        project,
+                        authority.contextOf(request),
+                        body.getWorkflow(),
+                        body.getName(),
+                        body.getDescription()));
+    }
+
+    /**
+     * Removes an event of the project and the token made for it. An event registered at a service is refused —
+     * it goes through {@code DELETE workflow-triggers/{event}}.
+     */
+    @DeleteMapping("/events/{name}")
+    public ResponseEntity<Void> deleteEvent(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("project") String project,
+            @PathVariable("name") String name,
+            HttpServletRequest request) {
+        authority.enforce(request, new Resource.Project(tenant, project), Action.ADMIN);
+        webhooks.delete(tenant, project, authority.contextOf(request), normalizeName(name));
+        return ResponseEntity.noContent().build();
     }
 
     // ─── Admin Trigger ────────────────────────────────────────────────────

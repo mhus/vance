@@ -65,4 +65,12 @@ public class MagratheaProperties {
      * not when it is due. An hour against a fourteen-day ceiling.
      */
     private Duration watchdogInterval = Duration.ofHours(1);
+
+    /**
+     * How many calls to outside services ({@code tool_task}) a single project has in flight at once.
+     * Such a call runs off the project lane, so a slow one does not hold up the project's other steps; this
+     * bounds how many a project may start together, so a burst of runs cannot hammer one service. A call
+     * past the limit waits for a free place, it is not refused. Zero or less: no limit.
+     */
+    private int maxConcurrentCalls = 5;
 }

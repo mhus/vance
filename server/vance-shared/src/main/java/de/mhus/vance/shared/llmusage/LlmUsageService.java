@@ -384,6 +384,49 @@ public class LlmUsageService {
         return out;
     }
 
+    /**
+     * What the given processes cost, one entry per currency — the money one piece of work burned, for a reader
+     * that knows which processes belong to it (a workflow run).
+     *
+     * <p>Read from the detail rows, so it reaches only as far back as they are kept
+     * ({@code vance.usage.detail-retention-days}, 60 by default); a run older than that reports what is left.
+     * Failed attempts are not part of the amount, like everywhere else, and every kind of call booked under
+     * the process counts — chat, embedding, image.
+     *
+     * @return the totals per currency; empty for no processes or nothing booked
+     */
+    public List<CostTotal> costOfProcesses(String tenantId, java.util.Collection<String> processIds) {
+        if (processIds.isEmpty()) {
+            return List.of();
+        }
+        Criteria match = Criteria.where("tenantId")
+                .is(tenantId)
+                .and("processId")
+                .in(processIds)
+                .and("outcome")
+                .ne(UsageOutcome.FAILED.name());
+        List<CostTotal> out = new ArrayList<>();
+        Aggregation pipeline = Aggregation.newAggregation(
+                Aggregation.match(match),
+                Aggregation.group("currency")
+                        .sum("costTotal")
+                        .as("cost")
+                        .sum(ConditionalOperators.when(
+                                        Criteria.where("currency").is(null))
+                                .then(1L)
+                                .otherwise(0L))
+                        .as("unpriced"));
+        for (Document row : mongoTemplate
+                .aggregate(pipeline, LlmUsageDocument.class, Document.class)
+                .getMappedResults()) {
+            Object rawCurrency = row.get("_id");
+            String currency = rawCurrency == null ? LlmUsageDailyDocument.NONE : rawCurrency.toString();
+            double cost = row.get("cost") instanceof Number n ? n.doubleValue() : 0d;
+            out.add(new CostTotal(currency, toMicros(cost), asLong(row.get("unpriced"))));
+        }
+        return List.copyOf(out);
+    }
+
     /** {@code field} when the bucket's day lies in {@code range}, else {@code 0}. Days compare as ISO strings. */
     private static AggregationExpression sumInRange(DayRange range, String field) {
         return ConditionalOperators.when(BooleanOperators.And.and(

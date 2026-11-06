@@ -3,6 +3,7 @@
  Source: de.mhus.vance.api.runs.RunDetailDto
 */
 
+import { RunCostDto } from './RunCostDto';
 import { RunSimulationDto } from './RunSimulationDto';
 import { RunChildDto } from './RunChildDto';
 import { RunStepDto } from './RunStepDto';
@@ -24,6 +25,7 @@ export interface RunDetailDto {
   breakpoints?: string[];
   simulation?: RunSimulationDto;
   restartableStates?: string[];
+  cost?: RunCostDto[];
   definition?: string;
   extra?: Record<string, any>;
 }

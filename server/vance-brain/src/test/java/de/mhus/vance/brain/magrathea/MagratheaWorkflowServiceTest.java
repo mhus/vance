@@ -14,12 +14,12 @@ import static org.mockito.Mockito.when;
 import de.mhus.vance.api.magrathea.MagratheaTaskStatus;
 import de.mhus.vance.api.magrathea.MagratheaTaskType;
 import de.mhus.vance.shared.document.DocumentDocument;
-import de.mhus.vance.shared.magrathea.MagratheaWorkflowParseException;
 import de.mhus.vance.shared.magrathea.MagratheaJournalEntry;
 import de.mhus.vance.shared.magrathea.MagratheaJournalService;
 import de.mhus.vance.shared.magrathea.MagratheaTaskDocument;
 import de.mhus.vance.shared.magrathea.MagratheaTaskService;
 import de.mhus.vance.shared.magrathea.MagratheaWorkflowLoader;
+import de.mhus.vance.shared.magrathea.MagratheaWorkflowParseException;
 import de.mhus.vance.shared.magrathea.journal.JournalRecord;
 import de.mhus.vance.shared.magrathea.journal.StartRecord;
 import de.mhus.vance.shared.magrathea.journal.StateEnteredRecord;
@@ -87,9 +87,21 @@ class MagratheaWorkflowServiceTest {
             mock(de.mhus.vance.shared.magrathea.MagratheaStateProjector.class);
 
     private final MagratheaWorkflowService workflowService = new MagratheaWorkflowService(
-            workflowLoader, documentService, journalService, taskService, laneManager, taskExecutor,
-            localDispatch, stateProjector, mock(MagratheaOwnerNotifier.class), eventPublisher, metricService, thinkProcessService, inboxItemService,
-            timerService);
+            workflowLoader,
+            documentService,
+            journalService,
+            taskService,
+            laneManager,
+            taskExecutor,
+            localDispatch,
+            stateProjector,
+            mock(MagratheaOwnerNotifier.class),
+            eventPublisher,
+            metricService,
+            thinkProcessService,
+            inboxItemService,
+            timerService,
+            org.mockito.Mockito.mock(MagratheaRunCost.class));
 
     private final List<JournalRecord> appendedRecords = new ArrayList<>();
     private final List<MagratheaTaskDocument> insertedTasks = new ArrayList<>();
@@ -98,23 +110,27 @@ class MagratheaWorkflowServiceTest {
     void setUp() {
         // Synchronous lane.
         doAnswer(inv -> {
-            Runnable r = inv.getArgument(1);
-            r.run();
-            return null;
-        }).when(laneManager).submit(any(), any());
+                    Runnable r = inv.getArgument(1);
+                    r.run();
+                    return null;
+                })
+                .when(laneManager)
+                .submit(any(), any());
         // start() now awaits the tracked future — run inline and hand back a
         // completed future so .get() returns immediately.
         doAnswer(inv -> {
-            Runnable r = inv.getArgument(1);
-            // Mirror a real single-thread executor: a throwing task
-            // surfaces via the future as an ExecutionException on get().
-            try {
-                r.run();
-                return java.util.concurrent.CompletableFuture.completedFuture(null);
-            } catch (RuntimeException ex) {
-                return java.util.concurrent.CompletableFuture.failedFuture(ex);
-            }
-        }).when(laneManager).submitTracked(any(), any());
+                    Runnable r = inv.getArgument(1);
+                    // Mirror a real single-thread executor: a throwing task
+                    // surfaces via the future as an ExecutionException on get().
+                    try {
+                        r.run();
+                        return java.util.concurrent.CompletableFuture.completedFuture(null);
+                    } catch (RuntimeException ex) {
+                        return java.util.concurrent.CompletableFuture.failedFuture(ex);
+                    }
+                })
+                .when(laneManager)
+                .submitTracked(any(), any());
 
         // journalService captures records.
         when(journalService.append(any(), any(), any(), any(JournalRecord.class)))
@@ -147,14 +163,12 @@ class MagratheaWorkflowServiceTest {
         MagratheaWorkflowLoader realLoader = new MagratheaWorkflowLoader(null);
         when(workflowLoader.load(any(), any(), eq("demo")))
                 .thenAnswer(inv -> Optional.of(realLoader.validateYaml("demo", YAML)));
-        when(workflowLoader.validateYaml(eq("demo"), any()))
-                .thenAnswer(inv -> realLoader.validateYaml("demo", YAML));
+        when(workflowLoader.validateYaml(eq("demo"), any())).thenAnswer(inv -> realLoader.validateYaml("demo", YAML));
     }
 
     @Test
     void start_writes_StartRecord_StateEnteredRecord_and_PENDING_task() {
-        String runId = workflowService.start("acme", "proj", "demo",
-                Map.of("explicit", "value"), "alice");
+        String runId = workflowService.start("acme", "proj", "demo", Map.of("explicit", "value"), "alice");
 
         assertThat(runId).hasSize(32);
         assertThat(appendedRecords).hasSize(2);
@@ -176,8 +190,7 @@ class MagratheaWorkflowServiceTest {
         // The Cortex "Start" button: a workflow document anywhere in the
         // project, not a name resolved through _vance/workflows/.
         DocumentDocument doc = new DocumentDocument();
-        when(documentService.findByPath("acme", "proj", "drafts/my-flow.yaml"))
-                .thenReturn(Optional.of(doc));
+        when(documentService.findByPath("acme", "proj", "drafts/my-flow.yaml")).thenReturn(Optional.of(doc));
         when(documentService.readContent(doc)).thenReturn(YAML);
 
         String runId = workflowService.startFromDocument(
@@ -199,8 +212,7 @@ class MagratheaWorkflowServiceTest {
     void startFromDocument_throws_whenNoDocumentAtThePath() {
         when(documentService.findByPath(any(), any(), any())).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> workflowService.startFromDocument(
-                "acme", "proj", "nope.yaml", null, null))
+        assertThatThrownBy(() -> workflowService.startFromDocument("acme", "proj", "nope.yaml", null, null))
                 .isInstanceOf(MagratheaWorkflowService.MagratheaWorkflowException.class)
                 .hasMessageContaining("nope.yaml");
     }
@@ -211,8 +223,7 @@ class MagratheaWorkflowServiceTest {
         when(documentService.findByPath(any(), any(), any())).thenReturn(Optional.of(doc));
         when(documentService.readContent(doc)).thenReturn("just: some yaml\n");
 
-        assertThatThrownBy(() -> workflowService.startFromDocument(
-                "acme", "proj", "notes.yaml", null, null))
+        assertThatThrownBy(() -> workflowService.startFromDocument("acme", "proj", "notes.yaml", null, null))
                 .isInstanceOf(MagratheaWorkflowParseException.class);
         assertThat(appendedRecords).isEmpty();
     }
@@ -249,8 +260,8 @@ class MagratheaWorkflowServiceTest {
     @Test
     void condition_outcome_with_nextStateOverride_enqueues_next_task() {
         // Set up StartRecord lookup for handleCompletion.
-        StartRecord start = StartRecord.builder()
-                .workflowName("demo").definitionYaml(YAML).build();
+        StartRecord start =
+                StartRecord.builder().workflowName("demo").definitionYaml(YAML).build();
         when(journalService.readLast(any(), any(), any(), eq(StartRecord.class)))
                 .thenReturn(Optional.of(start));
 
@@ -259,10 +270,17 @@ class MagratheaWorkflowServiceTest {
         appendedRecords.clear();
 
         TaskCompletedEvent event = new TaskCompletedEvent(
-                "acme", "proj", runId, firstTask.getId(), "route",
+                "acme",
+                "proj",
+                runId,
+                firstTask.getId(),
+                "route",
                 MagratheaTaskType.CONDITION_TASK,
                 TaskCompletedEvent.OUTCOME_SUCCESS,
-                null, null, 5L, "ok");
+                null,
+                null,
+                5L,
+                "ok");
 
         workflowService.handleCompletion(event);
 
@@ -276,24 +294,34 @@ class MagratheaWorkflowServiceTest {
 
     @Test
     void terminal_success_writes_StatusRecord_DONE_and_ResultRecord() {
-        StartRecord start = StartRecord.builder()
-                .workflowName("demo").definitionYaml(YAML).build();
+        StartRecord start =
+                StartRecord.builder().workflowName("demo").definitionYaml(YAML).build();
         when(journalService.readLast(any(), any(), any(), eq(StartRecord.class)))
                 .thenReturn(Optional.of(start));
 
         String runId = workflowService.start("acme", "proj", "demo", Map.of(), null);
         MagratheaTaskDocument okTask = MagratheaTaskDocument.builder()
-                .id("t-ok").workflowRunId(runId).stateName("ok")
-                .taskType(MagratheaTaskType.TERMINAL).status(MagratheaTaskStatus.CLAIMED).build();
+                .id("t-ok")
+                .workflowRunId(runId)
+                .stateName("ok")
+                .taskType(MagratheaTaskType.TERMINAL)
+                .status(MagratheaTaskStatus.CLAIMED)
+                .build();
         insertedTasks.add(okTask);
         appendedRecords.clear();
 
         TaskCompletedEvent event = new TaskCompletedEvent(
-                "acme", "proj", runId, "t-ok", "ok",
+                "acme",
+                "proj",
+                runId,
+                "t-ok",
+                "ok",
                 MagratheaTaskType.TERMINAL,
                 TaskCompletedEvent.OUTCOME_SUCCESS,
                 objectMapper.valueToTree(Map.of("summary", "merged")),
-                null, 2L, null);
+                null,
+                2L,
+                null);
 
         workflowService.handleCompletion(event);
 
@@ -302,31 +330,42 @@ class MagratheaWorkflowServiceTest {
                 .reduce((a, b) -> b)
                 .orElseThrow();
         assertThat(status.getStatus()).isEqualTo(de.mhus.vance.api.magrathea.MagratheaRunStatus.DONE);
-        assertThat(appendedRecords).hasAtLeastOneElementOfType(
-                de.mhus.vance.shared.magrathea.journal.ResultRecord.class);
+        assertThat(appendedRecords)
+                .hasAtLeastOneElementOfType(de.mhus.vance.shared.magrathea.journal.ResultRecord.class);
         verify(taskService).markDone("t-ok");
         assertThat(insertedTasks).hasSize(2); // no follow-up
     }
 
     @Test
     void terminal_failure_writes_StatusRecord_FAILED() {
-        StartRecord start = StartRecord.builder()
-                .workflowName("demo").definitionYaml(YAML).build();
+        StartRecord start =
+                StartRecord.builder().workflowName("demo").definitionYaml(YAML).build();
         when(journalService.readLast(any(), any(), any(), eq(StartRecord.class)))
                 .thenReturn(Optional.of(start));
 
         String runId = workflowService.start("acme", "proj", "demo", Map.of(), null);
         MagratheaTaskDocument badTask = MagratheaTaskDocument.builder()
-                .id("t-bad").workflowRunId(runId).stateName("bad")
-                .taskType(MagratheaTaskType.TERMINAL).status(MagratheaTaskStatus.CLAIMED).build();
+                .id("t-bad")
+                .workflowRunId(runId)
+                .stateName("bad")
+                .taskType(MagratheaTaskType.TERMINAL)
+                .status(MagratheaTaskStatus.CLAIMED)
+                .build();
         insertedTasks.add(badTask);
         appendedRecords.clear();
 
         TaskCompletedEvent event = new TaskCompletedEvent(
-                "acme", "proj", runId, "t-bad", "bad",
+                "acme",
+                "proj",
+                runId,
+                "t-bad",
+                "bad",
                 MagratheaTaskType.TERMINAL,
                 TaskCompletedEvent.OUTCOME_FAILURE,
-                null, "terminal failure", 3L, null);
+                null,
+                "terminal failure",
+                3L,
+                null);
 
         workflowService.handleCompletion(event);
 
@@ -340,8 +379,8 @@ class MagratheaWorkflowServiceTest {
 
     @Test
     void duplicate_completion_event_short_circuits() {
-        StartRecord start = StartRecord.builder()
-                .workflowName("demo").definitionYaml(YAML).build();
+        StartRecord start =
+                StartRecord.builder().workflowName("demo").definitionYaml(YAML).build();
         when(journalService.readLast(any(), any(), any(), eq(StartRecord.class)))
                 .thenReturn(Optional.of(start));
 
@@ -350,10 +389,17 @@ class MagratheaWorkflowServiceTest {
 
         // First completion advances normally.
         TaskCompletedEvent event = new TaskCompletedEvent(
-                "acme", "proj", runId, firstTask.getId(), "route",
+                "acme",
+                "proj",
+                runId,
+                firstTask.getId(),
+                "route",
                 MagratheaTaskType.CONDITION_TASK,
                 TaskCompletedEvent.OUTCOME_SUCCESS,
-                null, null, 5L, "ok");
+                null,
+                null,
+                5L,
+                "ok");
         workflowService.handleCompletion(event);
         int after1st = insertedTasks.size();
 
@@ -386,7 +432,9 @@ class MagratheaWorkflowServiceTest {
         when(workflowLoader.validateYaml(eq("withstore"), any()))
                 .thenAnswer(inv -> realLoader.validateYaml("withstore", yamlWithStore));
         StartRecord start = StartRecord.builder()
-                .workflowName("withstore").definitionYaml(yamlWithStore).build();
+                .workflowName("withstore")
+                .definitionYaml(yamlWithStore)
+                .build();
         when(journalService.readLast(any(), any(), any(), eq(StartRecord.class)))
                 .thenReturn(Optional.of(start));
 
@@ -395,17 +443,25 @@ class MagratheaWorkflowServiceTest {
         appendedRecords.clear();
 
         TaskCompletedEvent event = new TaskCompletedEvent(
-                "acme", "proj", runId, firstTask.getId(), "cap",
+                "acme",
+                "proj",
+                runId,
+                firstTask.getId(),
+                "cap",
                 MagratheaTaskType.CONDITION_TASK,
                 TaskCompletedEvent.OUTCOME_SUCCESS,
                 objectMapper.valueToTree(Map.of("picked", "end")),
-                null, 1L, "end");
+                null,
+                1L,
+                "end");
 
         workflowService.handleCompletion(event);
 
         assertThat(appendedRecords).hasAtLeastOneElementOfType(VarRecord.class);
         VarRecord var = (VarRecord) appendedRecords.stream()
-                .filter(r -> r instanceof VarRecord).findFirst().orElseThrow();
+                .filter(r -> r instanceof VarRecord)
+                .findFirst()
+                .orElseThrow();
         assertThat(var.getKey()).isEqualTo("chosen");
     }
 

@@ -61,9 +61,10 @@ class MagratheaCapabilityOutcomeTest {
     private final MagratheaWorkflowLoader workflowLoader = mock(MagratheaWorkflowLoader.class);
     private final MagratheaCompletionEventBus eventBus = mock(MagratheaCompletionEventBus.class);
     private final MagratheaTaskService taskService = mock(MagratheaTaskService.class);
+
     @SuppressWarnings("unchecked")
-    private final ObjectProvider<de.mhus.vance.brain.progress.ProgressEmitter> progress =
-            mock(ObjectProvider.class);
+    private final ObjectProvider<de.mhus.vance.brain.progress.ProgressEmitter> progress = mock(ObjectProvider.class);
+
     @SuppressWarnings("unchecked")
     private final ObjectProvider<de.mhus.vance.shared.thinkprocess.ThinkProcessService> processes =
             mock(ObjectProvider.class);
@@ -72,13 +73,19 @@ class MagratheaCapabilityOutcomeTest {
     private final RecordingGateExecutor gateExecutor = new RecordingGateExecutor();
 
     private final MagratheaTaskExecutor executor = new MagratheaTaskExecutor(
-            journalService, projector, workflowLoader, eventBus, taskService,
-            List.of(gateExecutor), progress, processes);
+            journalService,
+            projector,
+            workflowLoader,
+            eventBus,
+            taskService,
+            List.of(gateExecutor),
+            progress,
+            processes,
+            new MagratheaProperties());
 
     @BeforeEach
     void setUp() {
-        ResolvedMagratheaWorkflow workflow =
-                MagratheaWorkflowLoader.parseYaml("demo", CATCHING_YAML);
+        ResolvedMagratheaWorkflow workflow = MagratheaWorkflowLoader.parseYaml("demo", CATCHING_YAML);
         when(workflowLoader.validateYaml(any(), any())).thenReturn(workflow);
         when(projector.projectVars(any(), any(), any())).thenReturn(Map.of());
     }
@@ -90,8 +97,7 @@ class MagratheaCapabilityOutcomeTest {
         executor.execute(task());
 
         assertThat(gateExecutor.ran).isFalse();
-        assertThat(publishedOutcome())
-                .isEqualTo(TaskCompletedEvent.OUTCOME_CAPABILITY_MISSING);
+        assertThat(publishedOutcome()).isEqualTo(TaskCompletedEvent.OUTCOME_CAPABILITY_MISSING);
     }
 
     @Test
@@ -100,12 +106,9 @@ class MagratheaCapabilityOutcomeTest {
 
         executor.execute(task());
 
-        ArgumentCaptor<TaskCompletedEvent> captor =
-                ArgumentCaptor.forClass(TaskCompletedEvent.class);
+        ArgumentCaptor<TaskCompletedEvent> captor = ArgumentCaptor.forClass(TaskCompletedEvent.class);
         verify(eventBus).publish(captor.capture());
-        assertThat(captor.getValue().errorMessage())
-                .contains("ask")
-                .contains("OWNER_PROCESS");
+        assertThat(captor.getValue().errorMessage()).contains("ask").contains("OWNER_PROCESS");
     }
 
     @Test
@@ -132,8 +135,7 @@ class MagratheaCapabilityOutcomeTest {
     }
 
     private String publishedOutcome() {
-        ArgumentCaptor<TaskCompletedEvent> captor =
-                ArgumentCaptor.forClass(TaskCompletedEvent.class);
+        ArgumentCaptor<TaskCompletedEvent> captor = ArgumentCaptor.forClass(TaskCompletedEvent.class);
         verify(eventBus).publish(captor.capture());
         return captor.getValue().outcome();
     }

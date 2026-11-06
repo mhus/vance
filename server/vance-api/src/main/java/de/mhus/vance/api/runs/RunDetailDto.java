@@ -89,6 +89,12 @@ public class RunDetailDto {
     private @Nullable List<String> restartableStates;
 
     /**
+     * What the run has cost so far, per currency; {@code null} when it spawned no agent (a run of conditions and
+     * tool calls costs nothing in model calls). See {@link RunCostDto} for what is counted.
+     */
+    private @Nullable List<RunCostDto> cost;
+
+    /**
      * The definition this run froze at its start, as text, so the view can
      * draw the plan the run actually follows — not whatever the source
      * document says by now. {@code null} for sources without a drawable plan.

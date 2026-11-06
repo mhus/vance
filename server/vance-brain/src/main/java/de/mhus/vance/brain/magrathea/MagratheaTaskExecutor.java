@@ -55,6 +55,25 @@ public class MagratheaTaskExecutor {
                     de.mhus.vance.shared.thinkprocess.ThinkProcessService>
             thinkProcessServiceProvider;
 
+    private final MagratheaProperties properties;
+
+    /** Calls to outside services run here, off the project lane — one cheap virtual thread each. */
+    private final java.util.concurrent.ExecutorService callPool =
+            java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor();
+
+    /** Places for in-flight calls, per project — see {@link MagratheaProperties#getMaxConcurrentCalls()}. */
+    private final Map<String, java.util.concurrent.Semaphore> callPlaces =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** The calls running off the lane on this pod, by task id — what a stop or an abort can reach. */
+    private final Map<String, InFlight> inFlight = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** One call running off the lane. */
+    private static final class InFlight {
+        final java.util.concurrent.atomic.AtomicBoolean cancelled = new java.util.concurrent.atomic.AtomicBoolean();
+        volatile java.util.concurrent.@org.jspecify.annotations.Nullable Future<?> future;
+    }
+
     private final java.util.concurrent.ScheduledExecutorService heartbeatScheduler =
             java.util.concurrent.Executors.newSingleThreadScheduledExecutor(r -> {
                 Thread t = new Thread(r, "magrathea-heartbeat");
@@ -72,7 +91,9 @@ public class MagratheaTaskExecutor {
             org.springframework.beans.factory.ObjectProvider<de.mhus.vance.brain.progress.ProgressEmitter>
                     progressEmitterProvider,
             org.springframework.beans.factory.ObjectProvider<de.mhus.vance.shared.thinkprocess.ThinkProcessService>
-                    thinkProcessServiceProvider) {
+                    thinkProcessServiceProvider,
+            MagratheaProperties properties) {
+        this.properties = properties;
         this.journalService = journalService;
         this.projector = projector;
         this.workflowLoader = workflowLoader;
@@ -232,6 +253,12 @@ public class MagratheaTaskExecutor {
                 HEARTBEAT_INTERVAL_SECONDS,
                 HEARTBEAT_INTERVAL_SECONDS,
                 java.util.concurrent.TimeUnit.SECONDS);
+        if (executor.runsOffLane()) {
+            // The lane is free again as soon as this returns; the heartbeat keeps the claim alive
+            // meanwhile, and a pod that dies stops it, so the task goes stale and is reclaimed as before.
+            startOffLane(task, state.type(), executor, ctx, heartbeat, started);
+            return;
+        }
         try {
             outcome = executor.execute(ctx);
         } catch (RuntimeException ex) {
@@ -251,6 +278,91 @@ public class MagratheaTaskExecutor {
             return;
         }
         publishOutcome(task, state.type(), outcome.get(), System.currentTimeMillis() - started);
+    }
+
+    /**
+     * Hand a task that waits on an outside service to its own thread. The result comes back through the
+     * completion event, which re-enters the project lane for the journal writes and the transition — only the
+     * waiting is off it.
+     */
+    private void startOffLane(
+            MagratheaTaskDocument task,
+            MagratheaTaskType type,
+            MagratheaTypeExecutor executor,
+            MagratheaTaskContext ctx,
+            java.util.concurrent.ScheduledFuture<?> heartbeat,
+            long started) {
+        InFlight flight = new InFlight();
+        inFlight.put(task.getId(), flight);
+        flight.future = callPool.submit(() -> runOffLane(task, type, executor, ctx, heartbeat, flight, started));
+    }
+
+    private void runOffLane(
+            MagratheaTaskDocument task,
+            MagratheaTaskType type,
+            MagratheaTypeExecutor executor,
+            MagratheaTaskContext ctx,
+            java.util.concurrent.ScheduledFuture<?> heartbeat,
+            InFlight flight,
+            long started) {
+        Optional<TaskOutcome> outcome;
+        java.util.concurrent.Semaphore place = placesFor(task.getProjectId());
+        boolean acquired = false;
+        try {
+            if (place != null) {
+                place.acquire();
+                acquired = true;
+            }
+            if (flight.cancelled.get()) return;
+            outcome = executor.execute(ctx);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            if (!flight.cancelled.get()) publishFailure(task, "interrupted while waiting for a place to call");
+            return;
+        } catch (RuntimeException ex) {
+            // A cancelled call fails by being interrupted; its stop or abort already decided the task.
+            if (!flight.cancelled.get()) {
+                log.error(
+                        "Magrathea type-executor {} threw on task {}",
+                        executor.getClass().getSimpleName(),
+                        task.getId(),
+                        ex);
+                publishFailure(task, ex.getMessage());
+            }
+            return;
+        } finally {
+            if (acquired) place.release();
+            heartbeat.cancel(false);
+            inFlight.remove(task.getId());
+        }
+        if (flight.cancelled.get() || outcome.isEmpty()) return;
+        publishOutcome(task, type, outcome.get(), System.currentTimeMillis() - started);
+    }
+
+    /** The places for this project's calls, or {@code null} when the limit is off. */
+    private java.util.concurrent.@org.jspecify.annotations.Nullable Semaphore placesFor(String projectId) {
+        int max = properties.getMaxConcurrentCalls();
+        if (max <= 0) return null;
+        return callPlaces.computeIfAbsent(projectId, id -> new java.util.concurrent.Semaphore(max, true));
+    }
+
+    /** Whether a call of this task is running off the lane on this pod. */
+    public boolean isInFlight(String taskId) {
+        return inFlight.containsKey(taskId);
+    }
+
+    /**
+     * End a call that runs off the lane on this pod: it is interrupted, and what it returns afterwards is
+     * dropped — whoever ended it (a stop, an abort) has decided the task. A call on another pod, or one that
+     * is not running, is not reachable and answers {@code false}.
+     */
+    public boolean cancelInFlight(String taskId) {
+        InFlight flight = inFlight.get(taskId);
+        if (flight == null) return false;
+        flight.cancelled.set(true);
+        java.util.concurrent.Future<?> future = flight.future;
+        if (future != null) future.cancel(true);
+        return true;
     }
 
     /**

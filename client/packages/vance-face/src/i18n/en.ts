@@ -1218,6 +1218,10 @@ export default {
       outputTruncated: 'Shortened — the journal holds the complete output.',
       variables: 'Variables',
       children: 'Runs it started',
+      cost: 'Agent cost',
+      costHint:
+        'The model calls of the agents this run started, and of the runs below it. Calls without a process and calls older than the usage ledger keeps are not counted.',
+      costUnpriced: '{n} call(s) of models without a price',
       childWaiting: 'A run it started is halted in the debugger and this run waits for it:',
       result: 'Result',
       source: 'Details ({source})',

@@ -109,6 +109,7 @@ public class MagratheaWorkflowService {
     private final de.mhus.vance.shared.inbox.MaximegalonService inboxItemService;
 
     private final de.mhus.vance.shared.magrathea.MagratheaTimerService timerService;
+    private final MagratheaRunCost runCost;
 
     public MagratheaWorkflowService(
             MagratheaWorkflowLoader workflowLoader,
@@ -124,7 +125,9 @@ public class MagratheaWorkflowService {
             MetricService metricService,
             ThinkProcessService thinkProcessService,
             de.mhus.vance.shared.inbox.MaximegalonService inboxItemService,
-            de.mhus.vance.shared.magrathea.MagratheaTimerService timerService) {
+            de.mhus.vance.shared.magrathea.MagratheaTimerService timerService,
+            MagratheaRunCost runCost) {
+        this.runCost = runCost;
         this.workflowLoader = workflowLoader;
         this.documentService = documentService;
         this.journalService = journalService;
@@ -1312,6 +1315,10 @@ public class MagratheaWorkflowService {
             }
             ended = true;
         }
+        if (taskExecutor.cancelInFlight(task.getId())) {
+            // A call to an outside service, running off the lane on this pod: interrupted, its result dropped.
+            ended = true;
+        }
         if (task.getTaskType() == MagratheaTaskType.TIMER_TASK) {
             // Consume the pending timer so the scanner cannot fire it later; endRun
             // deletes the timers of a whole run, an abort has to do this one itself.
@@ -1341,7 +1348,8 @@ public class MagratheaWorkflowService {
                 .filter(t -> t.getInboxItemId() != null
                         || t.getSubProcessId() != null
                         || t.getSubWorkflowRunId() != null
-                        || t.getTaskType() == MagratheaTaskType.TIMER_TASK)
+                        || t.getTaskType() == MagratheaTaskType.TIMER_TASK
+                        || taskExecutor.isInFlight(t.getId()))
                 .findFirst();
     }
 
@@ -1388,6 +1396,15 @@ public class MagratheaWorkflowService {
                 .readLast(tenantId, projectId, workflowRunId, StartRecord.class)
                 .map(StartRecord::getWorkflowName)
                 .orElse("unknown");
+    }
+
+    /**
+     * What the run has cost so far — the agents it spawned and the runs it started, per currency — or empty when
+     * it spawned no agent. See {@link MagratheaRunCost} for what is and is not in it.
+     */
+    public Optional<MagratheaRunCost.Cost> costOf(String tenantId, String projectId, String workflowRunId) {
+        MagratheaRunCost.Cost cost = runCost.of(tenantId, projectId, workflowRunId);
+        return cost.isEmpty() ? Optional.empty() : Optional.of(cost);
     }
 
     /** Projected run status; {@code RUNNING} until a status record says otherwise. */
@@ -1779,7 +1796,16 @@ public class MagratheaWorkflowService {
                 return Optional.of("maxTaskSpawns=" + bounds.maxTaskSpawns() + " exceeded (started " + spawned + ")");
             }
         }
-        // maxTotalCostUsd is reserved for the LLM-cost-tracking integration (plan §14).
+        if (bounds.maxTotalCostUsd() != null) {
+            double spent = runCost.of(tenantId, projectId, workflowRunId).amount("USD");
+            if (spent > bounds.maxTotalCostUsd()) {
+                return Optional.of(String.format(
+                        java.util.Locale.ROOT,
+                        "maxTotalCostUsd=%.4f exceeded (spent %.4f USD)",
+                        bounds.maxTotalCostUsd(),
+                        spent));
+            }
+        }
         return Optional.empty();
     }
 

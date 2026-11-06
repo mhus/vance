@@ -70,6 +70,12 @@ public class ToolTaskExecutor implements MagratheaTypeExecutor {
         return MagratheaTaskType.TOOL_TASK;
     }
 
+    /** A tool call may be a call to an outside service of any duration: it runs off the project lane. */
+    @Override
+    public boolean runsOffLane() {
+        return true;
+    }
+
     /**
      * A tool that sends the calling user's OAuth token needs that user to have connected the account.
      * Checked before the run, so the author hears "no account for google" instead of a 401 from the

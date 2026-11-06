@@ -60,7 +60,8 @@ class MagratheaRunControlTest {
                     new io.micrometer.core.instrument.simple.SimpleMeterRegistry()),
             processes,
             inbox,
-            timers);
+            timers,
+            org.mockito.Mockito.mock(MagratheaRunCost.class));
 
     private final List<JournalRecord> appended = new ArrayList<>();
 

@@ -80,7 +80,8 @@ class MagratheaLoginCheckTest {
                     new io.micrometer.core.instrument.simple.SimpleMeterRegistry()),
             mock(de.mhus.vance.shared.thinkprocess.ThinkProcessService.class),
             mock(de.mhus.vance.shared.inbox.MaximegalonService.class),
-            mock(de.mhus.vance.shared.magrathea.MagratheaTimerService.class));
+            mock(de.mhus.vance.shared.magrathea.MagratheaTimerService.class),
+            org.mockito.Mockito.mock(MagratheaRunCost.class));
 
     @BeforeEach
     void wire() {

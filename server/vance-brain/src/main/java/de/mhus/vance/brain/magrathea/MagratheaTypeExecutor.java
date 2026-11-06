@@ -49,6 +49,17 @@ public interface MagratheaTypeExecutor {
     }
 
     /**
+     * Whether {@link #execute} waits on something outside — a call to a service — and may take long.
+     * Such a task is run off the project lane, on its own thread, so the lane stays free for the project's other
+     * steps: a call of {@code d} seconds would otherwise hold every other synchronous step of the project for
+     * {@code d} seconds. The result is handed back through the completion event, the way an agent's is, and
+     * goes through the lane again there. Default {@code false}: the work is short and stays on the lane.
+     */
+    default boolean runsOffLane() {
+        return false;
+    }
+
+    /**
      * What stands in the way of this state running for the user it would run as, known
      * <em>before</em> the run begins — a login the user has not made. One sentence per problem; empty
      * (the default) when nothing does.

@@ -55,6 +55,7 @@ class MagratheaCounterTest {
 
     /** Variables as the projector would replay them, updated by captured writes. */
     private final Map<String, Object> vars = new LinkedHashMap<>();
+
     private final List<JournalRecord> appended = new ArrayList<>();
 
     private final MagratheaWorkflowService service = new MagratheaWorkflowService(
@@ -72,27 +73,34 @@ class MagratheaCounterTest {
                     new io.micrometer.core.instrument.simple.SimpleMeterRegistry()),
             mock(de.mhus.vance.shared.thinkprocess.ThinkProcessService.class),
             mock(de.mhus.vance.shared.inbox.MaximegalonService.class),
-            mock(de.mhus.vance.shared.magrathea.MagratheaTimerService.class));
+            mock(de.mhus.vance.shared.magrathea.MagratheaTimerService.class),
+            org.mockito.Mockito.mock(MagratheaRunCost.class));
 
     @BeforeEach
     void setUp() {
         doAnswer(inv -> {
-            Runnable r = inv.getArgument(1);
-            r.run();
-            return java.util.concurrent.CompletableFuture.completedFuture(null);
-        }).when(laneManager).submitTracked(any(), any());
+                    Runnable r = inv.getArgument(1);
+                    r.run();
+                    return java.util.concurrent.CompletableFuture.completedFuture(null);
+                })
+                .when(laneManager)
+                .submitTracked(any(), any());
         when(taskService.insert(any())).thenAnswer(inv -> inv.getArgument(0));
 
         // Journal writes feed straight back into the projected variables,
         // which is what the real replay does.
         doAnswer(inv -> {
-            JournalRecord record = inv.getArgument(3);
-            appended.add(record);
-            if (record instanceof VarRecord vr) {
-                vars.put(vr.getKey(), vr.getValue() == null ? null : vr.getValue().asLong());
-            }
-            return null;
-        }).when(journalService).append(any(), any(), any(), any(JournalRecord.class));
+                    JournalRecord record = inv.getArgument(3);
+                    appended.add(record);
+                    if (record instanceof VarRecord vr) {
+                        vars.put(
+                                vr.getKey(),
+                                vr.getValue() == null ? null : vr.getValue().asLong());
+                    }
+                    return null;
+                })
+                .when(journalService)
+                .append(any(), any(), any(), any(JournalRecord.class));
 
         when(projector.projectVars(any(), any(), any())).thenReturn(vars);
 
@@ -150,29 +158,39 @@ class MagratheaCounterTest {
     /** A completion of {@code state} that routes onward to the next state. */
     private TaskCompletedEvent completionOf(String state, String outcome) {
         String target = "setup".equals(state) ? "writer" : "setup";
-        when(taskService.findById(any())).thenReturn(Optional.of(
-                de.mhus.vance.shared.magrathea.MagratheaTaskDocument.builder()
-                        .id("task-x").tenantId("t").projectId("p").workflowRunId("run-1")
+        when(taskService.findById(any()))
+                .thenReturn(Optional.of(de.mhus.vance.shared.magrathea.MagratheaTaskDocument.builder()
+                        .id("task-x")
+                        .tenantId("t")
+                        .projectId("p")
+                        .workflowRunId("run-1")
                         .stateName(state)
                         .taskType(de.mhus.vance.api.magrathea.MagratheaTaskType.CONDITION_TASK)
                         .build()));
         when(journalService.appendIfAbsent(any(), any(), any(), any(), any()))
-                .thenReturn(Optional.of(
-                        mock(de.mhus.vance.shared.magrathea.MagratheaJournalEntry.class)));
-        when(journalService.readLast(any(), any(), any(),
-                org.mockito.ArgumentMatchers.eq(
-                        de.mhus.vance.shared.magrathea.journal.StartRecord.class)))
-                .thenReturn(Optional.of(
-                        de.mhus.vance.shared.magrathea.journal.StartRecord.builder()
-                                .workflowName("counting")
-                                .definitionYaml(YAML)
-                                .build()));
-        when(workflowLoader.validateYaml(any(), any()))
-                .thenReturn(MagratheaWorkflowLoader.parseYaml("counting", YAML));
+                .thenReturn(Optional.of(mock(de.mhus.vance.shared.magrathea.MagratheaJournalEntry.class)));
+        when(journalService.readLast(
+                        any(),
+                        any(),
+                        any(),
+                        org.mockito.ArgumentMatchers.eq(de.mhus.vance.shared.magrathea.journal.StartRecord.class)))
+                .thenReturn(Optional.of(de.mhus.vance.shared.magrathea.journal.StartRecord.builder()
+                        .workflowName("counting")
+                        .definitionYaml(YAML)
+                        .build()));
+        when(workflowLoader.validateYaml(any(), any())).thenReturn(MagratheaWorkflowLoader.parseYaml("counting", YAML));
 
         return new TaskCompletedEvent(
-                "t", "p", "run-1", "task-x", state,
+                "t",
+                "p",
+                "run-1",
+                "task-x",
+                state,
                 de.mhus.vance.api.magrathea.MagratheaTaskType.CONDITION_TASK,
-                outcome, null, null, 0L, target);
+                outcome,
+                null,
+                null,
+                0L,
+                target);
     }
 }

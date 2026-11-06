@@ -86,6 +86,7 @@ public class AgentTaskExecutor implements MagratheaTypeExecutor {
     private final ThinkEngineService thinkEngineService;
     private final MagratheaSessionResolver sessionResolver;
     private final MagratheaTaskService taskService;
+    private final de.mhus.vance.shared.magrathea.MagratheaJournalService journalService;
     private final de.mhus.vance.brain.scheduling.LaneScheduler laneScheduler;
     /** Lazy like the other consumers — the router pulls in the whole engine stack. */
     private final ObjectProvider<EngineMessageRouter> messageRouterProvider;
@@ -191,6 +192,17 @@ public class AgentTaskExecutor implements MagratheaTypeExecutor {
         // Link sub-process id to the task BEFORE start so a fast-finishing
         // engine still finds a WAITING_SUBPROCESS row when the listener fires.
         taskService.linkSubProcess(context.taskId(), spawned.getId());
+        // The task row forgets its process when the step ends; the journal keeps it, so the run's cost can be
+        // traced back to the agents that burned it.
+        journalService.append(
+                context.tenantId(),
+                context.projectId(),
+                context.workflowRunId(),
+                context.taskId(),
+                de.mhus.vance.shared.magrathea.journal.ProcessSpawnedRecord.builder()
+                        .taskId(context.taskId())
+                        .processId(spawned.getId())
+                        .build());
 
         // Start ON the process lane (like the other spawn sites), so start()
         // is serialized against any concurrent runTurn/steer for this process

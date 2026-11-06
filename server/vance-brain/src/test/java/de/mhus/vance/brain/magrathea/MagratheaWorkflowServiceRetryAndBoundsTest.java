@@ -57,6 +57,17 @@ class MagratheaWorkflowServiceRetryAndBoundsTest {
                 outcome: failure
             """;
 
+    private static final String YAML_WITH_COST_BOUND = """
+            start: loop
+            bounds:
+              maxTotalCostUsd: 1.5
+            states:
+              loop:
+                type: condition_task
+                transitions:
+                  - else: loop
+            """;
+
     private static final String YAML_WITH_BOUNDS = """
             start: loop
             bounds:
@@ -90,6 +101,7 @@ class MagratheaWorkflowServiceRetryAndBoundsTest {
             mock(de.mhus.vance.shared.magrathea.MagratheaStateProjector.class);
 
     private final MagratheaOwnerNotifier ownerNotifier = mock(MagratheaOwnerNotifier.class);
+    private final MagratheaRunCost runCost = mock(MagratheaRunCost.class);
 
     private final MagratheaWorkflowService workflowService = new MagratheaWorkflowService(
             workflowLoader,
@@ -105,7 +117,8 @@ class MagratheaWorkflowServiceRetryAndBoundsTest {
             metricService,
             thinkProcessService,
             inboxItemService,
-            timerService);
+            timerService,
+            runCost);
 
     private final List<MagratheaTaskDocument> insertedTasks = new ArrayList<>();
     private final List<JournalRecord> appendedRecords = new ArrayList<>();
@@ -151,6 +164,10 @@ class MagratheaWorkflowServiceRetryAndBoundsTest {
                 .thenAnswer(inv -> Optional.of(realLoader.validateYaml("flaky-wf", YAML_WITH_RETRY)));
         when(workflowLoader.validateYaml(eq("flaky-wf"), any()))
                 .thenAnswer(inv -> realLoader.validateYaml("flaky-wf", YAML_WITH_RETRY));
+        when(workflowLoader.load(any(), any(), eq("costly-wf")))
+                .thenAnswer(inv -> Optional.of(realLoader.validateYaml("costly-wf", YAML_WITH_COST_BOUND)));
+        when(workflowLoader.validateYaml(eq("costly-wf"), any()))
+                .thenAnswer(inv -> realLoader.validateYaml("costly-wf", YAML_WITH_COST_BOUND));
         when(workflowLoader.load(any(), any(), eq("bounded-wf")))
                 .thenAnswer(inv -> Optional.of(realLoader.validateYaml("bounded-wf", YAML_WITH_BOUNDS)));
         when(workflowLoader.validateYaml(eq("bounded-wf"), any()))
@@ -381,6 +398,66 @@ class MagratheaWorkflowServiceRetryAndBoundsTest {
                 .reduce((a, b) -> b)
                 .orElseThrow();
         assertThat(status.getReason()).contains("bounds exhausted").contains("maxTaskSpawns");
+    }
+
+    private TaskCompletedEvent loopDone(String runId, String taskId) {
+        return new TaskCompletedEvent(
+                "acme",
+                "proj",
+                runId,
+                taskId,
+                "loop",
+                MagratheaTaskType.CONDITION_TASK,
+                TaskCompletedEvent.OUTCOME_SUCCESS,
+                null,
+                null,
+                1L,
+                "loop");
+    }
+
+    private static MagratheaRunCost.Cost usd(double amount) {
+        return new MagratheaRunCost.Cost(List.of(new de.mhus.vance.shared.llmusage.LlmUsageService.CostTotal(
+                "USD", de.mhus.vance.shared.llmusage.LlmUsageService.toMicros(amount), 0L)));
+    }
+
+    @Test
+    void maxTotalCostUsd_exhausted_fails_the_run_with_a_bounds_reason() {
+        StartRecord start = StartRecord.builder()
+                .workflowName("costly-wf")
+                .definitionYaml(YAML_WITH_COST_BOUND)
+                .build();
+        when(journalService.readLast(any(), any(), any(), eq(StartRecord.class)))
+                .thenReturn(Optional.of(start));
+        when(runCost.of(any(), any(), any())).thenReturn(usd(1.6));
+        String runId = workflowService.start("acme", "proj", "costly-wf", Map.of(), null);
+        MagratheaTaskDocument firstTask = insertedTasks.get(0);
+        appendedRecords.clear();
+
+        workflowService.handleCompletion(loopDone(runId, firstTask.getId()));
+
+        assertThat(insertedTasks).hasSize(1);
+        StatusRecord status = (StatusRecord) appendedRecords.stream()
+                .filter(r -> r instanceof StatusRecord)
+                .reduce((a, b) -> b)
+                .orElseThrow();
+        assertThat(status.getReason()).contains("bounds exhausted").contains("maxTotalCostUsd");
+    }
+
+    @Test
+    void maxTotalCostUsd_within_the_limit_lets_the_run_go_on() {
+        StartRecord start = StartRecord.builder()
+                .workflowName("costly-wf")
+                .definitionYaml(YAML_WITH_COST_BOUND)
+                .build();
+        when(journalService.readLast(any(), any(), any(), eq(StartRecord.class)))
+                .thenReturn(Optional.of(start));
+        when(runCost.of(any(), any(), any())).thenReturn(usd(0.4));
+        String runId = workflowService.start("acme", "proj", "costly-wf", Map.of(), null);
+        MagratheaTaskDocument firstTask = insertedTasks.get(0);
+
+        workflowService.handleCompletion(loopDone(runId, firstTask.getId()));
+
+        assertThat(insertedTasks).hasSize(2);
     }
 
     @Test

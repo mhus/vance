@@ -86,6 +86,22 @@ const waitingChild = computed(() =>
     ? props.detail.children?.find((child) => child.status === 'PAUSED')
     : undefined,
 );
+// What the run's agents have cost, one amount per currency — never added together.
+const costText = computed(() => {
+  const amounts = props.detail.cost ?? [];
+  if (amounts.length === 0) return '';
+  return amounts
+    .map((c) => {
+      if (!c.currency) return t('runs.detail.costUnpriced', { n: c.unpricedCalls });
+      try {
+        return new Intl.NumberFormat(locale.value, {
+          style: 'currency', currency: c.currency, maximumFractionDigits: 4 }).format(c.amount);
+      } catch {
+        return `${c.amount.toFixed(4)} ${c.currency}`;
+      }
+    })
+    .join(' + ');
+});
 const variables = computed(() => Object.entries(props.detail.variables ?? {}));
 
 /** Where a link points, per rel. The run view never renders those itself. */
@@ -119,6 +135,7 @@ function render(value: unknown): string {
         <span class="mono">{{ detail.summary.runId }}</span>
         <span v-if="detail.summary.startedBy"> · {{ detail.summary.startedBy }}</span>
         <span v-if="detail.summary.startedAt"> · {{ detail.summary.startedAt }}</span>
+        <span v-if="costText" :title="t('runs.detail.costHint')"> · {{ t('runs.detail.cost') }} {{ costText }}</span>
       </p>
       <!-- Buttons come from allowedActions, so the page has one case
            rather than one per source: a run that cannot be stopped simply

@@ -47,6 +47,7 @@ import org.springframework.data.mongodb.core.mapping.Document;
 @CompoundIndexes({
     @CompoundIndex(name = "tenant_createdAt_idx", def = "{ 'tenantId': 1, 'createdAt': 1 }"),
     @CompoundIndex(name = "tenant_project_createdAt_idx", def = "{ 'tenantId': 1, 'projectId': 1, 'createdAt': 1 }"),
+    @CompoundIndex(name = "tenant_process_idx", def = "{ 'tenantId': 1, 'processId': 1 }"),
     @CompoundIndex(
             name = "tenant_providerModel_createdAt_idx",
             def = "{ 'tenantId': 1, 'providerModel': 1, 'createdAt': 1 }")

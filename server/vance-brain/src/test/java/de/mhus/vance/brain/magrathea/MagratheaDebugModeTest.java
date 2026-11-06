@@ -139,7 +139,8 @@ class MagratheaDebugModeTest {
                     new io.micrometer.core.instrument.simple.SimpleMeterRegistry()),
             mock(de.mhus.vance.shared.thinkprocess.ThinkProcessService.class),
             mock(de.mhus.vance.shared.inbox.MaximegalonService.class),
-            timers);
+            timers,
+            org.mockito.Mockito.mock(MagratheaRunCost.class));
 
     private final List<JournalRecord> appended = new ArrayList<>();
     private final List<MagratheaTaskDocument> inserted = new ArrayList<>();

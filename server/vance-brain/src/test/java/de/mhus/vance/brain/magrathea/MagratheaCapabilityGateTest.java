@@ -12,9 +12,9 @@ import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.magrathea.MagratheaTaskType;
 import de.mhus.vance.api.magrathea.RunCapability;
+import de.mhus.vance.brain.magrathea.MagratheaWorkflowService.MagratheaWorkflowException;
 import de.mhus.vance.shared.magrathea.MagratheaRunBinding;
 import de.mhus.vance.shared.magrathea.MagratheaStateSpec;
-import de.mhus.vance.brain.magrathea.MagratheaWorkflowService.MagratheaWorkflowException;
 import de.mhus.vance.shared.magrathea.MagratheaTaskService;
 import de.mhus.vance.shared.magrathea.MagratheaWorkflowLoader;
 import de.mhus.vance.shared.magrathea.ResolvedMagratheaWorkflow;
@@ -91,16 +91,19 @@ class MagratheaCapabilityGateTest {
                     new io.micrometer.core.instrument.simple.SimpleMeterRegistry()),
             mock(de.mhus.vance.shared.thinkprocess.ThinkProcessService.class),
             mock(de.mhus.vance.shared.inbox.MaximegalonService.class),
-            mock(de.mhus.vance.shared.magrathea.MagratheaTimerService.class));
+            mock(de.mhus.vance.shared.magrathea.MagratheaTimerService.class),
+            org.mockito.Mockito.mock(MagratheaRunCost.class));
 
     @BeforeEach
     void setUp() {
         // Synchronous lane so start() completes inline.
         doAnswer(inv -> {
-            Runnable r = inv.getArgument(1);
-            r.run();
-            return java.util.concurrent.CompletableFuture.completedFuture(null);
-        }).when(laneManager).submitTracked(any(), any());
+                    Runnable r = inv.getArgument(1);
+                    r.run();
+                    return java.util.concurrent.CompletableFuture.completedFuture(null);
+                })
+                .when(laneManager)
+                .submitTracked(any(), any());
         when(taskService.insert(any())).thenAnswer(inv -> inv.getArgument(0));
 
         // A gate whose spec asks for a conversation needs an owner process.
@@ -141,8 +144,8 @@ class MagratheaCapabilityGateTest {
     @Test
     void start_boundRunWithStateNeedingOwnerProcess_isAllowed() {
         loaderReturns(DEMANDING_YAML);
-        MagratheaRunBinding bound = new MagratheaRunBinding(
-                "session-1", "process-1", Set.of(RunCapability.OWNER_PROCESS));
+        MagratheaRunBinding bound =
+                new MagratheaRunBinding("session-1", "process-1", Set.of(RunCapability.OWNER_PROCESS));
 
         assertThatCode(() -> service.start("t", "p", "demo", null, "someone", null, null, bound))
                 .doesNotThrowAnyException();
@@ -154,15 +157,14 @@ class MagratheaCapabilityGateTest {
         // impossible here, and I have somewhere to go when it is.
         loaderReturns(CATCHING_YAML);
 
-        assertThatCode(() -> service.start("t", "p", "demo", null, "someone"))
-                .doesNotThrowAnyException();
+        assertThatCode(() -> service.start("t", "p", "demo", null, "someone")).doesNotThrowAnyException();
     }
 
     @Test
     void start_boundRun_freezesCapabilitiesIntoTheStartRecord() {
         loaderReturns(DEMANDING_YAML);
-        MagratheaRunBinding bound = new MagratheaRunBinding(
-                "session-1", "process-1", Set.of(RunCapability.OWNER_PROCESS));
+        MagratheaRunBinding bound =
+                new MagratheaRunBinding("session-1", "process-1", Set.of(RunCapability.OWNER_PROCESS));
 
         service.start("t", "p", "demo", null, "someone", null, null, bound);
 
@@ -178,19 +180,17 @@ class MagratheaCapabilityGateTest {
         // independent choices. When the path variant dropped the binding,
         // the run started fine and then could not report back — the owner
         // it was supposed to answer was simply not in its start record.
-        ResolvedMagratheaWorkflow wf =
-                MagratheaWorkflowLoader.parseYaml("demo", CATCHING_YAML);
+        ResolvedMagratheaWorkflow wf = MagratheaWorkflowLoader.parseYaml("demo", CATCHING_YAML);
         when(workflowLoader.validateYaml(any(), any())).thenReturn(wf);
         var doc = new de.mhus.vance.shared.document.DocumentDocument();
         doc.setPath("_vance/workflows/demo.yaml");
         when(documentService.findByPath(any(), any(), any())).thenReturn(Optional.of(doc));
         when(documentService.readContent(any())).thenReturn(CATCHING_YAML);
 
-        MagratheaRunBinding bound = new MagratheaRunBinding(
-                "session-1", "process-1", Set.of(RunCapability.OWNER_PROCESS));
+        MagratheaRunBinding bound =
+                new MagratheaRunBinding("session-1", "process-1", Set.of(RunCapability.OWNER_PROCESS));
 
-        service.startFromDocument("t", "p", "_vance/workflows/demo.yaml",
-                null, "someone", bound);
+        service.startFromDocument("t", "p", "_vance/workflows/demo.yaml", null, "someone", bound);
 
         StartRecord start = capturedStartRecord();
         assertThat(start.getOwnerProcessId()).isEqualTo("process-1");
@@ -204,11 +204,10 @@ class MagratheaCapabilityGateTest {
         // run did something nobody expected.
         loaderReturns(CATCHING_YAML);
         MagratheaRunBinding bound = new MagratheaRunBinding(
-                "session-1", "process-1", Set.of(RunCapability.OWNER_PROCESS))
+                        "session-1", "process-1", Set.of(RunCapability.OWNER_PROCESS))
                 .withDerivedParams(Set.of("version"));
 
-        service.start("t", "p", "demo", java.util.Map.of("version", "1.0.0"),
-                "someone", null, null, bound);
+        service.start("t", "p", "demo", java.util.Map.of("version", "1.0.0"), "someone", null, null, bound);
 
         assertThat(capturedStartRecord().getDerivedParamKeys()).containsExactly("version");
     }
@@ -228,10 +227,8 @@ class MagratheaCapabilityGateTest {
 
     private StartRecord capturedStartRecord() {
         ArgumentCaptor<de.mhus.vance.shared.magrathea.journal.JournalRecord> captor =
-                ArgumentCaptor.forClass(
-                        de.mhus.vance.shared.magrathea.journal.JournalRecord.class);
-        verify(journalService, atLeastOnce())
-                .append(any(), any(), any(), captor.capture());
+                ArgumentCaptor.forClass(de.mhus.vance.shared.magrathea.journal.JournalRecord.class);
+        verify(journalService, atLeastOnce()).append(any(), any(), any(), captor.capture());
         return captor.getAllValues().stream()
                 .filter(StartRecord.class::isInstance)
                 .map(StartRecord.class::cast)

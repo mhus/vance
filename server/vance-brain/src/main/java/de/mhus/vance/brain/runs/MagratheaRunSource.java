@@ -4,6 +4,7 @@ import de.mhus.vance.api.magrathea.MagratheaProcessDto;
 import de.mhus.vance.api.magrathea.MagratheaRunStatus;
 import de.mhus.vance.api.runs.RunAction;
 import de.mhus.vance.api.runs.RunChildDto;
+import de.mhus.vance.api.runs.RunCostDto;
 import de.mhus.vance.api.runs.RunDetailDto;
 import de.mhus.vance.api.runs.RunLinkDto;
 import de.mhus.vance.api.runs.RunSimulationDto;
@@ -121,6 +122,7 @@ public class MagratheaRunSource implements RunSource {
                 .debug(run.isDebug())
                 .breakpoints(run.getBreakpoints())
                 .simulation(simulationOf(tenantId, projectId, nativeId, run))
+                .cost(costOf(tenantId, projectId, nativeId))
                 .restartableStates(workflowService
                         .restartableStates(tenantId, projectId, nativeId)
                         .orElse(null))
@@ -193,6 +195,23 @@ public class MagratheaRunSource implements RunSource {
                 .orElseThrow(() -> new IllegalArgumentException("No such run: " + nativeId));
         workflowService.simulateRun(
                 tenantId, projectId, nativeId, outcome, output == null ? null : JSON.valueToTree(output), errorMessage);
+    }
+
+    /** What the run's agents cost, or {@code null} when there is none to show. */
+    private @Nullable List<RunCostDto> costOf(String tenantId, String projectId, String runId) {
+        return workflowService
+                .costOf(tenantId, projectId, runId)
+                .map(cost -> cost.totals().stream()
+                        .map(t -> RunCostDto.builder()
+                                .currency(
+                                        de.mhus.vance.shared.llmusage.LlmUsageDailyDocument.NONE.equals(t.currency())
+                                                ? ""
+                                                : t.currency())
+                                .amount(de.mhus.vance.shared.llmusage.LlmUsageService.fromMicros(t.costMicros()))
+                                .unpricedCalls(t.unpricedCalls())
+                                .build())
+                        .toList())
+                .orElse(null);
     }
 
     @Override

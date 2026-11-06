@@ -1090,9 +1090,15 @@ public class UrsaEventService {
         if (event.tokenSettingKey() != null) {
             // Setting cascade: project → _tenant. No think-process scope
             // here — events fire ahead of any process and aren't
-            // process-scoped.
-            return settingService.getStringValueCascade(
-                    tenantId, projectId, /*thinkProcessId*/ null, event.tokenSettingKey());
+            // process-scoped. A token kept as a password setting is stored
+            // encrypted and has to be decrypted to be compared; one kept as
+            // plain text is read as it is — the same order the signature
+            // secret is resolved in.
+            String key = event.tokenSettingKey();
+            String secret =
+                    settingService.getDecryptedPasswordCascade(tenantId, projectId, /*thinkProcessId*/ null, key);
+            if (secret != null && !secret.isBlank()) return secret;
+            return settingService.getStringValueCascade(tenantId, projectId, /*thinkProcessId*/ null, key);
         }
         return null;
     }

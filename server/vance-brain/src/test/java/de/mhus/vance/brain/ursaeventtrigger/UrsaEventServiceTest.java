@@ -808,6 +808,23 @@ class UrsaEventServiceTest {
     }
 
     @Test
+    void trigger_with_a_token_kept_as_a_password_setting_compares_the_decrypted_value() {
+        when(eventLoader.load(TENANT, PROJECT, EVENT))
+                .thenReturn(Optional.of(event(b -> b.tokenSettingKey("events.deploy.token"))));
+        when(settingService.getDecryptedPasswordCascade(TENANT, PROJECT, null, "events.deploy.token"))
+                .thenReturn("the-secret");
+        when(workflowService.start(any(), any(), any(), any(), any())).thenReturn("run-x");
+
+        service.trigger(TENANT, PROJECT, EVENT, "POST", "the-secret", null);
+        verify(workflowService, times(1)).start(any(), any(), any(), any(), any());
+
+        assertThatThrownBy(() -> service.trigger(TENANT, PROJECT, EVENT, "POST", "not-it", null))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.UNAUTHORIZED);
+    }
+
+    @Test
     void trigger_with_settingKey_but_setting_empty_returns_503() {
         when(eventLoader.load(TENANT, PROJECT, EVENT))
                 .thenReturn(Optional.of(event(b -> b.tokenSettingKey("ev.deploy.token"))));

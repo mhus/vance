@@ -297,6 +297,15 @@ export function connect(
   if (!hasState(doc, edge.target)) {
     throw new WorkflowEditError(`There is no state '${edge.target}' to connect to.`);
   }
+  const sourceType = scalarText(state.get('type', true))?.toLowerCase().replace(/-/g, '_');
+  if (sourceType === 'terminal') {
+    throw new WorkflowEditError(`'${edge.source}' is a terminal state; it ends the run and leads nowhere.`);
+  }
+  if ((edge.kind === 'condition' || edge.kind === 'else') && sourceType !== 'condition_task') {
+    throw new WorkflowEditError(
+      `Only a condition_task has branches; '${edge.source}' is ${sourceType ?? 'untyped'}.`,
+    );
+  }
   const label = edge.label?.trim() ?? '';
 
   if (edge.kind === 'on' || edge.kind === 'catch') {

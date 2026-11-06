@@ -211,8 +211,8 @@ describe('connect', () => {
   });
 
   it('creates the block when the state has none', () => {
-    const out = connect(DOC, { source: 'done', kind: 'catch', label: 'timeout', target: 'plan' });
-    expect(edges(out)).toContain('done-catch:timeout->plan');
+    const out = connect(DOC, { source: 'check', kind: 'on', label: 'x', target: 'plan' });
+    expect(edges(out)).toContain('check-on:x->plan');
   });
 
   it('puts a branch before the else', () => {
@@ -224,9 +224,19 @@ describe('connect', () => {
   });
 
   it('creates the transitions list and appends an else', () => {
-    const out = connect(DOC, { source: 'plan', kind: 'else', target: 'done' });
-    expect(edges(out)).toContain('plan-else:else->done');
+    const bare = removeState(DOC, 'check');
+    const withCondition = addState(bare, 'route', { type: 'condition_task' });
+    const out = connect(withCondition, { source: 'route', kind: 'else', target: 'done' });
+    expect(edges(out)).toContain('route-else:else->done');
     expect(parseWorkflowGraph(out).problems).toEqual([]);
+  });
+
+  it('refuses to leave a terminal state or to branch from a state that is no condition_task', () => {
+    fails(() => connect(DOC, { source: 'done', kind: 'on', label: 'x', target: 'plan' }), /terminal/);
+    fails(
+      () => connect(DOC, { source: 'plan', kind: 'else', target: 'done' }),
+      /Only a condition_task/,
+    );
   });
 
   it('rejects a second else, a taken outcome, an unknown target and a missing label', () => {

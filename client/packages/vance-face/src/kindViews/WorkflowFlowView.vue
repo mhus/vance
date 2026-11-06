@@ -22,9 +22,12 @@ import { useI18n } from 'vue-i18n';
 import { VAlert, VButton, VSegment } from '@/components';
 import WorkflowEditGraph from '@/cortex/workflowEdit/WorkflowEditGraph.vue';
 import WorkflowInspector from '@/cortex/workflowEdit/WorkflowInspector.vue';
+import { stateTemplate } from '@/cortex/workflowEdit/stateTemplates';
+import { useWorkflowChange } from '@/cortex/workflowEdit/useWorkflowChange';
+import { addState, freeStateName } from '@/cortex/workflowEdit/workflowMutations';
 import { useWorkflowServerCheck } from '@/cortex/workflowEdit/useWorkflowServerCheck';
 import WorkflowGraph from '@/workflowGraph/WorkflowGraph.vue';
-import { parseWorkflowGraph } from '@/workflowGraph/workflowGraphCodec';
+import { parseWorkflowGraph, type WorkflowTaskType } from '@/workflowGraph/workflowGraphCodec';
 
 defineOptions({ name: 'WorkflowFlowView' });
 
@@ -84,6 +87,14 @@ function openRunView(): void {
   window.open(url, '_blank', 'noopener');
 }
 
+const change = useWorkflowChange(() => props.doc, (next) => emit('update:doc', next));
+
+/** A new state at the end of the workflow, picked right away so it can be edited. */
+function onAdd(type: WorkflowTaskType): void {
+  const name = freeStateName(props.doc, type);
+  if (change.apply(() => addState(props.doc, name, stateTemplate(type)))) selected.value = name;
+}
+
 const check = useWorkflowServerCheck(() => props.projectId, () => props.docPath);
 watch(() => props.docPath, () => check.clear());
 </script>
@@ -112,6 +123,7 @@ watch(() => props.docPath, () => check.clear());
       <span v-if="blockedReason" class="run-note">{{ t('documents.workflowView.runBlocked') }}</span>
     </div>
 
+    <VAlert v-if="change.error.value" variant="error">{{ change.error.value }}</VAlert>
     <VAlert v-if="check.error.value" variant="error">{{ check.error.value }}</VAlert>
     <VAlert
       v-else-if="check.result.value"
@@ -133,6 +145,7 @@ watch(() => props.docPath, () => check.clear());
         :doc="doc"
         :selected="selected"
         @select="selected = $event"
+        @add="onAdd"
       />
       <WorkflowGraph
         v-else

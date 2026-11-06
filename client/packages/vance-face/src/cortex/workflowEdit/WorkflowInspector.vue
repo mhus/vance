@@ -3,8 +3,8 @@
  * Side panel of the workflow view: what one state is — type, start, description,
  * its remaining fields as written, and the transitions leaving and entering it.
  *
- * Read-only unless {@code editable}; then the description can be changed and
- * the state made the start. Every change is a call into
+ * Read-only unless {@code editable}; then the state can be renamed, deleted,
+ * made the start, and its description changed. Every change is a call into
  * {@code workflowMutations} and goes out as a new document text; the caller
  * (and behind it the shell's save pipeline) owns the text.
  *
@@ -13,9 +13,10 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { stringify } from 'yaml';
-import { VAlert, VButton, VGroup, VGroupRow, VInput } from '@/components';
+import { VAlert, VButton, VGroup, VGroupRow, VInput, useConfirm } from '@/components';
 import { parseWorkflowGraph } from '@/workflowGraph/workflowGraphCodec';
-import { setStart, setStateField, WorkflowEditError } from './workflowMutations';
+import { useWorkflowChange } from './useWorkflowChange';
+import { removeState, renameState, setStart, setStateField } from './workflowMutations';
 import { readStateFields } from './workflowRead';
 
 defineOptions({ name: 'WorkflowInspector' });
@@ -29,7 +30,8 @@ interface Props {
 const props = withDefaults(defineProps<Props>(), { editable: false });
 const emit = defineEmits<{
   (e: 'update:doc', doc: string): void;
-  (e: 'select', state: string): void;
+  /** Another state was picked; {@code null} when the picked one is gone. */
+  (e: 'select', state: string | null): void;
 }>();
 
 const { t } = useI18n();
@@ -43,19 +45,8 @@ const fieldsText = computed(() =>
   Object.keys(fields.value).length === 0 ? '' : stringify(fields.value).trimEnd(),
 );
 
-const error = ref<string | null>(null);
-
-/** Run a change; a refused one is shown here instead of thrown into the view. */
-function apply(change: () => string): void {
-  try {
-    const next = change();
-    error.value = null;
-    if (next !== props.doc) emit('update:doc', next);
-  } catch (e) {
-    if (!(e instanceof WorkflowEditError)) throw e;
-    error.value = e.message;
-  }
-}
+const confirmAction = useConfirm();
+const { error, apply } = useWorkflowChange(() => props.doc, (next) => emit('update:doc', next));
 
 // ── description: a draft that is written once typing pauses ──────
 
@@ -83,6 +74,33 @@ onBeforeUnmount(() => clearTimeout(timer));
 function makeStart(): void {
   apply(() => setStart(props.doc, props.state));
 }
+
+// ── name: renamed on request, not while typing ───────────────────
+
+const nameDraft = ref(props.state);
+watch(() => props.state, (name) => { nameDraft.value = name; });
+const canRename = computed(() => {
+  const next = nameDraft.value.trim();
+  return next !== '' && next !== props.state;
+});
+
+function rename(): void {
+  const next = nameDraft.value.trim();
+  if (apply(() => renameState(props.doc, props.state, next))) emit('select', next);
+}
+
+async function remove(): Promise<void> {
+  const leading = incoming.value.length;
+  const confirmed = await confirmAction({
+    title: t('documents.workflowView.inspector.deleteTitle', { name: props.state }),
+    message: leading > 0
+      ? t('documents.workflowView.inspector.deleteBodyLinked', { n: leading })
+      : t('documents.workflowView.inspector.deleteBody'),
+    confirmLabel: t('documents.workflowView.inspector.delete'),
+  });
+  if (!confirmed) return;
+  if (apply(() => removeState(props.doc, props.state))) emit('select', null);
+}
 </script>
 
 <template>
@@ -102,6 +120,17 @@ function makeStart(): void {
           @click="makeStart"
         >{{ t('documents.workflowView.inspector.makeStart') }}</VButton>
       </VGroupRow>
+    </VGroup>
+
+    <VGroup v-if="editable" :label="t('documents.workflowView.inspector.name')">
+      <div class="wf-inspector-pad wf-inspector-rename">
+        <div class="wf-inspector-grow">
+          <VInput v-model="nameDraft" />
+        </div>
+        <VButton size="sm" variant="secondary" :disabled="!canRename" @click="rename">
+          {{ t('documents.workflowView.inspector.rename') }}
+        </VButton>
+      </div>
     </VGroup>
 
     <VGroup :label="t('documents.workflowView.inspector.description')">
@@ -152,12 +181,22 @@ function makeStart(): void {
         disabled
       />
     </VGroup>
+    <VGroup v-if="editable">
+      <VGroupRow
+        :label="t('documents.workflowView.inspector.deleteRow')"
+        danger
+        navigates
+        @click="remove"
+      />
+    </VGroup>
   </aside>
 </template>
 
 <style scoped>
 .wf-inspector { display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; }
 .wf-inspector-pad { padding: 0.5rem 0.75rem; }
+.wf-inspector-rename { display: flex; align-items: center; gap: 0.5rem; }
+.wf-inspector-grow { flex: 1; min-width: 0; }
 .wf-inspector-text { margin: 0; font-size: 0.85rem; }
 .wf-inspector-fields {
   margin: 0;

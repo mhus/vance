@@ -80,12 +80,9 @@ public class CatalogTriggerService {
             SecurityContext subject,
             String service,
             String trigger,
-            String workflow,
+            @Nullable String workflow,
             @Nullable String name,
             Map<String, String> inputs) {
-        if (workflow == null || workflow.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A workflow to start is required");
-        }
         List<ServiceCatalogEntry> entries = catalog.list(tenantId, projectId);
         ServiceCatalogEntry entry = entries.stream()
                 .filter(e -> e.name().equalsIgnoreCase(service))
@@ -97,6 +94,10 @@ public class CatalogTriggerService {
                 .findFirst()
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "Service '" + service + "' has no trigger '" + trigger + "'"));
+        boolean polling = t.mode() == ServiceCatalogEntry.TriggerMode.POLL;
+        if (!polling && (workflow == null || workflow.isBlank())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A workflow to start is required");
+        }
         Map<String, String> given = checkedInputs(t, inputs);
         String eventName = (name == null || name.isBlank() ? entry.name() + "-" + t.name() : name)
                 .trim()
@@ -106,8 +107,16 @@ public class CatalogTriggerService {
                     HttpStatus.BAD_REQUEST,
                     "An event name is lowercase letters, digits, '-', '_' or '.', and starts with a letter or digit");
         }
-        if (t.mode() == ServiceCatalogEntry.TriggerMode.POLL) {
-            return createPoll(tenantId, projectId, subject, entry, t, workflow.trim(), eventName, given);
+        if (polling) {
+            return createPoll(
+                    tenantId,
+                    projectId,
+                    subject,
+                    entry,
+                    t,
+                    workflow == null || workflow.isBlank() ? null : workflow.trim(),
+                    eventName,
+                    given);
         }
         String path = EVENTS_PREFIX + eventName + ".yaml";
         if (documents.findByPath(tenantId, projectId, path).isPresent()) {
@@ -226,9 +235,11 @@ public class CatalogTriggerService {
     }
 
     /**
-     * A polling trigger makes two documents: a scheduler that ticks, and the workflow it starts. The workflow asks
-     * the service ({@code catalog_poll}), starts the target workflow once per new entry, and remembers what it saw
-     * ({@code catalog_poll_commit}) last, so a tick that dies in between is repeated.
+     * A polling trigger makes two documents, both ordinary and both the person's to edit afterwards: a workflow
+     * that asks the service ({@code catalog_poll}), loops over the new entries ({@code for_each_task}) and then
+     * remembers what it saw ({@code catalog_poll_commit}) — and a scheduler that starts it. The entry is in the
+     * variable {@code item} inside the loop; what is done with it is the state {@code handle}, an agent to begin
+     * with, or a call of {@code targetWorkflow} when the person named one that already handles such an entry.
      */
     private CatalogTriggerCreateResponse createPoll(
             String tenantId,
@@ -236,12 +247,12 @@ public class CatalogTriggerService {
             SecurityContext subject,
             ServiceCatalogEntry entry,
             ServiceCatalogEntry.Trigger t,
-            String targetWorkflow,
+            @Nullable String targetWorkflow,
             String name,
             Map<String, String> given) {
         String from = entry.name() + "/" + t.name();
         String schedulerPath = SCHEDULER_PREFIX + name + ".yaml";
-        String workflowPath = WORKFLOW_PREFIX + pollWorkflowName(name) + ".yaml";
+        String workflowPath = WORKFLOW_PREFIX + name + ".yaml";
         if (documents.findByPath(tenantId, projectId, schedulerPath).isPresent()
                 || documents.findByPath(tenantId, projectId, workflowPath).isPresent()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Trigger '" + name + "' exists already");
@@ -250,9 +261,9 @@ public class CatalogTriggerService {
         DumperOptions options = new DumperOptions();
         options.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK);
         String workflowYaml = new Yaml(options).dump(pollWorkflow(from, name, targetWorkflow, given));
-        String schedulerYaml = new Yaml(options).dump(pollScheduler(t, from, pollWorkflowName(name)));
+        String schedulerYaml = new Yaml(options).dump(pollScheduler(t, from, name));
         try {
-            MagratheaWorkflowLoader.parseYaml(pollWorkflowName(name), workflowYaml);
+            MagratheaWorkflowLoader.parseYaml(name, workflowYaml);
             UrsaSchedulerLoader.parseValidated(name, schedulerYaml);
         } catch (RuntimeException e) {
             throw new ResponseStatusException(
@@ -265,7 +276,7 @@ public class CatalogTriggerService {
                 tenantId,
                 projectId,
                 workflowPath,
-                pollWorkflowName(name),
+                name,
                 List.of("workflow", "catalog"),
                 workflowYaml,
                 subject.subjectId(),
@@ -289,22 +300,24 @@ public class CatalogTriggerService {
         return CatalogTriggerCreateResponse.builder()
                 .name(name)
                 .path(schedulerPath)
+                .workflow(name)
                 .mode("poll")
                 .build();
     }
 
-    static String pollWorkflowName(String name) {
-        return "catalog-poll-" + name;
-    }
-
-    /** The workflow a tick runs: poll, one run of the target per new entry, then commit. */
+    /**
+     * The workflow a tick runs: poll, then for each new entry {@code handle}, then commit. An entry that fails is
+     * skipped rather than stopping the run — a run that stopped would never commit and would be handed the same
+     * entry again at every tick. Taking the {@code catch} away makes the run stop instead.
+     */
     private static Map<String, Object> pollWorkflow(
-            String from, String name, String targetWorkflow, Map<String, String> given) {
+            String from, String name, @Nullable String targetWorkflow, Map<String, String> given) {
         Map<String, Object> doc = new LinkedHashMap<>();
         doc.put("$meta", Map.of("kind", "vance-workflow"));
         doc.put(
                 "description",
-                "Polls " + from + " for '" + name + "' and starts '" + targetWorkflow + "' per new entry");
+                "Polls " + from + " for '" + name + "'. The state 'handle' runs once for each new entry,"
+                        + " which is in the variable item. Edit it freely.");
         doc.put("start", "poll");
 
         Map<String, Object> poll = new LinkedHashMap<>();
@@ -318,16 +331,36 @@ public class CatalogTriggerService {
         poll.put("storeAs", "polled");
         // A service that is busy or briefly away is asked again; one that wants a new sign-in is not.
         poll.put("retry", Map.of("maxAttempts", 3, "on", List.of("rate_limited", "unavailable"), "backoffSeconds", 30));
-        poll.put("on", Map.of("success", "fan_out"));
+        poll.put("on", Map.of("success", "each"));
 
-        Map<String, Object> fan = new LinkedHashMap<>();
-        fan.put("type", "workflow_task");
-        fan.put("workflow", targetWorkflow);
-        fan.put("items", "${state.polled.items}");
-        fan.put("as", "payload");
-        // One entry that fails must not hold back the others, nor be asked for again for ever.
-        fan.put("onItemError", "continue");
-        fan.put("on", Map.of("success", "commit"));
+        Map<String, Object> each = new LinkedHashMap<>();
+        each.put("type", "for_each_task");
+        each.put("items", "${state.polled.items}");
+        Map<String, Object> eachOn = new LinkedHashMap<>();
+        eachOn.put("each", "handle");
+        eachOn.put("done", "commit");
+        each.put("on", eachOn);
+
+        Map<String, Object> handle = new LinkedHashMap<>();
+        if (targetWorkflow == null) {
+            handle.put("type", "agent_task");
+            handle.put("recipe", "ford");
+            handle.put("params", Map.of("prompt", "Handle this new entry from " + from + ":\n${state.item}"));
+            handle.put("on", Map.of("success", "each"));
+            Map<String, Object> skip = new LinkedHashMap<>();
+            skip.put("agent_error", "each");
+            skip.put("technical_error", "each");
+            skip.put("timeout", "each");
+            handle.put("catch", skip);
+        } else {
+            handle.put("type", "workflow_task");
+            handle.put("workflow", targetWorkflow);
+            handle.put("params", Map.of("payload", "${state.item}"));
+            Map<String, Object> handled = new LinkedHashMap<>();
+            handled.put("success", "each");
+            handled.put("failure", "each");
+            handle.put("on", handled);
+        }
 
         Map<String, Object> commit = new LinkedHashMap<>();
         commit.put("type", "tool_task");
@@ -341,7 +374,8 @@ public class CatalogTriggerService {
 
         Map<String, Object> states = new LinkedHashMap<>();
         states.put("poll", poll);
-        states.put("fan_out", fan);
+        states.put("each", each);
+        states.put("handle", handle);
         states.put("commit", commit);
         states.put("done", done);
         doc.put("states", states);
@@ -361,18 +395,17 @@ public class CatalogTriggerService {
     }
 
     /**
-     * Removes what a polling trigger made: the scheduler, the workflow it starts and the state it kept.
+     * Removes what ticks for a polling trigger: the scheduler and the state it kept. The workflow stays — it is an
+     * ordinary workflow now, and what the person made of its {@code handle} is theirs. A scheduler that was not
+     * made from a catalog trigger is not removed here.
      */
     private void deletePoll(String tenantId, String projectId, SecurityContext subject, String name) {
-        DocumentDocument workflow = documents
-                .findByPath(tenantId, projectId, WORKFLOW_PREFIX + pollWorkflowName(name) + ".yaml")
+        DocumentDocument scheduler = documents
+                .findByPath(tenantId, projectId, SCHEDULER_PREFIX + name + ".yaml")
+                .filter(d -> d.getTags() != null && d.getTags().contains("catalog"))
                 .orElseThrow(
                         () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Trigger '" + name + "' not found"));
-        // The scheduler first: nothing should tick for a workflow that is going away.
-        documents
-                .findByPath(tenantId, projectId, SCHEDULER_PREFIX + name + ".yaml")
-                .ifPresent(d -> documents.delete(d.getId(), WriteActor.user(subject)));
-        documents.delete(workflow.getId(), WriteActor.user(subject));
+        documents.delete(scheduler.getId(), WriteActor.user(subject));
         polls.forget(tenantId, projectId, name);
     }
 

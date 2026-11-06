@@ -24,6 +24,20 @@ class UrsaSchedulerSummaryTest {
         assertThat(s.getRecipe()).isNull();
         assertThat(s.getCron()).isEqualTo("0 0 6 * * *");
         assertThat(s.getNextRunAt()).isEqualTo(next);
+        assertThat(s.getTags()).isNull();
+    }
+
+    @Test
+    void the_tags_of_a_scheduler_made_from_a_catalog_trigger_name_its_origin() {
+        SchedulerSummary s =
+                UrsaSchedulerController.summaryOf(UrsaSchedulerLoader.parseValidated("inbox", """
+                        description: Polls slack/new-message
+                        cron: "0 0/5 * * * *"
+                        workflow: inbox
+                        tags: [catalog, slack/new-message]
+                        """), null, null);
+
+        assertThat(s.getTags()).containsExactly("catalog", "slack/new-message");
     }
 
     @Test

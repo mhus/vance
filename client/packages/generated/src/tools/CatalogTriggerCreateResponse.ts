@@ -7,6 +7,7 @@ export interface CatalogTriggerCreateResponse {
   name: string;
   path: string;
   mode: string;
+  workflow?: string;
   urlPath?: string;
   secretSetting?: string;
   subscribed: boolean;

@@ -23,8 +23,11 @@ public class CatalogTriggerCreateResponse {
     /** Document path of the event, or of the scheduler for a polling trigger. */
     private String path;
 
-    /** {@code webhook} (an event was made) or {@code poll} (a scheduler and its workflow). */
+    /** {@code webhook} (an event was made) or {@code poll} (a scheduler and the workflow it starts). */
     private String mode;
+
+    /** The workflow that polls and handles the entries — {@code null} for a webhook. It is the person's to edit. */
+    private @Nullable String workflow;
 
     /** Path of the URL the service has to call, below the brain's host; {@code null} for a polling trigger. */
     private @Nullable String urlPath;

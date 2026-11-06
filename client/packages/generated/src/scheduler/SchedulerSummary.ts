@@ -16,6 +16,7 @@ export interface SchedulerSummary {
   enabled: boolean;
   source: SchedulerSource;
   lockMode?: LockMode;
+  tags?: string[];
   lastRunAt?: Date;
   nextRunAt?: Date;
 }

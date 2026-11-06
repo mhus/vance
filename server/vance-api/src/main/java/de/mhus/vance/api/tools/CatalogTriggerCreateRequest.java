@@ -24,10 +24,13 @@ public class CatalogTriggerCreateRequest {
     /** Trigger of that entry, e.g. {@code push}. */
     private String trigger;
 
-    /** The workflow the event starts. */
-    private String workflow;
+    /**
+     * The workflow a webhook event starts — required for it. A polling trigger makes a workflow of its own that
+     * handles each new entry; naming one here has that workflow call it for every entry instead.
+     */
+    private @Nullable String workflow;
 
-    /** Name of the event; {@code <service>-<trigger>} when blank. */
+    /** Name of the event, or of the polling trigger and its workflow; {@code <service>-<trigger>} when blank. */
     private @Nullable String name;
 
     /** What the trigger asked for ({@code ${input.<name>}}), by name. */

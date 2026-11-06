@@ -6,7 +6,7 @@
 export interface CatalogTriggerCreateRequest {
   service: string;
   trigger: string;
-  workflow: string;
+  workflow?: string;
   name?: string;
   inputs?: Record<string, string>;
 }

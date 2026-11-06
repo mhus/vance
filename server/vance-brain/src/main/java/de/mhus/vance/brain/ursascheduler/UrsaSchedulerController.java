@@ -268,6 +268,7 @@ public class UrsaSchedulerController {
                 .enabled(r.enabled())
                 .source(r.source())
                 .lockMode(r.lockMode())
+                .tags(r.tags().isEmpty() ? null : r.tags())
                 .lastRunAt(lastRun)
                 .nextRunAt(nextRun)
                 .build();

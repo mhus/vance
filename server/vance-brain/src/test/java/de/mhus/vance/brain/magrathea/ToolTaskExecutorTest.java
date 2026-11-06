@@ -34,7 +34,9 @@ class ToolTaskExecutorTest {
     private final ToolDispatcher dispatcher = mock(ToolDispatcher.class);
     private final de.mhus.vance.shared.magrathea.MagratheaTaskService taskService =
             mock(de.mhus.vance.shared.magrathea.MagratheaTaskService.class);
-    private final ToolTaskExecutor executor = new ToolTaskExecutor(dispatcher, objectMapper, taskService);
+    private final de.mhus.vance.brain.oauth.OAuthTokenStore tokenStore =
+            mock(de.mhus.vance.brain.oauth.OAuthTokenStore.class);
+    private final ToolTaskExecutor executor = new ToolTaskExecutor(dispatcher, objectMapper, taskService, tokenStore);
 
     @Test
     void successful_invocation_returns_success_with_result_as_output() {
@@ -229,6 +231,55 @@ class ToolTaskExecutorTest {
                 .isEqualTo(de.mhus.vance.api.magrathea.MagratheaErrorKind.TECHNICAL_ERROR);
         assertThat(ToolFailure.kindForStatus(502))
                 .isEqualTo(de.mhus.vance.api.magrathea.MagratheaErrorKind.UNAVAILABLE);
+    }
+
+    @Test
+    void a_tool_that_sends_the_users_token_is_unmet_when_the_user_has_not_connected_the_account() {
+        stubTool("slack.post", java.util.Set.of("slack"));
+        when(tokenStore.isConnected(eq("acme"), any(), eq("slack"))).thenReturn(false);
+
+        List<String> problems = executor.unmetLogins(toolState("slack.post", Map.of()), "acme", "proj", "alice");
+
+        assertThat(problems).singleElement().asString().contains("alice").contains("slack");
+    }
+
+    @Test
+    void a_connected_account_leaves_nothing_unmet() {
+        stubTool("slack.post", java.util.Set.of("slack"));
+        when(tokenStore.isConnected(eq("acme"), any(), eq("slack"))).thenReturn(true);
+
+        assertThat(executor.unmetLogins(toolState("slack.post", Map.of()), "acme", "proj", "alice"))
+                .isEmpty();
+    }
+
+    @Test
+    void a_run_without_a_user_cannot_have_a_user_login() {
+        stubTool("slack.post", java.util.Set.of("slack"));
+
+        assertThat(executor.unmetLogins(toolState("slack.post", Map.of()), "acme", "proj", null))
+                .singleElement()
+                .asString()
+                .contains("no user");
+    }
+
+    @Test
+    void a_tool_without_user_logins_or_an_unknown_tool_or_a_placeholder_name_is_not_checked() {
+        stubTool("doc_read", java.util.Set.of());
+
+        assertThat(executor.unmetLogins(toolState("doc_read", Map.of()), "acme", "proj", "alice"))
+                .isEmpty();
+        assertThat(executor.unmetLogins(toolState("nope", Map.of()), "acme", "proj", "alice"))
+                .isEmpty();
+        assertThat(executor.unmetLogins(toolState("${params.tool}", Map.of()), "acme", "proj", "alice"))
+                .isEmpty();
+    }
+
+    private void stubTool(String name, java.util.Set<String> logins) {
+        de.mhus.vance.toolpack.Tool tool = mock(de.mhus.vance.toolpack.Tool.class);
+        when(tool.requiredUserLogins()).thenReturn(logins);
+        when(dispatcher.resolve(eq(name), any(ToolInvocationContext.class)))
+                .thenReturn(Optional.of(
+                        new ToolDispatcher.Resolved(tool, mock(de.mhus.vance.brain.tools.ToolSource.class))));
     }
 
     // ──────── helpers ────────

@@ -52,6 +52,24 @@ public record AuthSpec(
         OAUTH
     }
 
+    private static final java.util.regex.Pattern USER_OAUTH_TOKEN = java.util.regex.Pattern.compile(
+            "\\{\\{\\s*secret\\s*:\\s*user\\s*:\\s*oauth\\.([^.}\\s]+)\\.access_token\\s*\\}\\}");
+
+    /**
+     * The OAuth providers whose login of the <em>calling user</em> this auth sends: the
+     * {@code {{secret:user:oauth.<provider>.access_token}}} references in its credential fields.
+     * A project or tenant login never appears here — it needs no user.
+     */
+    public java.util.Set<String> requiredUserLogins() {
+        java.util.Set<String> providers = new java.util.LinkedHashSet<>();
+        for (String field : new String[] {token, user, password, value}) {
+            if (field == null) continue;
+            java.util.regex.Matcher m = USER_OAUTH_TOKEN.matcher(field);
+            while (m.find()) providers.add(m.group(1));
+        }
+        return java.util.Set.copyOf(providers);
+    }
+
     public static final AuthSpec NONE = new AuthSpec(Type.NONE, null, null, null, null, null, null);
 
     /** Marker for {@code type: oauth} — see {@link Type#OAUTH}. */

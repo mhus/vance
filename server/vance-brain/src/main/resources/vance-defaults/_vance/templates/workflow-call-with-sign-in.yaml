@@ -1,0 +1,30 @@
+title:       { de: "Workflow: Dienst aufrufen, bei Bedarf neu anmelden",
+               en: "Workflow: call a service, sign in again when needed" }
+description: { de: "Ruft ein Tool eines Dienstes auf. Ist der Dienst überlastet oder nicht erreichbar, wird mit Wartezeit wiederholt. Ist die Anmeldung abgelaufen, fragt ein Mensch nach, meldet sich neu an und der Aufruf läuft erneut.",
+               en: "Calls one tool of a service. If the service is overloaded or unreachable it retries with a wait. If the sign-in has expired, a person is asked, signs in again, and the call runs once more." }
+icon: key
+tags: [workflow, automation, integration]
+folder: _vance/workflows
+name: { mode: free, default: "call-with-sign-in" }
+
+fields:
+  - name: tool
+    type: string
+    required: true
+    label: { de: "Tool des Dienstes", en: "The service's tool" }
+    help:  { de: "Der genaue Name, z. B. jira_rest__createIssue. Die Liste der Tools eines Projekts steht in der Run-Sicht-API (workflow-tools).",
+             en: "The exact name, e.g. jira_rest__createIssue. A project's tools are listed by the workflow-tools endpoint." }
+  - name: toolParams
+    # Single-line flow mapping on purpose: it lands inside the YAML document as-is.
+    type: string
+    defaultValue: "{}"
+    label: { de: "Parameter des Aufrufs (YAML-Map, eine Zeile)",
+             en: "Call parameters (YAML map, one line)" }
+    help:  { de: "Zum Beispiel {project: OPS, summary: \"${params.title}\"}. Werte aus dem Lauf stehen als ${params.…} bereit.",
+             en: "For example {project: OPS, summary: \"${params.title}\"}. Values of the run are available as ${params.…}." }
+  - name: service
+    type: string
+    required: true
+    label: { de: "Name des Dienstes für die Nachfrage", en: "Service name for the question" }
+    help:  { de: "Steht in der Frage an den Menschen, z. B. „Jira“",
+             en: "Appears in the question to the person, e.g. “Jira”" }

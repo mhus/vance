@@ -27,6 +27,7 @@ public final class RestEndpointTool implements Tool {
     private final OpenApiOperation operation;
     private final RestHttpInvoker invoker;
     private final @org.jspecify.annotations.Nullable String service;
+    private final Set<String> requiredUserLogins;
 
     public RestEndpointTool(
             String fullName,
@@ -37,7 +38,7 @@ public final class RestEndpointTool implements Tool {
             String searchHint,
             OpenApiOperation operation,
             RestHttpInvoker invoker) {
-        this(fullName, description, labels, deferred, primary, searchHint, operation, invoker, null);
+        this(fullName, description, labels, deferred, primary, searchHint, operation, invoker, null, Set.of());
     }
 
     public RestEndpointTool(
@@ -50,6 +51,21 @@ public final class RestEndpointTool implements Tool {
             OpenApiOperation operation,
             RestHttpInvoker invoker,
             @org.jspecify.annotations.Nullable String service) {
+        this(fullName, description, labels, deferred, primary, searchHint, operation, invoker, service, Set.of());
+    }
+
+    public RestEndpointTool(
+            String fullName,
+            String description,
+            Set<String> labels,
+            boolean deferred,
+            boolean primary,
+            String searchHint,
+            OpenApiOperation operation,
+            RestHttpInvoker invoker,
+            @org.jspecify.annotations.Nullable String service,
+            Set<String> requiredUserLogins) {
+        this.requiredUserLogins = requiredUserLogins == null ? Set.of() : Set.copyOf(requiredUserLogins);
         this.service = service;
         this.fullName = fullName;
         this.description = description;
@@ -109,6 +125,11 @@ public final class RestEndpointTool implements Tool {
     @Override
     public @org.jspecify.annotations.Nullable String service() {
         return service;
+    }
+
+    @Override
+    public Set<String> requiredUserLogins() {
+        return requiredUserLogins;
     }
 
     /**

@@ -44,9 +44,24 @@ public interface MagratheaTypeExecutor {
      * passed in: a gate that raises a question in a conversation needs an
      * owner process, the same gate left to the inbox needs nothing.
      */
-    default Set<RunCapability> requires(
-            de.mhus.vance.shared.magrathea.MagratheaStateSpec state) {
+    default Set<RunCapability> requires(de.mhus.vance.shared.magrathea.MagratheaStateSpec state) {
         return Set.of();
+    }
+
+    /**
+     * What stands in the way of this state running for the user it would run as, known
+     * <em>before</em> the run begins — a login the user has not made. One sentence per problem; empty
+     * (the default) when nothing does.
+     *
+     * <p>The start refuses a plan with such a problem unless the state opts out with
+     * {@code catch: { auth_error: … }}: whoever handles the failure is allowed to have it.
+     */
+    default java.util.List<String> unmetLogins(
+            de.mhus.vance.shared.magrathea.MagratheaStateSpec state,
+            String tenantId,
+            String projectId,
+            @org.jspecify.annotations.Nullable String startedBy) {
+        return java.util.List.of();
     }
 
     /**

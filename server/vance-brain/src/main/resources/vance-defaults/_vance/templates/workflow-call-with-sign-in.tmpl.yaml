@@ -1,0 +1,80 @@
+$meta:
+  kind: vance-workflow
+
+description: |
+  Calls {{ tool }}. Waits and retries when {{ service }} is overloaded or unreachable; when the
+  sign-in has expired, asks a person to sign in again and calls once more.
+version: "1"
+
+bounds:
+  maxWallclockSeconds: 604800
+  maxTaskSpawns: 30
+
+start: call
+
+states:
+
+  call:
+    type: tool_task
+    tool: {{ tool }}
+    params: {{ toolParams }}
+    storeAs: result
+    # Counts every call, the first included — the rounds of signing in are bounded by it below.
+    enterCounter: attempts
+    # A busy or unreachable service is worth asking again; the wait follows the
+    # service's Retry-After when it sent one.
+    retry:
+      maxAttempts: 5
+      on: [rate_limited, unavailable]
+      backoffSeconds: 10
+    on:
+      success: done
+    catch:
+      # A state that catches auth_error opts out of the start's refusal when the user has
+      # not connected the account yet: this is where that case is handled.
+      auth_error: sign_in_rounds
+      not_found: not_found
+      rate_limited: failed
+      unavailable: failed
+      permission_error: failed
+
+  # At most two rounds of signing in: a login that does not hold is a problem for a person
+  # to look at, not for the workflow to ask about forever.
+  sign_in_rounds:
+    type: condition_task
+    transitions:
+      - if: "#state['attempts'] >= 3"
+        to: failed
+      - else: sign_in
+
+  sign_in:
+    type: gate_task
+    inbox:
+      kind: DECISION
+      title: "{{ service }}: sign in again"
+      body: "The call to {{ tool }} was refused because the {{ service }} sign-in is missing or expired. Sign in under Settings, then choose “signed in”."
+      options: [signed_in, cancel]
+      criticality: NORMAL
+    timeoutSeconds: 86400
+    on:
+      signed_in: call
+      cancel: failed
+    catch:
+      timeout: failed
+
+  done:
+    type: terminal
+    outcome: success
+    result:
+      result: "${state.result}"
+
+  # The thing asked for does not exist — an ordinary outcome of looking, not a failure.
+  not_found:
+    type: terminal
+    outcome: success
+    result:
+      found: false
+
+  failed:
+    type: terminal
+    outcome: failure

@@ -61,6 +61,17 @@ public interface Tool {
         return null;
     }
 
+    /**
+     * OAuth providers whose login <em>of the calling user</em> this tool needs — it sends the user's
+     * access token (a {@code {{secret:user:oauth.<provider>.access_token}}} reference). Empty (the
+     * default) for tools that need none, or whose login is shared by project or tenant. A workflow
+     * start reads this to say "this run's user has no account for it" before the run begins,
+     * instead of letting the call fail with a 401 in the middle.
+     */
+    default Set<String> requiredUserLogins() {
+        return Set.of();
+    }
+
     /** Executes the tool. Throws {@link ToolException} on failure. */
     Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx);
 

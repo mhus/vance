@@ -63,10 +63,40 @@ public class ToolTaskExecutor implements MagratheaTypeExecutor {
     private final ToolDispatcher toolDispatcher;
     private final ObjectMapper objectMapper;
     private final de.mhus.vance.shared.magrathea.MagratheaTaskService taskService;
+    private final de.mhus.vance.brain.oauth.OAuthTokenStore tokenStore;
 
     @Override
     public MagratheaTaskType type() {
         return MagratheaTaskType.TOOL_TASK;
+    }
+
+    /**
+     * A tool that sends the calling user's OAuth token needs that user to have connected the account.
+     * Checked before the run, so the author hears "no account for google" instead of a 401 from the
+     * middle of it. A tool name built from a placeholder, or one this project does not have, is
+     * left to the call.
+     */
+    @Override
+    public java.util.List<String> unmetLogins(
+            MagratheaStateSpec state, String tenantId, String projectId, @Nullable String startedBy) {
+        String toolName = state.specString(SPEC_TOOL);
+        if (toolName == null || toolName.contains("${")) return java.util.List.of();
+        Optional<ToolDispatcher.Resolved> resolved = toolDispatcher.resolve(
+                toolName.trim(),
+                new ToolInvocationContext(tenantId, projectId, /* sessionId */ null, /* processId */ null, startedBy));
+        if (resolved.isEmpty()) return java.util.List.of();
+        java.util.List<String> problems = new java.util.ArrayList<>();
+        for (String provider : resolved.get().tool().requiredUserLogins()) {
+            if (startedBy == null || startedBy.isBlank()) {
+                problems.add("state '" + state.name() + "' calls '" + toolName + "', which needs a '" + provider
+                        + "' login of a user, but this run has no user");
+            } else if (!tokenStore.isConnected(
+                    tenantId, de.mhus.vance.brain.oauth.OAuthTokenOwner.user(startedBy), provider)) {
+                problems.add("state '" + state.name() + "' calls '" + toolName + "', but user '" + startedBy
+                        + "' has not connected '" + provider + "'");
+            }
+        }
+        return problems;
     }
 
     @Override

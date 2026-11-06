@@ -89,7 +89,16 @@ public final class RestApiPackBuilder {
             String desc = pickDescription(op);
             String hint = op.summary() != null && !op.summary().isBlank() ? op.summary() : desc;
             out.add(new RestEndpointTool(
-                    fullName, desc, labels, deferred, input.primary(), hint, op, invoker, input.name()));
+                    fullName,
+                    desc,
+                    labels,
+                    deferred,
+                    input.primary(),
+                    hint,
+                    op,
+                    invoker,
+                    input.name(),
+                    config.auth().requiredUserLogins()));
         }
         return List.copyOf(out);
     }

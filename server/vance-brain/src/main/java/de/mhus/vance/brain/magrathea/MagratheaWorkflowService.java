@@ -442,6 +442,7 @@ public class MagratheaWorkflowService {
             @Nullable Restart restart) {
         Map<String, Object> resolvedParams = applyDefaultsAndValidate(workflow, callerParams);
         requireCapabilities(workflow, binding);
+        requireLogins(tenantId, projectId, workflow, startedBy);
         requireKnownStates(workflow, debug.breakpoints());
         String runId = MagratheaRunIdGenerator.fresh();
 
@@ -496,6 +497,29 @@ public class MagratheaWorkflowService {
      * said what to do when the thing is impossible, so it is allowed to run
      * and find out.
      */
+    /**
+     * Refuse a plan that calls a tool for a user who has not connected the account it needs.
+     *
+     * <p>Like {@link #requireCapabilities}, checked over all states, and a state that declares
+     * {@code catch: { auth_error: … }} opts out — whoever handles the failure is allowed to have it,
+     * typically with a gate that asks the person to sign in and a step back to the call.
+     */
+    private void requireLogins(
+            String tenantId, String projectId, ResolvedMagratheaWorkflow workflow, @Nullable String startedBy) {
+        List<String> problems = new ArrayList<>();
+        for (MagratheaStateSpec state : workflow.states().values()) {
+            if (state.catchKinds().containsKey(MagratheaErrorKind.AUTH_ERROR)) continue;
+            MagratheaTypeExecutor executor = taskExecutor.executorFor(state.type());
+            if (executor == null) continue;
+            problems.addAll(executor.unmetLogins(state, tenantId, projectId, startedBy));
+        }
+        if (!problems.isEmpty()) {
+            throw new MagratheaWorkflowException("Workflow '" + workflow.name() + "' cannot run for this user: "
+                    + String.join("; ", problems)
+                    + ". Connect the account, or declare catch: { auth_error: <state> } on the state.");
+        }
+    }
+
     private void requireCapabilities(ResolvedMagratheaWorkflow workflow, MagratheaRunBinding binding) {
         List<String> problems = new ArrayList<>();
         for (Map.Entry<String, MagratheaStateSpec> entry : workflow.states().entrySet()) {

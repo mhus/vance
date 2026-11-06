@@ -32,6 +32,8 @@ const OUTCOMES: Record<string, readonly string[]> = {
   gate_task: ['approved', 'rejected', 'insufficient_info', 'undecidable', 'success'],
   timer_task: ['fired'],
   workflow_task: ['success', 'failure'],
+  // The two ways out of a loop state: into the body once per element, and on after the last.
+  for_each_task: ['each', 'done'],
 };
 
 /** The outcomes worth offering for {@code on:} of a state of {@code type}. */

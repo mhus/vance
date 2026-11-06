@@ -17,6 +17,7 @@ const TEMPLATES: Record<WorkflowTaskType, Record<string, unknown>> = {
   timer_task: { type: 'timer_task', duration: '1h' },
   condition_task: { type: 'condition_task' },
   workflow_task: { type: 'workflow_task', workflow: 'other-workflow' },
+  for_each_task: { type: 'for_each_task', items: '${state.list}' },
   terminal: { type: 'terminal', outcome: 'success' },
 };
 

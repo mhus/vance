@@ -14,6 +14,7 @@ describe('fieldSpecsFor', () => {
     expect(required('shell_task')).toEqual(['run']);
     expect(required('tool_task')).toEqual(['tool']);
     expect(required('workflow_task')).toEqual(['workflow']);
+    expect(required('for_each_task')).toEqual(['items']);
     expect(required('terminal')).toEqual([]);
   });
 

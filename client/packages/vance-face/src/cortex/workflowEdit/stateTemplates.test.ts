@@ -24,8 +24,12 @@ describe('stateTemplate', () => {
   it('makes a workflow the drawing reads without problems, whatever the type', () => {
     for (const type of WORKFLOW_TASK_TYPES) {
       const g = parseWorkflowGraph(addState('', 'first', stateTemplate(type)));
-      expect(g.problems, type).toEqual([]);
       expect(g.states[0].knownType, type).toBe(true);
+      // A loop is only complete with its two arrows; nothing else is missing from a new state.
+      const expected = type === 'for_each_task'
+        ? ["state 'first' (for_each_task) needs 'on: each: <state>'", "state 'first' (for_each_task) needs 'on: done: <state>'"]
+        : [];
+      expect(g.problems, type).toEqual(expected);
     }
   });
 });

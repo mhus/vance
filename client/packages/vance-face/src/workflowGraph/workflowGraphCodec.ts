@@ -17,7 +17,7 @@
 
 import { parseYamlBody } from '@vance/shared';
 
-/** The nine task types a state's `type:` may name (spec §3). */
+/** The ten task types a state's `type:` may name (spec §3). */
 export const WORKFLOW_TASK_TYPES = [
   'agent_task',
   'shell_task',
@@ -27,6 +27,7 @@ export const WORKFLOW_TASK_TYPES = [
   'timer_task',
   'condition_task',
   'workflow_task',
+  'for_each_task',
   'terminal',
 ] as const;
 
@@ -77,6 +78,8 @@ export interface WorkflowEdge {
   key: string;
   /** True when {@link target} is a {@link WorkflowStateNode.missing} node. */
   dangling: boolean;
+  /** True for the {@code each} arrow of a {@code for_each_task}: the one that leads into the loop body. */
+  intoLoop?: boolean;
 }
 
 /** One entry of the workflow's `parameters:` block. */
@@ -191,7 +194,16 @@ export function parseWorkflowGraph(body: string): WorkflowGraph {
       missing: false,
     });
 
+    const before = edges.length;
     collectEdges(name, raw, edges);
+    if (type === 'for_each_task') {
+      markLoopEntry(edges, before);
+      for (const outcome of ['each', 'done']) {
+        if (!edges.slice(before).some((e) => e.kind === 'on' && e.key === outcome)) {
+          problems.push(`state '${name}' (for_each_task) needs 'on: ${outcome}: <state>'`);
+        }
+      }
+    }
   }
 
   // Second pass: any edge target without a node becomes a ghost node, so the
@@ -276,6 +288,13 @@ function collectEdges(source: string, raw: Record<string, unknown>, out: Workflo
   }
 }
 
+/** The {@code each} arrow of a loop state leads into the body; the drawing sets it apart. */
+function markLoopEntry(edges: WorkflowEdge[], from: number): void {
+  for (const e of edges.slice(from)) {
+    if (e.kind === 'on' && e.key === 'each') e.intoLoop = true;
+  }
+}
+
 function pushMapEdges(
   source: string,
   raw: unknown,
@@ -331,6 +350,8 @@ function detailFor(type: string, raw: Record<string, unknown>): string | undefin
     }
     case 'timer_task':
       return optionalString(raw.duration);
+    case 'for_each_task':
+      return optionalString(raw.items);
     case 'gate_task':
       return isRecord(raw.inbox) ? optionalString(raw.inbox.kind) : undefined;
     case 'condition_task':

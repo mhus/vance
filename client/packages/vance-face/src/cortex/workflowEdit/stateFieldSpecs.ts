@@ -95,6 +95,15 @@ const SPECS: Record<string, FieldSpec[]> = {
     { key: 'maxItems', path: ['maxItems'], kind: 'integer' },
     ...COMMON,
   ],
+  for_each_task: [
+    { key: 'items', path: ['items'], kind: 'string', required: true },
+    { key: 'as', path: ['as'], kind: 'string' },
+    { key: 'maxItems', path: ['maxItems'], kind: 'integer' },
+    { key: 'collect', path: ['collect'], kind: 'string' },
+    STORE_AS,
+    ENTER_COUNTER,
+    RESET_COUNTERS,
+  ],
   terminal: [{ key: 'outcome', path: ['outcome'], kind: 'select', options: ['success', 'failure'] }],
 };
 

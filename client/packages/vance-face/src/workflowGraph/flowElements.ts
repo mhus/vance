@@ -8,7 +8,13 @@ import type {
 } from './workflowGraphCodec';
 
 /** The look of one edge: the failure lane is dashed and warm, branches take the accent. */
-export function edgeStyle(kind: WorkflowEdgeKind, dangling: boolean): Record<string, string> {
+export function edgeStyle(
+  kind: WorkflowEdgeKind,
+  dangling: boolean,
+  intoLoop = false,
+): Record<string, string> {
+  // The arrow into a loop body stands out from the way on, in the colour of the loop's node.
+  if (intoLoop && !dangling) return { stroke: 'var(--color-accent)', strokeWidth: '2.5' };
   if (dangling) return { stroke: 'var(--color-error)', strokeWidth: '1.5', strokeDasharray: '2 3' };
   switch (kind) {
     // `catch:` is the failure lane — dashed and warm, so an eye scanning
@@ -35,6 +41,7 @@ export function typeColor(state: WorkflowStateNode): string {
     // the type label and the node's left edge all but vanish.
     case 'condition_task': return 'color-mix(in oklab, var(--color-base-content) 62%, transparent)';
     case 'workflow_task': return 'var(--color-accent)';
+    case 'for_each_task': return 'var(--color-accent)';
     case 'terminal':
       return state.terminalOutcome === 'failure'
         ? 'var(--color-error)'
@@ -54,7 +61,7 @@ export function toFlowEdges(edges: WorkflowEdge[]): Edge[] {
     markerEnd: 'arrowclosed',
     animated: false,
     class: `wf-edge wf-edge--${edge.kind}${edge.dangling ? ' wf-edge--dangling' : ''}`,
-    style: edgeStyle(edge.kind, edge.dangling),
+    style: edgeStyle(edge.kind, edge.dangling, edge.intoLoop === true),
     labelBgStyle: { fill: 'var(--color-base-100)' },
     labelStyle: { fontSize: '11px', fill: 'var(--color-base-content)' },
   }));

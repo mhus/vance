@@ -384,6 +384,8 @@ export * from './runs/RunBreakpointsRequest';
 export * from './runs/RunChildDto';
 export * from './runs/RunDetailDto';
 export * from './runs/RunLinkDto';
+export * from './runs/RunRestartRequest';
+export * from './runs/RunRestartResponse';
 export * from './runs/RunSimulateRequest';
 export * from './runs/RunSimulationDto';
 export * from './runs/RunStatus';

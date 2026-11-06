@@ -5,7 +5,8 @@
  * Read-only by construction: this component has no code that changes a
  * workflow, so everything that only reads (the Cortex view tab, the run view)
  * can import it without pulling an editor into its bundle. Editing, when it
- * comes, is a separate component under Cortex that builds on this one.
+ * comes, is a separate component under Cortex that shares this one's building
+ * blocks (layout, node card, flow elements) instead of extending it.
  *
  * The layout is derived, never authored — there are no stored node positions
  * to preserve, so every render is a fresh Dagre layout. A caller may lay a
@@ -21,20 +22,15 @@
  */
 import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { Handle, Position, VueFlow } from '@vue-flow/core';
-import type { Edge, Node } from '@vue-flow/core';
+import { VueFlow } from '@vue-flow/core';
 import '@vue-flow/core/dist/style.css';
 import '@vue-flow/core/dist/theme-default.css';
-import { Graph as DagreGraph, layout as dagreLayout } from '@dagrejs/dagre';
-import { VAlert, VButton, VIcon } from '@/components';
-import {
-  parseWorkflowGraph,
-  type WorkflowEdgeKind,
-  type WorkflowStateNode,
-} from './workflowGraphCodec';
-import type { GraphOverlay, GraphStateTone } from './overlay';
-import { nodeClasses } from './nodeClasses';
-import { formatDuration } from '@/util/formatDuration';
+import { VAlert, VButton } from '@/components';
+import { toFlowEdges, toFlowNodes } from './flowElements';
+import { layoutPositions, type GraphDirection } from './layout';
+import { parseWorkflowGraph } from './workflowGraphCodec';
+import type { GraphOverlay } from './overlay';
+import WorkflowNodeCard from './WorkflowNodeCard.vue';
 
 defineOptions({ name: 'WorkflowGraph' });
 
@@ -63,121 +59,23 @@ const emit = defineEmits<{ (e: 'node-click', state: string): void }>();
 
 const { t } = useI18n();
 
-/** Layout box for one state node — matches the CSS below. */
-const NODE_W = 210;
-const NODE_H = 74;
-
-/** Top-down reads like a flowchart; wide graphs are easier left-right. */
-const direction = ref<'TB' | 'LR'>('TB');
+const direction = ref<GraphDirection>('TB');
 
 const graph = computed(() => parseWorkflowGraph(props.doc));
+const positions = computed(() => layoutPositions(graph.value, direction.value));
 
-const positions = computed<Map<string, { x: number; y: number }>>(() => {
-  const out = new Map<string, { x: number; y: number }>();
-  const g = graph.value;
-  if (g.states.length === 0) return out;
-
-  const dag = new DagreGraph();
-  dag.setGraph({
-    rankdir: direction.value,
-    nodesep: 44,
-    ranksep: 78,
-    marginx: 24,
-    marginy: 24,
-  });
-  dag.setDefaultEdgeLabel(() => ({}));
-  for (const state of g.states) {
-    dag.setNode(state.name, { width: NODE_W, height: NODE_H });
-  }
-  const known = new Set(g.states.map((s) => s.name));
-  for (const edge of g.edges) {
-    if (known.has(edge.source) && known.has(edge.target)) {
-      dag.setEdge(edge.source, edge.target);
-    }
-  }
-  dagreLayout(dag);
-
-  for (const state of g.states) {
-    const laid = dag.node(state.name) as { x?: number; y?: number } | undefined;
-    if (typeof laid?.x !== 'number' || typeof laid?.y !== 'number') continue;
-    // Dagre centres its boxes; vue-flow positions by top-left corner.
-    out.set(state.name, { x: laid.x - NODE_W / 2, y: laid.y - NODE_H / 2 });
-  }
-  return out;
-});
-
-const vfNodes = computed<Node[]>(() =>
-  graph.value.states.map((state, idx) => ({
-    id: state.name,
-    type: 'state',
-    position: positions.value.get(state.name)
-      ?? { x: 40, y: 40 + idx * (NODE_H + 30) },
-    data: {
-      state,
+const vfNodes = computed(() =>
+  toFlowNodes(
+    graph.value,
+    positions.value,
+    (state) => ({
       run: props.overlay?.[state.name],
       breakpoint: props.breakpoints.includes(state.name),
-    },
-    draggable: false,
-    selectable: false,
-    connectable: false,
-  })),
+    }),
+    { draggable: false, selectable: false, connectable: false },
+  ),
 );
-
-const vfEdges = computed<Edge[]>(() =>
-  graph.value.edges.map((edge) => ({
-    id: edge.id,
-    source: edge.source,
-    target: edge.target,
-    label: edge.label,
-    type: 'smoothstep',
-    markerEnd: 'arrowclosed',
-    animated: false,
-    class: `wf-edge wf-edge--${edge.kind}${edge.dangling ? ' wf-edge--dangling' : ''}`,
-    style: edgeStyle(edge.kind, edge.dangling),
-    labelBgStyle: { fill: 'var(--color-base-100)' },
-    labelStyle: { fontSize: '11px', fill: 'var(--color-base-content)' },
-  })),
-);
-
-function edgeStyle(kind: WorkflowEdgeKind, dangling: boolean): Record<string, string> {
-  if (dangling) return { stroke: 'var(--color-error)', strokeWidth: '1.5', strokeDasharray: '2 3' };
-  switch (kind) {
-    // `catch:` is the failure lane — dashed and warm, so an eye scanning
-    // the diagram separates error routing from the happy path at once.
-    case 'catch':
-      return { stroke: 'var(--color-warning)', strokeWidth: '1.5', strokeDasharray: '6 4' };
-    case 'condition':
-      return { stroke: 'var(--color-primary)', strokeWidth: '1.5' };
-    case 'else':
-      return { stroke: 'var(--color-primary)', strokeWidth: '1.5', strokeDasharray: '6 4' };
-    default:
-      return { stroke: 'var(--color-base-content)', strokeWidth: '1.5' };
-  }
-}
-
-/** Colour band per task type — the node's left edge. */
-function typeColor(state: WorkflowStateNode): string {
-  if (state.missing || !state.knownType) return 'var(--color-error)';
-  switch (state.type) {
-    case 'agent_task': return 'var(--color-primary)';
-    case 'gate_task': return 'var(--color-warning)';
-    case 'timer_task': return 'var(--color-info)';
-    // A neutral, readable grey: --color-secondary is so pale on a white node that
-    // the type label and the node's left edge all but vanish.
-    case 'condition_task': return 'color-mix(in oklab, var(--color-base-content) 62%, transparent)';
-    case 'workflow_task': return 'var(--color-accent)';
-    case 'terminal':
-      return state.terminalOutcome === 'failure'
-        ? 'var(--color-error)'
-        : 'var(--color-success)';
-    default: return 'var(--color-base-content)';
-  }
-}
-
-function typeLabel(state: WorkflowStateNode): string {
-  if (state.missing) return t('documents.workflowView.undeclared');
-  return state.type || t('documents.workflowView.noType');
-}
+const vfEdges = computed(() => toFlowEdges(graph.value.edges));
 
 const hasStates = computed(() => graph.value.states.length > 0);
 const stateCount = computed(() => graph.value.states.filter((s) => !s.missing).length);
@@ -190,22 +88,6 @@ function onNodeClick(event: { node: { id: string } }): void {
 
 function toggleDirection(): void {
   direction.value = direction.value === 'TB' ? 'LR' : 'TB';
-}
-
-/** Line under the type: how the run left this state, and how often it was here. */
-function runLine(run: {
-  tone: GraphStateTone;
-  entries: number;
-  outcome?: string;
-  durationMs?: number;
-  simulated?: boolean;
-}): string {
-  const parts: string[] = [];
-  if (run.simulated) parts.push(t('documents.workflowView.simulated'));
-  if (run.outcome) parts.push(run.outcome);
-  if (run.durationMs != null) parts.push(formatDuration(run.durationMs));
-  if (run.entries > 1) parts.push(`×${run.entries}`);
-  return parts.join(' · ');
 }
 </script>
 
@@ -252,47 +134,13 @@ function runLine(run: {
         @node-click="onNodeClick"
       >
         <template #node-state="{ data }">
-          <div
-            :class="[...nodeClasses(data.state, data.run, data.breakpoint), { 'wf-node--interactive': interactive }]"
-            :style="{ borderLeftColor: typeColor(data.state) }"
-          >
-            <Handle type="target" :position="direction === 'TB' ? Position.Top : Position.Left" />
-            <div class="wf-node-head">
-              <span
-                v-if="data.breakpoint"
-                class="wf-breakpoint"
-                :title="t('documents.workflowView.breakpoint')"
-              ></span>
-              <span class="wf-node-name">{{ data.state.name }}</span>
-              <span v-if="data.state.isStart" class="wf-badge wf-badge--start">
-                {{ t('documents.workflowView.startBadge') }}
-              </span>
-              <span
-                v-if="data.state.hasRetry"
-                class="inline-flex shrink-0 opacity-70"
-                :title="t('documents.workflowView.retryHint')"
-              ><VIcon name="refresh" /></span>
-            </div>
-            <div class="wf-node-type" :style="{ color: typeColor(data.state) }">
-              {{ typeLabel(data.state) }}
-            </div>
-            <div v-if="data.state.detail" class="wf-node-detail" :title="data.state.detail">
-              {{ data.state.detail }}
-            </div>
-            <div v-else-if="data.state.storeAs" class="wf-node-detail">
-              <VIcon name="arrow-right" class="inline align-middle" /> {{ data.state.storeAs }}
-            </div>
-            <div v-if="data.run" class="wf-node-run">
-              <template v-if="data.run.tone === 'halted'">{{ t('documents.workflowView.runHalted') }}</template>
-              <template v-else-if="data.run.tone === 'current'">{{ t('documents.workflowView.runCurrent') }}</template>
-              <template v-else>{{ runLine(data.run) }}</template>
-            </div>
-            <Handle
-              v-if="!data.state.isTerminal"
-              type="source"
-              :position="direction === 'TB' ? Position.Bottom : Position.Right"
-            />
-          </div>
+          <WorkflowNodeCard
+            :state="data.state"
+            :run="data.run"
+            :breakpoint="data.breakpoint"
+            :direction="direction"
+            :interactive="interactive"
+          />
         </template>
       </VueFlow>
     </div>
@@ -300,7 +148,6 @@ function runLine(run: {
     <p v-else class="empty">{{ t('documents.workflowView.empty') }}</p>
   </div>
 </template>
-
 <style scoped>
 .workflow-view {
   display: flex;
@@ -348,105 +195,5 @@ function runLine(run: {
   opacity: 0.6;
   font-style: italic;
   margin: 0;
-}
-
-/* ── node ─────────────────────────────────────────────────────── */
-.wf-node {
-  width: 210px;
-  min-height: 74px;
-  box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-  padding: 0.45rem 0.6rem;
-  background: var(--color-base-100);
-  border: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent);
-  border-left-width: 4px;
-  border-left-style: solid;
-  border-radius: 0.4rem;
-  text-align: left;
-  font-size: 0.8rem;
-  cursor: default;
-}
-.wf-node--start {
-  box-shadow: 0 0 0 2px color-mix(in oklab, var(--color-primary) 45%, transparent);
-}
-.wf-node--missing {
-  border-style: dashed;
-  opacity: 0.75;
-}
-.wf-node-head {
-  display: flex;
-  align-items: center;
-  gap: 0.3rem;
-}
-.wf-node-name {
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.wf-node-type {
-  font-size: 0.68rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  opacity: 0.85;
-}
-.wf-node-detail {
-  font-family: ui-monospace, monospace;
-  font-size: 0.7rem;
-  opacity: 0.65;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.wf-badge {
-  flex: 0 0 auto;
-  font-size: 0.6rem;
-  line-height: 1;
-  padding: 0.15rem 0.3rem;
-  border-radius: 0.2rem;
-  background: color-mix(in oklab, var(--color-base-content) 10%, transparent);
-  opacity: 0.8;
-}
-.wf-badge--start {
-  background: color-mix(in oklab, var(--color-primary) 20%, transparent);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-.wf-node--interactive { cursor: pointer; }
-.wf-node--interactive:hover {
-  border-color: color-mix(in oklab, var(--color-base-content) 45%, transparent);
-}
-/* A breakpoint: the run halts in front of this state. */
-.wf-breakpoint {
-  flex: 0 0 auto;
-  width: 0.65rem;
-  height: 0.65rem;
-  border-radius: 50%;
-  background: var(--color-error);
-}
-.wf-node--breakpoint {
-  border-top-color: var(--color-error);
-}
-.wf-node-run {
-  margin-top: 0.1rem;
-  font-size: 0.7rem;
-  font-variant-numeric: tabular-nums;
-  opacity: 0.85;
-}
-.wf-node--run-ok {
-  background: color-mix(in oklab, var(--color-success) 12%, var(--color-base-100));
-}
-.wf-node--run-other {
-  background: color-mix(in oklab, var(--color-warning) 16%, var(--color-base-100));
-}
-.wf-node--run-current {
-  box-shadow: 0 0 0 2px color-mix(in oklab, var(--color-info) 70%, transparent);
-}
-/* Halted: the run stands in front of this state and has not started it. */
-.wf-node--run-halted {
-  box-shadow: 0 0 0 2px color-mix(in oklab, var(--color-warning) 80%, transparent);
-  border-style: dashed;
 }
 </style>

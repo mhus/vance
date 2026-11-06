@@ -27,7 +27,9 @@ import ConnectDialog, {
 import WorkflowEdgeInspector from '@/cortex/workflowEdit/WorkflowEdgeInspector.vue';
 import WorkflowEditGraph from '@/cortex/workflowEdit/WorkflowEditGraph.vue';
 import WorkflowInspector from '@/cortex/workflowEdit/WorkflowInspector.vue';
-import { stateTemplate } from '@/cortex/workflowEdit/stateTemplates';
+import WorkflowPalette from '@/cortex/workflowEdit/WorkflowPalette.vue';
+import { toolLabel, type PaletteTool } from '@/cortex/workflowEdit/paletteModel';
+import { stateTemplate, toolStateTemplate } from '@/cortex/workflowEdit/stateTemplates';
 import { useWorkflowChange } from '@/cortex/workflowEdit/useWorkflowChange';
 import { addState, connect, freeStateName, type EdgeRef } from '@/cortex/workflowEdit/workflowMutations';
 import { useWorkflowServerCheck } from '@/cortex/workflowEdit/useWorkflowServerCheck';
@@ -114,10 +116,20 @@ function openRunView(): void {
 
 const change = useWorkflowChange(() => props.doc, (next) => emit('update:doc', next));
 
+const paletteOpen = ref(false);
+
 /** A new state at the end of the workflow, picked right away so it can be edited. */
-function onAdd(type: WorkflowTaskType): void {
-  const name = freeStateName(props.doc, type);
-  if (change.apply(() => addState(props.doc, name, stateTemplate(type)))) pickState(name);
+function addPicked(base: string, body: Record<string, unknown>): void {
+  const name = freeStateName(props.doc, base);
+  if (change.apply(() => addState(props.doc, name, body))) pickState(name);
+}
+
+function onPickTask(type: WorkflowTaskType): void {
+  addPicked(type, stateTemplate(type));
+}
+
+function onPickTool(tool: PaletteTool): void {
+  addPicked(toolLabel(tool.name), toolStateTemplate(tool.name, tool.params));
 }
 
 // ── connections ──────────────────────────────────────────────────
@@ -218,7 +230,7 @@ watch(() => props.docPath, () => check.clear());
         :selected-edge="selectedEdge"
         @select="pickState"
         @select-edge="pickEdge"
-        @add="onAdd"
+        @add="paletteOpen = true"
         @connect="onConnect"
       />
       <WorkflowGraph
@@ -247,6 +259,12 @@ watch(() => props.docPath, () => check.clear());
       />
     </div>
 
+    <WorkflowPalette
+      v-model="paletteOpen"
+      :project-id="projectId"
+      @pick-task="onPickTask"
+      @pick-tool="onPickTool"
+    />
     <ConnectDialog :request="pending" @confirm="confirmConnect" @cancel="pending = null" />
   </div>
 </template>

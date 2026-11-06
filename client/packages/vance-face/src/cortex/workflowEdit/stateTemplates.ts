@@ -27,3 +27,18 @@ export const TEMPLATE_TYPES: readonly WorkflowTaskType[] = WORKFLOW_TASK_TYPES;
 export function stateTemplate(type: WorkflowTaskType): Record<string, unknown> {
   return structuredClone(TEMPLATES[type]);
 }
+
+/**
+ * The starting body of a {@code tool_task} that calls {@code tool}, with the
+ * parameter example the service's catalog gave, if any. The example is passed
+ * on as it is — {@code addState} copies it into the document, and it may be a
+ * reactive object that {@code structuredClone} cannot take.
+ */
+export function toolStateTemplate(
+  tool: string,
+  params?: Record<string, unknown>,
+): Record<string, unknown> {
+  const body: Record<string, unknown> = { type: 'tool_task', tool };
+  if (params && Object.keys(params).length > 0) body.params = params;
+  return body;
+}

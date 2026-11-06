@@ -420,10 +420,17 @@ export * from './server-tools/ServerToolTestResultDto';
 export * from './server-tools/ServerToolWriteRequest';
 export * from './server-tools/ToolTypeDto';
 
+export * from './tools/CatalogTriggerCreateRequest';
+export * from './tools/CatalogTriggerCreateResponse';
 export * from './tools/ClientToolInvokeRequest';
 export * from './tools/ClientToolInvokeResponse';
 export * from './tools/ClientToolRegisterRequest';
 export * from './tools/DaemonRegisterRequest';
+export * from './tools/ServiceCatalogDto';
+export * from './tools/ServiceCatalogHighlightDto';
+export * from './tools/ServiceCatalogInputDto';
+export * from './tools/ServiceCatalogTriggerDto';
+export * from './tools/ToolServiceDto';
 export * from './tools/ToolSpec';
 
 export * from './toolhealth/ToolErrorCode';

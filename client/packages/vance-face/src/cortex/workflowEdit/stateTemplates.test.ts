@@ -1,7 +1,8 @@
+import { reactive } from 'vue';
 import { describe, expect, it } from 'vitest';
 import { WORKFLOW_TASK_TYPES } from '@/workflowGraph/workflowGraphCodec';
 import { addState } from './workflowMutations';
-import { stateTemplate, TEMPLATE_TYPES } from './stateTemplates';
+import { stateTemplate, TEMPLATE_TYPES, toolStateTemplate } from './stateTemplates';
 import { parseWorkflowGraph } from '@/workflowGraph/workflowGraphCodec';
 
 describe('stateTemplate', () => {
@@ -26,5 +27,24 @@ describe('stateTemplate', () => {
       expect(g.problems, type).toEqual([]);
       expect(g.states[0].knownType, type).toBe(true);
     }
+  });
+});
+
+describe('toolStateTemplate', () => {
+  it('names the tool and carries the example parameters', () => {
+    const body = toolStateTemplate('slack_rest__chat_post_message', { channel: 'C1' });
+    expect(body).toEqual({ type: 'tool_task', tool: 'slack_rest__chat_post_message', params: { channel: 'C1' } });
+  });
+
+  it('takes a reactive example, which cannot be structured-cloned, into a document', () => {
+    const body = toolStateTemplate('slack_rest__x', reactive({ channel: 'C1', nested: { a: 1 } }));
+    const g = parseWorkflowGraph(addState('', 'x', body));
+    expect(g.problems).toEqual([]);
+    expect(addState('', 'x', body)).toMatch(/params:\n\s+channel: C1\n\s+nested:\n\s+a: 1/);
+  });
+
+  it('leaves params out when there is no example', () => {
+    expect(toolStateTemplate('doc_read')).toEqual({ type: 'tool_task', tool: 'doc_read' });
+    expect(toolStateTemplate('doc_read', {})).toEqual({ type: 'tool_task', tool: 'doc_read' });
   });
 });

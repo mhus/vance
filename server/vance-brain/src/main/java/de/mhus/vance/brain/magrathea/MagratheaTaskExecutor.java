@@ -234,7 +234,8 @@ public class MagratheaTaskExecutor {
                 params,
                 vars,
                 start.getSessionId(),
-                start.getOwnerProcessId());
+                start.getOwnerProcessId(),
+                state.type() == MagratheaTaskType.FOR_EACH_TASK ? previousStateOf(task) : null);
 
         long started = System.currentTimeMillis();
         Optional<TaskOutcome> outcome;
@@ -414,6 +415,8 @@ public class MagratheaTaskExecutor {
         return switch (state.type()) {
             case TOOL_TASK -> java.util.Set.of("params");
             case WORKFLOW_TASK -> java.util.Set.of("params", "items");
+            // The list stays a list, and what an element passes on keeps its type.
+            case FOR_EACH_TASK -> java.util.Set.of("items", "collect");
             default -> java.util.Set.of();
         };
     }
@@ -433,7 +436,9 @@ public class MagratheaTaskExecutor {
      */
     private void emitProgress(@org.jspecify.annotations.Nullable String ownerProcessId, MagratheaStateSpec state) {
         if (ownerProcessId == null || ownerProcessId.isBlank()) return;
-        if (state.type() == MagratheaTaskType.CONDITION_TASK || state.type() == MagratheaTaskType.TERMINAL) {
+        if (state.type() == MagratheaTaskType.CONDITION_TASK
+                || state.type() == MagratheaTaskType.FOR_EACH_TASK
+                || state.type() == MagratheaTaskType.TERMINAL) {
             return;
         }
         de.mhus.vance.brain.progress.ProgressEmitter emitter = progressEmitterProvider.getIfAvailable();
@@ -447,6 +452,19 @@ public class MagratheaTaskExecutor {
         } catch (RuntimeException ex) {
             log.trace("Magrathea progress emit failed for owner {}: {}", ownerProcessId, ex.toString());
         }
+    }
+
+    /**
+     * The state the run was in before the one this task belongs to: the one before the last
+     * {@code StateEnteredRecord}, which is this task's own state.
+     */
+    private @org.jspecify.annotations.Nullable String previousStateOf(MagratheaTaskDocument task) {
+        java.util.List<de.mhus.vance.shared.magrathea.journal.StateEnteredRecord> entered = journalService.readAll(
+                task.getTenantId(),
+                task.getProjectId(),
+                task.getWorkflowRunId(),
+                de.mhus.vance.shared.magrathea.journal.StateEnteredRecord.class);
+        return entered.size() >= 2 ? entered.get(entered.size() - 2).getState() : null;
     }
 
     private void publishFailure(MagratheaTaskDocument task, String message) {
@@ -477,6 +495,8 @@ public class MagratheaTaskExecutor {
                 outcome.output(),
                 outcome.errorMessage(),
                 durationMs,
-                outcome.nextStateOverride()));
+                outcome.nextStateOverride(),
+                false,
+                outcome.vars()));
     }
 }

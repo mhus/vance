@@ -30,6 +30,11 @@ public enum MagratheaTaskType {
     CONDITION_TASK,
     /** Blocking sub-workflow spawn. §4.7 */
     WORKFLOW_TASK,
+    /**
+     * A loop over a list inside the same workflow: the state's {@code each} outcome leads into the body, the body
+     * leads back to the state, {@code done} leaves. No task is run for it; it only decides which way to go.
+     */
+    FOR_EACH_TASK,
     /** Terminal end state. §4.8 */
     TERMINAL
 }

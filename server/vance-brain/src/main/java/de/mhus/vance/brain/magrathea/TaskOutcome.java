@@ -20,12 +20,29 @@ import tools.jackson.databind.JsonNode;
  *        is a failure or error-kind.
  * @param nextStateOverride Set by {@code CONDITION_TASK} to pin the
  *        next state directly; {@code null} for all other types.
+ * @param vars Variables the dispatcher writes as {@code VarRecord}s, in order, before the next state is
+ *        resolved — how a {@code FOR_EACH_TASK} hands the element on to its body. Empty for every other type.
  */
 public record TaskOutcome(
         String outcome,
         @Nullable JsonNode output,
         @Nullable String errorMessage,
-        @Nullable String nextStateOverride) {
+        @Nullable String nextStateOverride,
+        java.util.Map<String, JsonNode> vars) {
+
+    public TaskOutcome(
+            String outcome,
+            @Nullable JsonNode output,
+            @Nullable String errorMessage,
+            @Nullable String nextStateOverride) {
+        this(outcome, output, errorMessage, nextStateOverride, java.util.Map.of());
+    }
+
+    /** An outcome that also sets variables — the loop state saying "next element" or "done". */
+    public static TaskOutcome withVars(
+            String outcome, @Nullable JsonNode output, java.util.Map<String, JsonNode> vars) {
+        return new TaskOutcome(outcome, output, null, null, vars);
+    }
 
     public static TaskOutcome success() {
         return new TaskOutcome(TaskCompletedEvent.OUTCOME_SUCCESS, null, null, null);
@@ -54,7 +71,6 @@ public record TaskOutcome(
      * error kind.
      */
     public static TaskOutcome capabilityMissing(String errorMessage) {
-        return new TaskOutcome(
-                TaskCompletedEvent.OUTCOME_CAPABILITY_MISSING, null, errorMessage, null);
+        return new TaskOutcome(TaskCompletedEvent.OUTCOME_CAPABILITY_MISSING, null, errorMessage, null);
     }
 }

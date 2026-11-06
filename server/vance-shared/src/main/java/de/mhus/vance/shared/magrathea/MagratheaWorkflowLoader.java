@@ -248,6 +248,7 @@ public class MagratheaWorkflowLoader {
         }
 
         validateTransitionTargets(states);
+        validateLoops(states);
 
         DocumentDocument doc = hit.document();
         return new ResolvedMagratheaWorkflow(
@@ -366,6 +367,10 @@ public class MagratheaWorkflowLoader {
             spec.put(e.getKey(), e.getValue());
         }
 
+        if (type == MagratheaTaskType.FOR_EACH_TASK) {
+            validateForEach(name, onOutcomes, spec);
+        }
+
         return new MagratheaStateSpec(
                 name,
                 type,
@@ -379,6 +384,52 @@ public class MagratheaWorkflowLoader {
                 List.copyOf(transitions),
                 retry,
                 Map.copyOf(spec));
+    }
+
+    /** Names a loop may not give its element: the engine writes them next to it. */
+    private static final Set<String> RESERVED_LOOP_NAMES = Set.of("index", "count");
+
+    private static final java.util.regex.Pattern LOOP_NAME = java.util.regex.Pattern.compile("[A-Za-z_][A-Za-z0-9_]*");
+
+    /**
+     * What a {@code for_each_task} has to say: the list ({@code items}), where each element goes ({@code each})
+     * and where the loop ends up ({@code done}); and, when given, a usable element name and a sane
+     * {@code maxItems}.
+     */
+    private static void validateForEach(String name, Map<String, String> onOutcomes, Map<String, Object> spec) {
+        Object items = spec.get("items");
+        if (items == null || (items instanceof String s && s.isBlank())) {
+            throw new IllegalStateException("state '" + name + "' (for_each_task) needs 'items'");
+        }
+        for (String outcome : List.of(MagratheaLoopBody.OUTCOME_EACH, MagratheaLoopBody.OUTCOME_DONE)) {
+            if (!onOutcomes.containsKey(outcome)) {
+                throw new IllegalStateException(
+                        "state '" + name + "' (for_each_task) needs 'on: " + outcome + ": <state>'");
+            }
+        }
+        Object as = spec.get("as");
+        if (as != null) {
+            String element = String.valueOf(as);
+            if (!LOOP_NAME.matcher(element).matches() || RESERVED_LOOP_NAMES.contains(element)) {
+                throw new IllegalStateException("state '" + name + "' 'as: " + element
+                        + "' is not a usable element name" + " (letters, digits and '_'; not 'index' or 'count')");
+            }
+        }
+        Integer maxItems = numberAsIntOrNull(spec.get("maxItems"), "states." + name + ".maxItems");
+        if (maxItems != null && (maxItems < 1 || maxItems > 1000)) {
+            throw new IllegalStateException("state '" + name + "' maxItems must be between 1 and 1000");
+        }
+    }
+
+    /** The arrow {@code each} of a loop must lead somewhere else than back to the loop: that body would be empty. */
+    private static void validateLoops(Map<String, MagratheaStateSpec> states) {
+        for (MagratheaStateSpec state : states.values()) {
+            if (state.type() != MagratheaTaskType.FOR_EACH_TASK) continue;
+            if (state.name().equals(state.onOutcomes().get(MagratheaLoopBody.OUTCOME_EACH))) {
+                throw new IllegalStateException(
+                        "state '" + state.name() + "' (for_each_task) leads 'each' back to itself; it has no body");
+            }
+        }
     }
 
     /** A list of variable names, as {@code resetCounters:} takes. */

@@ -35,5 +35,39 @@ public record MagratheaTaskContext(
          * ThinkProcess that owns the run and waits for its result, or null.
          * Presence of this is what lets a task reach a conversation.
          */
-        @org.jspecify.annotations.Nullable String ownerProcessId) {
+        @org.jspecify.annotations.Nullable String ownerProcessId,
+        /**
+         * The state the run was in before this one, or null at the start. Only read for a
+         * {@code FOR_EACH_TASK}, which has to tell the next element from a new loop; the dispatcher fills it in
+         * for that type alone.
+         */
+        @org.jspecify.annotations.Nullable String previousState) {
+
+    /** A context without a previous state — for every type that does not look back. */
+    public MagratheaTaskContext(
+            String tenantId,
+            String projectId,
+            String workflowRunId,
+            String taskId,
+            @org.jspecify.annotations.Nullable String startedBy,
+            ResolvedMagratheaWorkflow workflow,
+            MagratheaStateSpec state,
+            Map<String, Object> params,
+            Map<String, Object> vars,
+            @org.jspecify.annotations.Nullable String sessionId,
+            @org.jspecify.annotations.Nullable String ownerProcessId) {
+        this(
+                tenantId,
+                projectId,
+                workflowRunId,
+                taskId,
+                startedBy,
+                workflow,
+                state,
+                params,
+                vars,
+                sessionId,
+                ownerProcessId,
+                null);
+    }
 }

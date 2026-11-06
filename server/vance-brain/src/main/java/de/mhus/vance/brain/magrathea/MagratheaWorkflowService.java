@@ -1642,6 +1642,15 @@ public class MagratheaWorkflowService {
                             .build());
         }
 
+        // 1b. Variables the task asked to set — a loop handing its element to the body. Written before the next
+        //     state is resolved, so the next task sees them.
+        event.vars()
+                .forEach((key, value) -> journalService.append(
+                        event.tenantId(),
+                        event.projectId(),
+                        event.workflowRunId(),
+                        VarRecord.builder().key(key).value(value).build()));
+
         // 2. TERMINAL-specific: write StatusRecord + ResultRecord
         if (event.taskType() == MagratheaTaskType.TERMINAL) {
             MagratheaRunStatus runStatus = TaskCompletedEvent.OUTCOME_SUCCESS.equals(event.outcome())

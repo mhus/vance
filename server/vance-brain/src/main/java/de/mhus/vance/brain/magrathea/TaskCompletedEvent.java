@@ -24,6 +24,7 @@ import tools.jackson.databind.JsonNode;
  *        {@code null} for every other task type.
  * @param simulated The task did not run; a debug reader supplied this result.
  *        Journalled as such, and never retried — a retry would execute it.
+ * @param vars Variables to write before the next state is resolved; see {@link TaskOutcome#vars()}.
  */
 public record TaskCompletedEvent(
         String tenantId,
@@ -37,7 +38,38 @@ public record TaskCompletedEvent(
         @Nullable String errorMessage,
         long durationMs,
         @Nullable String nextStateOverride,
-        boolean simulated) {
+        boolean simulated,
+        java.util.Map<String, JsonNode> vars) {
+
+    /** An event that sets no variables. */
+    public TaskCompletedEvent(
+            String tenantId,
+            String projectId,
+            String workflowRunId,
+            String taskId,
+            String stateName,
+            MagratheaTaskType taskType,
+            String outcome,
+            @Nullable JsonNode output,
+            @Nullable String errorMessage,
+            long durationMs,
+            @Nullable String nextStateOverride,
+            boolean simulated) {
+        this(
+                tenantId,
+                projectId,
+                workflowRunId,
+                taskId,
+                stateName,
+                taskType,
+                outcome,
+                output,
+                errorMessage,
+                durationMs,
+                nextStateOverride,
+                simulated,
+                java.util.Map.of());
+    }
 
     /**
      * An event for a task that really ran. The simulated variant is only made by

@@ -303,6 +303,26 @@ class ShellTaskExecutorTest {
     }
 
     @Test
+    void a_failed_job_that_carries_an_exit_code_is_the_commands_no_not_an_infrastructure_error() {
+        // ExecJobs ends a process with a non-zero exit code as FAILED, with the code — only a job that
+        // could not run at all is FAILED without one.
+        when(execManager.submitTrackedAndRender(
+                        any(), any(), any(), any(), any(), any(), any(Long.class), any(SubmitOptions.class), any()))
+                .thenReturn(Map.of(
+                        "id", "abc",
+                        "status", "FAILED",
+                        "exitCode", 2,
+                        "stdout", "",
+                        "stderr", "no such file",
+                        "durationMs", 5L));
+
+        Optional<TaskOutcome> outcome = executor.execute(ctx(scriptState("cat missing", null, null)));
+
+        assertThat(outcome.get().outcome()).isEqualTo("business_error");
+        assertThat(outcome.get().errorMessage()).contains("exit 2").contains("no such file");
+    }
+
+    @Test
     void killed_status_yields_timeout() {
         when(execManager.submitTrackedAndRender(
                         any(), any(), any(), any(), any(), any(), any(Long.class), any(SubmitOptions.class), any()))

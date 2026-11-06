@@ -60,9 +60,9 @@ import tools.jackson.databind.ObjectMapper;
  * <table>
  *   <tr><th>job status</th><th>exitCode</th><th>workflow outcome</th></tr>
  *   <tr><td>COMPLETED</td><td>0</td><td>{@code success}</td></tr>
- *   <tr><td>COMPLETED</td><td>!= 0</td><td>{@code business_error}</td></tr>
+ *   <tr><td>COMPLETED / FAILED</td><td>!= 0</td><td>{@code business_error}</td></tr>
  *   <tr><td>KILLED</td><td>—</td><td>{@code timeout}</td></tr>
- *   <tr><td>FAILED / ORPHANED</td><td>—</td><td>{@code technical_error}</td></tr>
+ *   <tr><td>FAILED (could not run) / ORPHANED</td><td>none</td><td>{@code technical_error}</td></tr>
  *   <tr><td>runner refused</td><td>—</td><td>{@code technical_error}</td></tr>
  *   <tr><td>runner not reached</td><td>—</td><td>{@code unavailable}</td></tr>
  * </table>
@@ -322,6 +322,20 @@ public class ShellTaskExecutor implements MagratheaTypeExecutor {
         payload.put("stderr", result.getOrDefault("stderr", ""));
         payload.put("durationMs", result.getOrDefault("durationMs", 0));
         payload.put("execJobId", result.get("id"));
+
+        // The command's own verdict comes first. A process that ends with a non-zero exit code is a job in
+        // status FAILED that carries the code (ExecJobs); a job that could not run at all is FAILED without
+        // one. Only the first is the command saying "no" — a business error the plan can route — the second is
+        // the infrastructure failing.
+        boolean commandSaidNo =
+                ("COMPLETED".equals(status) || "FAILED".equals(status)) && exitCode != null && exitCode != 0;
+        if (commandSaidNo) {
+            return new TaskOutcome(
+                    errorKindName(MagratheaErrorKind.BUSINESS_ERROR),
+                    objectMapper.valueToTree(payload),
+                    "exit " + exitCode + (stderr.isBlank() ? "" : ": " + truncate(stderr, 240)),
+                    null);
+        }
 
         switch (status) {
             case "COMPLETED":

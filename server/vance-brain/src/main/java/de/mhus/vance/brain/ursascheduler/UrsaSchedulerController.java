@@ -29,6 +29,7 @@ import java.util.Locale;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -253,17 +254,22 @@ public class UrsaSchedulerController {
                 .latestForRef(tenant, project, MegadodoRefType.SCHEDULER, r.name())
                 .map(MegadodoEventDocument::getTimestamp)
                 .orElse(null);
+        return summaryOf(r, lastRun, schedulerService.nextFireFor(tenant, project, r.name()));
+    }
+
+    static SchedulerSummary summaryOf(ResolvedUrsaScheduler r, @Nullable Instant lastRun, @Nullable Instant nextRun) {
         return SchedulerSummary.builder()
                 .name(r.name())
                 .description(r.description())
                 .cron(r.cron())
                 .recipe(r.recipe())
+                .workflow(r.workflow())
                 .runAs(r.effectiveRunAs())
                 .enabled(r.enabled())
                 .source(r.source())
                 .lockMode(r.lockMode())
                 .lastRunAt(lastRun)
-                .nextRunAt(schedulerService.nextFireFor(tenant, project, r.name()))
+                .nextRunAt(nextRun)
                 .build();
     }
 

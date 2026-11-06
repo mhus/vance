@@ -25,6 +25,9 @@ public class SchedulerSummary {
     private @Nullable String description;
     private @Nullable String cron;
     private @Nullable String recipe;
+    /** Workflow the scheduler starts instead of a recipe; {@code null} when it starts something else. */
+    private @Nullable String workflow;
+
     private @Nullable String runAs;
     private boolean enabled;
     private SchedulerSource source;

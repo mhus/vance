@@ -15,4 +15,5 @@ export interface EventSummary {
   authType?: string;
   source: EventSource;
   tags?: string[];
+  from?: string;
 }

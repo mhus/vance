@@ -11,6 +11,7 @@ export interface SchedulerSummary {
   description?: string;
   cron?: string;
   recipe?: string;
+  workflow?: string;
   runAs?: string;
   enabled: boolean;
   source: SchedulerSource;

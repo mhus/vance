@@ -42,4 +42,9 @@ public class EventSummary {
     private EventSource source;
 
     private @Nullable List<String> tags;
+    /**
+     * {@code <service>/<trigger>} of the catalog trigger the event was made from; information only. {@code null}
+     * for an event written by hand.
+     */
+    private @Nullable String from;
 }

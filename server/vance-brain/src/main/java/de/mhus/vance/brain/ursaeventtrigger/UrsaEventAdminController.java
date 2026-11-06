@@ -125,7 +125,7 @@ public class UrsaEventAdminController {
 
     // ─── Mappers ──────────────────────────────────────────────────────────
 
-    private static EventSummary toSummary(ResolvedUrsaEvent r) {
+    static EventSummary toSummary(ResolvedUrsaEvent r) {
         List<String> methods = r.methods().isEmpty() ? null : new ArrayList<>(r.methods());
         return EventSummary.builder()
                 .name(r.name())
@@ -137,6 +137,7 @@ public class UrsaEventAdminController {
                 .authType(r.requiresAuth() ? "bearer" : r.signature() != null ? "signature" : "none")
                 .source(r.source())
                 .tags(r.tags().isEmpty() ? null : r.tags())
+                .from(r.from())
                 .build();
     }
 

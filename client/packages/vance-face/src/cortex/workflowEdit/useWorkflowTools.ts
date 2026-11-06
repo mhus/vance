@@ -32,5 +32,13 @@ export function useWorkflowTools(projectId: () => string | undefined, lang: () =
     }
   }
 
-  return { services, loaded, busy, error, load };
+  /** Load unless that already happened or is under way. */
+  async function ensureLoaded(): Promise<void> {
+    if (!loaded.value && !busy.value) await load();
+  }
+
+  return { services, loaded, busy, error, load, ensureLoaded };
 }
+
+/** What {@link useWorkflowTools} hands out; the palette and the parameter form share one. */
+export type WorkflowTools = ReturnType<typeof useWorkflowTools>;

@@ -33,6 +33,7 @@ import { stateTemplate, toolStateTemplate } from '@/cortex/workflowEdit/stateTem
 import { useWorkflowChange } from '@/cortex/workflowEdit/useWorkflowChange';
 import { addState, connect, freeStateName, type EdgeRef } from '@/cortex/workflowEdit/workflowMutations';
 import { useWorkflowServerCheck } from '@/cortex/workflowEdit/useWorkflowServerCheck';
+import { useWorkflowTools } from '@/cortex/workflowEdit/useWorkflowTools';
 import WorkflowGraph from '@/workflowGraph/WorkflowGraph.vue';
 import { parseWorkflowGraph, type WorkflowTaskType } from '@/workflowGraph/workflowGraphCodec';
 
@@ -50,7 +51,10 @@ interface Props {
 const props = defineProps<Props>();
 const emit = defineEmits<{ (e: 'update:doc', doc: string): void }>();
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
+
+/** The tools a tool_task can call: one list for the palette and the parameter forms. */
+const workflowTools = useWorkflowTools(() => props.projectId, () => locale.value);
 
 type Mode = 'view' | 'edit';
 const mode = ref<Mode>('view');
@@ -254,6 +258,7 @@ watch(() => props.docPath, () => check.clear());
         :doc="doc"
         :state="selected"
         :editable="mode === 'edit' && !readOnly"
+        :tools="workflowTools"
         @update:doc="emit('update:doc', $event)"
         @select="pickState"
       />
@@ -261,7 +266,7 @@ watch(() => props.docPath, () => check.clear());
 
     <WorkflowPalette
       v-model="paletteOpen"
-      :project-id="projectId"
+      :tools="workflowTools"
       @pick-task="onPickTask"
       @pick-tool="onPickTool"
     />

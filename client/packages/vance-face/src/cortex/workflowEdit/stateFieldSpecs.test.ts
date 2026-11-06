@@ -33,6 +33,7 @@ describe('ownedKeys', () => {
     }
     expect(owned.has('retry')).toBe(false);
     expect(ownedKeys('gate_task').has('inbox')).toBe(true);
+    expect(ownedKeys('tool_task').has('params')).toBe(true);
   });
 });
 

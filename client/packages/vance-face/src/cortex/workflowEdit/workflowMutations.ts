@@ -248,34 +248,56 @@ export function setStateField(
 }
 
 /**
- * Replace the keys of a state that no form field owns with {@code extras}: keys
- * missing from it are removed, new ones added, changed ones replaced; a key
- * whose value did not change is not touched, so its formatting stays.
- * {@code owned} are the keys the caller manages elsewhere — {@code extras} may
- * not name them.
+ * Replace the keys of the map at {@code path} inside a state ({@code []} is the
+ * state itself, {@code ['params']} its parameters) that the caller does not own
+ * with {@code extras}: keys missing from it are removed, new ones added,
+ * changed ones replaced; a key whose value did not change is not touched, so
+ * its formatting stays. {@code owned} are the keys the caller manages
+ * elsewhere — {@code extras} may not name them. A map left empty is removed,
+ * and one that is needed is created.
  */
+export function setMapExtras(
+  text: string,
+  state: string,
+  path: string[],
+  extras: Record<string, unknown>,
+  owned: ReadonlySet<string>,
+): string {
+  const doc = load(text);
+  stateOf(doc, state);
+  for (const key of Object.keys(extras)) {
+    if (owned.has(key)) throw new WorkflowEditError(`'${key}' has its own field and cannot be set here.`);
+  }
+  const location = ['states', state, ...path];
+  let map = path.length === 0 ? stateOf(doc, state) : doc.getIn(location, true);
+  if (!isMap(map)) {
+    if (Object.keys(extras).length === 0) return text;
+    doc.setIn(location, doc.createNode({}));
+    map = doc.getIn(location, true);
+  }
+  const target = map as YAMLMap;
+  for (const pair of [...target.items]) {
+    const key = scalarText(pair.key);
+    if (key !== null && !owned.has(key) && !(key in extras)) target.items.splice(target.items.indexOf(pair), 1);
+  }
+  for (const [key, value] of Object.entries(extras)) {
+    const current = target.get(key, true);
+    const same = current !== undefined
+      && JSON.stringify((current as { toJSON?: () => unknown }).toJSON?.() ?? current) === JSON.stringify(value);
+    if (!same) target.set(key, doc.createNode(value));
+  }
+  if (path.length > 0 && target.items.length === 0) doc.deleteIn(location);
+  return print(doc);
+}
+
+/** {@link setMapExtras} on the state itself: the fields no form control owns. */
 export function setStateExtras(
   text: string,
   state: string,
   extras: Record<string, unknown>,
   owned: ReadonlySet<string>,
 ): string {
-  const doc = load(text);
-  const body = stateOf(doc, state);
-  for (const key of Object.keys(extras)) {
-    if (owned.has(key)) throw new WorkflowEditError(`'${key}' has its own field and cannot be set here.`);
-  }
-  for (const pair of [...body.items]) {
-    const key = scalarText(pair.key);
-    if (key !== null && !owned.has(key) && !(key in extras)) body.items.splice(body.items.indexOf(pair), 1);
-  }
-  for (const [key, value] of Object.entries(extras)) {
-    const current = body.get(key, true);
-    const same = current !== undefined
-      && JSON.stringify((current as { toJSON?: () => unknown }).toJSON?.() ?? current) === JSON.stringify(value);
-    if (!same) body.set(key, doc.createNode(value));
-  }
-  return print(doc);
+  return setMapExtras(text, state, [], extras, owned);
 }
 
 // ── connections ──────────────────────────────────────────────────

@@ -13,13 +13,14 @@ import { VAlert, VBadge, VButton, VGroup, VGroupRow, VInput, VModal } from '@/co
 import type { WorkflowTaskType } from '@/workflowGraph/workflowGraphCodec';
 import { paletteGroups, type PaletteTool } from './paletteModel';
 import { TEMPLATE_TYPES } from './stateTemplates';
-import { useWorkflowTools } from './useWorkflowTools';
+import type { WorkflowTools } from './useWorkflowTools';
 
 defineOptions({ name: 'WorkflowPalette' });
 
 const props = defineProps<{
   modelValue: boolean;
-  projectId?: string;
+  /** The tool list, shared with whatever else needs it. */
+  tools: WorkflowTools;
 }>();
 const emit = defineEmits<{
   (e: 'update:modelValue', open: boolean): void;
@@ -27,9 +28,9 @@ const emit = defineEmits<{
   (e: 'pick-tool', tool: PaletteTool): void;
 }>();
 
-const { t, locale } = useI18n();
+const { t } = useI18n();
 
-const tools = useWorkflowTools(() => props.projectId, () => locale.value);
+const tools = props.tools;
 const query = ref('');
 
 // Fetched when the palette first opens, again on each later open (a login may have been made).

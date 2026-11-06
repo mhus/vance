@@ -1646,6 +1646,22 @@ export default {
         resetCounters: 'Reset counters',
         resetCountersHelp: 'Variables set to 0 when this state is entered. Separate with commas.',
       },
+      toolParams: {
+        title: 'Parameters',
+        noTool: 'Name the tool above to see its parameters.',
+        unknownTool: "No tool called '{tool}' is available here, so its parameters are not described. Edit them as YAML below.",
+        noParams: 'This tool takes no described parameters.',
+        optional: 'Optional parameters ({n})',
+        default: '(default: {value})',
+        otherParams: 'Other parameters the tool does not describe (YAML)',
+        allParams: 'Parameters (YAML)',
+        invalid: {
+          integer: 'A whole number, or a placeholder like the state or params reference.',
+          number: 'A number, or a placeholder.',
+          boolean: 'true or false, or a placeholder.',
+          yaml: 'Not valid YAML.',
+        },
+      },
       extras: {
         title: 'More fields (YAML)',
         note: 'Everything else the state carries — retry, decide, score, result, tool parameters.',

@@ -17,6 +17,8 @@ import { VAlert, VButton, VGroup, VGroupRow, VInput, useConfirm } from '@/compon
 import { parseWorkflowGraph } from '@/workflowGraph/workflowGraphCodec';
 import StateExtrasEditor from './StateExtrasEditor.vue';
 import StateFieldsForm from './StateFieldsForm.vue';
+import ToolParamsForm from './ToolParamsForm.vue';
+import type { WorkflowTools } from './useWorkflowTools';
 import { useWorkflowChange } from './useWorkflowChange';
 import { removeState, renameState, setStart, setStateField } from './workflowMutations';
 import { readStateFields } from './workflowRead';
@@ -28,6 +30,8 @@ interface Props {
   /** The state to show. */
   state: string;
   editable?: boolean;
+  /** The tool list, for the parameter form of a tool_task. */
+  tools: WorkflowTools;
 }
 const props = withDefaults(defineProps<Props>(), { editable: false });
 const emit = defineEmits<{
@@ -153,6 +157,13 @@ async function remove(): Promise<void> {
         :doc="doc"
         :state="state"
         :type="node.type"
+        @update:doc="emit('update:doc', $event)"
+      />
+      <ToolParamsForm
+        v-if="node.type === 'tool_task'"
+        :doc="doc"
+        :state="state"
+        :tools="tools"
         @update:doc="emit('update:doc', $event)"
       />
       <StateExtrasEditor

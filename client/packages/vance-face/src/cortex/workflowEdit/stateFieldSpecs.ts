@@ -39,6 +39,9 @@ const STORE_AS: FieldSpec = { key: 'storeAs', path: ['storeAs'], kind: 'string' 
 const ENTER_COUNTER: FieldSpec = { key: 'enterCounter', path: ['enterCounter'], kind: 'string' };
 const RESET_COUNTERS: FieldSpec = { key: 'resetCounters', path: ['resetCounters'], kind: 'list' };
 
+/** Keys a type's own form owns although none of {@link SPECS} names them: the tool's parameters. */
+const OWNED_BY_OTHER_FORMS: Record<string, string[]> = { tool_task: ['params'] };
+
 /** What every state that runs something carries, after its own fields. */
 const COMMON: FieldSpec[] = [TIMEOUT, STORE_AS, ENTER_COUNTER, RESET_COUNTERS];
 
@@ -105,7 +108,11 @@ export function fieldSpecsFor(type: string): FieldSpec[] {
  * structural ones. The YAML fragment holds every other key and may not set these.
  */
 export function ownedKeys(type: string): Set<string> {
-  return new Set([...STRUCTURAL, ...fieldSpecsFor(type).map((spec) => spec.path[0])]);
+  return new Set([
+    ...STRUCTURAL,
+    ...fieldSpecsFor(type).map((spec) => spec.path[0]),
+    ...(OWNED_BY_OTHER_FORMS[type] ?? []),
+  ]);
 }
 
 /** The value at {@code path} of a state body, or {@code undefined}. */

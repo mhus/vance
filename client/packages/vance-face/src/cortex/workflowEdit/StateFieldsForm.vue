@@ -8,10 +8,11 @@
  *
  * Plan: {@code planning/workflow-editor.md}.
  */
-import { computed, onBeforeUnmount, reactive, watch } from 'vue';
+import { computed, reactive, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { VAlert, VGroup, VInput, VSelect, VTextarea } from '@/components';
 import { fieldSpecsFor, fromDraft, toDraft, valueAt, type FieldSpec } from './stateFieldSpecs';
+import { useDraftTimers } from './useDraftTimers';
 import { useWorkflowChange } from './useWorkflowChange';
 import { setStateField } from './workflowMutations';
 import { readStateBody } from './workflowRead';
@@ -39,14 +40,14 @@ const visible = computed<FieldSpec[]>(() =>
 
 const drafts = reactive<Record<string, string>>({});
 const invalid = reactive<Record<string, boolean>>({});
-const timers = new Map<string, ReturnType<typeof setTimeout>>();
+const timers = useDraftTimers();
 
 const slot = (spec: FieldSpec): string => `${props.state}:${spec.key}`;
 
 /** Show what the document holds — except for a field being typed in right now. */
 function sync(): void {
   for (const spec of fieldSpecsFor(props.type)) {
-    if (timers.has(slot(spec))) continue;
+    if (timers.pending(slot(spec))) continue;
     drafts[spec.key] = toDraft(spec.kind, valueAt(body.value, spec.path));
     invalid[spec.key] = false;
   }
@@ -65,21 +66,14 @@ function write(state: string, spec: FieldSpec, text: string): void {
 
 function onInput(spec: FieldSpec, text: string): void {
   drafts[spec.key] = text;
-  const key = slot(spec);
-  clearTimeout(timers.get(key));
   if (spec.kind === 'select') {
-    timers.delete(key);
+    timers.cancel(slot(spec));
     write(props.state, spec, text);
     return;
   }
   const state = props.state;
-  timers.set(key, setTimeout(() => {
-    timers.delete(key);
-    write(state, spec, text);
-  }, 500));
+  timers.schedule(slot(spec), () => write(state, spec, text));
 }
-
-onBeforeUnmount(() => timers.forEach((timer) => clearTimeout(timer)));
 
 const label = (spec: FieldSpec): string =>
   `${t(`documents.workflowView.field.${spec.key}`)}${spec.required ? ' *' : ''}`;

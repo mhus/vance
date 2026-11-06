@@ -9,6 +9,7 @@ import {
   removeState,
   renameState,
   retarget,
+  setMapExtras,
   setStart,
   setStateExtras,
   setStateField,
@@ -357,5 +358,26 @@ describe('setStateExtras', () => {
   it('refuses an owned key and an unknown state', () => {
     fails(() => setStateExtras(DOC, 'plan', { recipe: 'x' }, OWNED), /own field/);
     fails(() => setStateExtras(DOC, 'nope', {}, OWNED), /no state 'nope'/);
+  });
+});
+
+describe('setMapExtras', () => {
+  const TOOL = 'start: t\nstates:\n  t:\n    type: tool_task\n    tool: x\n    params:\n      a: 1\n      b: 2\n';
+
+  it('replaces the keys of a nested map that the caller does not own', () => {
+    const out = setMapExtras(TOOL, 't', ['params'], { c: 3 }, new Set(['a']));
+    expect(out).toMatch(/params:\n\s+a: 1\n\s+c: 3/);
+    expect(out).not.toContain('b: 2');
+  });
+
+  it('creates the map when it is needed and removes it when it is left empty', () => {
+    const bare = 'start: t\nstates:\n  t:\n    type: tool_task\n    tool: x\n';
+    expect(setMapExtras(bare, 't', ['params'], { c: 3 }, new Set())).toMatch(/params:\n\s+c: 3/);
+    expect(setMapExtras(bare, 't', ['params'], {}, new Set())).toBe(bare);
+    expect(setMapExtras(TOOL, 't', ['params'], {}, new Set())).not.toContain('params');
+  });
+
+  it('keeps an owned key even when the map would otherwise be empty', () => {
+    expect(setMapExtras(TOOL, 't', ['params'], {}, new Set(['a', 'b']))).toBe(TOOL);
   });
 });

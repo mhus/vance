@@ -287,7 +287,16 @@ public class UrsaEventLoader implements RunAsReader {
                 idempotencyHeader,
                 reply,
                 stringOrNull(spec.get("from")),
-                stringOrNull(spec.get("subscription")));
+                stringOrNull(spec.get("subscription")),
+                stringMap(spec.get("inputs")));
+    }
+
+    private static Map<String, String> stringMap(@Nullable Object raw) {
+        Map<String, String> out = new LinkedHashMap<>();
+        if (raw instanceof Map<?, ?> map) {
+            map.forEach((k, v) -> out.put(String.valueOf(k), String.valueOf(v)));
+        }
+        return Map.copyOf(out);
     }
 
     /** Parses {@code reply:}; {@code null} when absent. */

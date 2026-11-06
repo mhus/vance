@@ -51,6 +51,7 @@ public class CatalogTriggerService {
     private final ToolDispatcher tools;
     private final SettingService settings;
     private final CatalogPollService polls;
+    private final CatalogToolResolver resolver;
     private final String publicBaseUrl;
 
     public CatalogTriggerService(
@@ -60,6 +61,7 @@ public class CatalogTriggerService {
             ToolDispatcher tools,
             SettingService settings,
             CatalogPollService polls,
+            CatalogToolResolver resolver,
             @Value("${vance.web.public-base-url:}") String publicBaseUrl) {
         this.catalog = catalog;
         this.documents = documents;
@@ -67,6 +69,7 @@ public class CatalogTriggerService {
         this.tools = tools;
         this.settings = settings;
         this.polls = polls;
+        this.resolver = resolver;
         this.publicBaseUrl = publicBaseUrl == null ? "" : publicBaseUrl.replaceAll("/+$", "");
     }
 
@@ -77,7 +80,8 @@ public class CatalogTriggerService {
             String service,
             String trigger,
             String workflow,
-            @Nullable String name) {
+            @Nullable String name,
+            Map<String, String> inputs) {
         if (workflow == null || workflow.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A workflow to start is required");
         }
@@ -92,11 +96,12 @@ public class CatalogTriggerService {
                 .findFirst()
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "Service '" + service + "' has no trigger '" + trigger + "'"));
+        Map<String, String> given = checkedInputs(t, inputs);
         String eventName = (name == null || name.isBlank() ? entry.name() + "-" + t.name() : name)
                 .trim()
                 .toLowerCase(Locale.ROOT);
         if (t.mode() == ServiceCatalogEntry.TriggerMode.POLL) {
-            return createPoll(tenantId, projectId, subject, entry, t, workflow.trim(), eventName);
+            return createPoll(tenantId, projectId, subject, entry, t, workflow.trim(), eventName, given);
         }
         String path = EVENTS_PREFIX + eventName + ".yaml";
         if (documents.findByPath(tenantId, projectId, path).isPresent()) {
@@ -108,7 +113,12 @@ public class CatalogTriggerService {
         if (!description.isBlank()) doc.put("description", description);
         doc.put("from", entry.name() + "/" + t.name());
         doc.put("workflow", workflow.trim());
-        if (t.event() != null) doc.putAll(t.event());
+        if (t.event() != null) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> template = (Map<String, Object>) substitute(t.event(), inputValues(given));
+            doc.putAll(template);
+        }
+        if (!given.isEmpty()) doc.put("inputs", given);
         String secretSetting = secretSettingOf(doc, eventName);
         if (t.subscribe() != null) {
             // The service is told the secret, so it has to be this event's own: a key shared by several events
@@ -148,11 +158,11 @@ public class CatalogTriggerService {
         }
 
         if (t.subscribe() != null) {
-            Map<String, String> values = new LinkedHashMap<>();
+            Map<String, String> values = new LinkedHashMap<>(inputValues(given));
             values.put("url", publicBaseUrl + urlPath);
             values.put("secret", secret);
             values.put("event", eventName);
-            subscription = register(tenantId, projectId, subject.subjectId(), t.subscribe(), values);
+            subscription = register(tenantId, projectId, subject.subjectId(), entry, t.subscribe(), values);
             if (subscription != null) doc.put("subscription", subscription);
         }
         try {
@@ -173,8 +183,9 @@ public class CatalogTriggerService {
                             tenantId,
                             projectId,
                             subject.subjectId(),
+                            entry,
                             t.unsubscribe(),
-                            subscriptionValues(eventName, subscription));
+                            subscriptionValues(eventName, subscription, given));
                 } catch (RuntimeException undo) {
                     log.warn(
                             "Could not take back the registration of '{}' at '{}': {}",
@@ -208,7 +219,8 @@ public class CatalogTriggerService {
             ServiceCatalogEntry entry,
             ServiceCatalogEntry.Trigger t,
             String targetWorkflow,
-            String name) {
+            String name,
+            Map<String, String> given) {
         String from = entry.name() + "/" + t.name();
         String schedulerPath = SCHEDULER_PREFIX + name + ".yaml";
         String workflowPath = WORKFLOW_PREFIX + pollWorkflowName(name) + ".yaml";
@@ -219,7 +231,7 @@ public class CatalogTriggerService {
 
         DumperOptions options = new DumperOptions();
         options.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK);
-        String workflowYaml = new Yaml(options).dump(pollWorkflow(from, name, targetWorkflow));
+        String workflowYaml = new Yaml(options).dump(pollWorkflow(from, name, targetWorkflow, given));
         String schedulerYaml = new Yaml(options).dump(pollScheduler(t, from, pollWorkflowName(name)));
         try {
             MagratheaWorkflowLoader.parseYaml(pollWorkflowName(name), workflowYaml);
@@ -268,7 +280,8 @@ public class CatalogTriggerService {
     }
 
     /** The workflow a tick runs: poll, one run of the target per new entry, then commit. */
-    private static Map<String, Object> pollWorkflow(String from, String name, String targetWorkflow) {
+    private static Map<String, Object> pollWorkflow(
+            String from, String name, String targetWorkflow, Map<String, String> given) {
         Map<String, Object> doc = new LinkedHashMap<>();
         doc.put("$meta", Map.of("kind", "vance-workflow"));
         doc.put(
@@ -279,7 +292,11 @@ public class CatalogTriggerService {
         Map<String, Object> poll = new LinkedHashMap<>();
         poll.put("type", "tool_task");
         poll.put("tool", "catalog_poll");
-        poll.put("params", Map.of("name", name, "from", from));
+        Map<String, Object> pollParams = new LinkedHashMap<>();
+        pollParams.put("name", name);
+        pollParams.put("from", from);
+        if (!given.isEmpty()) pollParams.put("inputs", given);
+        poll.put("params", pollParams);
         poll.put("storeAs", "polled");
         // A service that is busy or briefly away is asked again; one that wants a new sign-in is not.
         poll.put("retry", Map.of("maxAttempts", 3, "on", List.of("rate_limited", "unavailable"), "backoffSeconds", 30));
@@ -361,15 +378,16 @@ public class CatalogTriggerService {
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "Event '" + name + "' is not a document of this project"));
         if (event.from() != null && event.subscription() != null) {
-            Optional<ServiceCatalogEntry.Registration> removal = removalOf(tenantId, projectId, event.from());
-            if (removal.isPresent()) {
+            Optional<ServiceCatalogLoader.Located> located = catalog.locate(tenantId, projectId, event.from());
+            if (located.isPresent() && located.get().trigger().unsubscribe() != null) {
                 try {
                     call(
                             tenantId,
                             projectId,
                             subject.subjectId(),
-                            removal.get(),
-                            subscriptionValues(name, event.subscription()));
+                            located.get().entry(),
+                            located.get().trigger().unsubscribe(),
+                            subscriptionValues(name, event.subscription(), event.inputs()));
                 } catch (RuntimeException e) {
                     if (!force) {
                         throw new ResponseStatusException(
@@ -388,21 +406,43 @@ public class CatalogTriggerService {
         documents.delete(document.getId(), WriteActor.user(subject));
     }
 
-    private Optional<ServiceCatalogEntry.Registration> removalOf(String tenantId, String projectId, String from) {
-        int slash = from.indexOf('/');
-        if (slash < 0) return Optional.empty();
-        String service = from.substring(0, slash);
-        String trigger = from.substring(slash + 1);
-        return catalog.list(tenantId, projectId).stream()
-                .filter(e -> e.name().equalsIgnoreCase(service))
-                .flatMap(e -> e.triggers().stream())
-                .filter(x -> x.name().equalsIgnoreCase(trigger))
-                .findFirst()
-                .map(ServiceCatalogEntry.Trigger::unsubscribe);
+    /** What the person said, as the placeholder values {@code input.<name>}. */
+    private static Map<String, String> inputValues(Map<String, String> given) {
+        Map<String, String> values = new LinkedHashMap<>();
+        given.forEach((k, v) -> values.put("input." + k, v));
+        return values;
     }
 
-    private static Map<String, String> subscriptionValues(String eventName, @Nullable String subscription) {
-        Map<String, String> values = new LinkedHashMap<>();
+    /**
+     * The inputs checked against what the trigger asks for: every required one is there, none is unknown.
+     * Unknown ones are refused rather than dropped — a typo in a name would otherwise leave the value unused
+     * without a word.
+     */
+    private static Map<String, String> checkedInputs(ServiceCatalogEntry.Trigger t, Map<String, String> given) {
+        Map<String, String> out = new LinkedHashMap<>();
+        for (ServiceCatalogEntry.Input input : t.inputs()) {
+            String value = given.get(input.name());
+            if (value == null || value.isBlank()) {
+                if (input.required()) {
+                    throw new ResponseStatusException(
+                            HttpStatus.BAD_REQUEST, "The trigger '" + t.name() + "' needs '" + input.name() + "'");
+                }
+                continue;
+            }
+            out.put(input.name(), value.trim());
+        }
+        for (String key : given.keySet()) {
+            if (t.inputs().stream().noneMatch(i -> i.name().equals(key))) {
+                throw new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST, "The trigger '" + t.name() + "' has no input '" + key + "'");
+            }
+        }
+        return out;
+    }
+
+    private static Map<String, String> subscriptionValues(
+            String eventName, @Nullable String subscription, Map<String, String> given) {
+        Map<String, String> values = new LinkedHashMap<>(inputValues(given));
         values.put("event", eventName);
         if (subscription != null) values.put("subscription", subscription);
         return values;
@@ -413,9 +453,10 @@ public class CatalogTriggerService {
             String tenantId,
             String projectId,
             String userId,
+            ServiceCatalogEntry entry,
             ServiceCatalogEntry.Registration registration,
             Map<String, String> values) {
-        Map<String, Object> result = call(tenantId, projectId, userId, registration, values);
+        Map<String, Object> result = call(tenantId, projectId, userId, entry, registration, values);
         if (registration.idFrom() == null) return null;
         Object id = valueAt(result, registration.idFrom());
         if (id == null) {
@@ -430,16 +471,16 @@ public class CatalogTriggerService {
             String tenantId,
             String projectId,
             String userId,
+            ServiceCatalogEntry entry,
             ServiceCatalogEntry.Registration registration,
             Map<String, String> values) {
         @SuppressWarnings("unchecked")
         Map<String, Object> params = (Map<String, Object>) substitute(registration.params(), values);
         Map<String, Object> result;
         try {
-            result = tools.invoke(
-                    registration.tool(),
-                    params,
-                    new ToolInvocationContext(tenantId, projectId, /* sessionId */ null, /* processId */ null, userId));
+            ToolInvocationContext context =
+                    new ToolInvocationContext(tenantId, projectId, /* sessionId */ null, /* processId */ null, userId);
+            result = tools.invoke(resolver.resolve(entry, registration.tool(), context), params, context);
         } catch (RuntimeException e) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_GATEWAY, "'" + registration.tool() + "' failed: " + e.getMessage(), e);

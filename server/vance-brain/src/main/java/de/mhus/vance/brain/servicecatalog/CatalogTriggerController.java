@@ -41,7 +41,8 @@ public class CatalogTriggerController {
                 body.getService(),
                 body.getTrigger(),
                 body.getWorkflow(),
-                body.getName());
+                body.getName(),
+                body.getInputs() == null ? java.util.Map.of() : body.getInputs());
     }
 
     /**

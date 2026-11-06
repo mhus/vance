@@ -102,6 +102,27 @@ class ServiceCatalogTest {
         assertThat(names).contains("jira", "slack");
     }
 
+    /** The shipped Slack entry polls a channel: its one input fills the poll's channel parameter. */
+    @Test
+    void theBundledSlackEntryHasAPollingTriggerForAChannel() throws IOException {
+        var resource = new PathMatchingResourcePatternResolver()
+                .getResource("classpath:vance-defaults/_vance/service-catalog/slack.yaml");
+        ServiceCatalogEntry slack = ServiceCatalogLoader.parse(
+                "slack", new String(resource.getInputStream().readAllBytes(), StandardCharsets.UTF_8));
+
+        assertThat(slack.triggers()).singleElement().satisfies(t -> {
+            assertThat(t.name()).isEqualTo("new-message");
+            assertThat(t.mode()).isEqualTo(ServiceCatalogEntry.TriggerMode.POLL);
+            assertThat(t.inputs()).singleElement().satisfies(i -> {
+                assertThat(i.name()).isEqualTo("channel");
+                assertThat(i.required()).isTrue();
+            });
+            assertThat(t.poll().tool()).isEqualTo("conversations_history");
+            assertThat(t.poll().params()).containsEntry("channel", "${input.channel}");
+            assertThat(t.poll().idFrom()).isEqualTo("ts");
+        });
+    }
+
     private static final String WITH_TRIGGERS = """
             match: [github]
             highlights: []

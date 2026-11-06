@@ -39,11 +39,25 @@ class CatalogTriggerServiceTest {
                   auth: { signature: { header: X-Hub-Signature-256, secretSetting: webhook.github.secret, prefix: "sha256=" } }
                   idempotencyHeader: X-GitHub-Delivery
               - name: ping
+              - name: repo-hook
+                inputs:
+                  - { name: owner }
+                  - { name: repo }
+                  - { name: note, required: false }
+                event:
+                  idempotencyHeader: "X-Delivery-${input.repo}"
+                  auth: { signature: { header: X-Sig, secretSetting: shared.secret } }
+                subscribe: { tool: create_hook, params: { owner: "${input.owner}", repo: "${input.repo}", url: "${url}" }, idFrom: json.id }
+                unsubscribe: { tool: delete_hook, params: { owner: "${input.owner}", repo: "${input.repo}", id: "${subscription}" } }
               - name: hook
                 event:
                   auth: { signature: { header: X-Sig, secretSetting: shared.secret } }
                 subscribe: { tool: gh__create_hook, params: { config: { url: "${url}", secret: "${secret}" }, name: "${event}" }, idFrom: json.id }
                 unsubscribe: { tool: gh__delete_hook, params: { id: "${subscription}" } }
+              - name: room-poll
+                mode: poll
+                inputs: [ { name: room } ]
+                poll: { tool: history, schedule: "0 0/5 * * * *", params: { room: "${input.room}" } }
               - name: new-message
                 mode: poll
                 poll: { tool: listMessages, schedule: "0 0/5 * * * *" }
@@ -56,19 +70,30 @@ class CatalogTriggerServiceTest {
     private final ToolDispatcher tools = mock(ToolDispatcher.class);
     private final SettingService settings = mock(SettingService.class);
     private final CatalogPollService polls = mock(CatalogPollService.class);
+    private final CatalogToolResolver resolver = new CatalogToolResolver(tools);
     private CatalogTriggerService service;
 
     @BeforeEach
     void setUp() {
-        when(catalog.list("acme", "p")).thenReturn(List.of(ServiceCatalogLoader.parse("github", GITHUB)));
+        var parsed = ServiceCatalogLoader.parse("github", GITHUB);
+        when(catalog.list("acme", "p")).thenReturn(List.of(parsed));
+        when(catalog.locate(eq("acme"), eq("p"), any())).thenAnswer(inv -> {
+            String from = inv.getArgument(2);
+            return parsed.triggers().stream()
+                    .filter(t -> from.equals("github/" + t.name()))
+                    .map(t -> new ServiceCatalogLoader.Located(parsed, t))
+                    .findFirst();
+        });
+        // Packs are not installed in these tests: the tools are named in full.
+        when(tools.resolveAll(any())).thenReturn(List.of());
         when(documents.findByPath(eq("acme"), eq("p"), anyString())).thenReturn(Optional.empty());
         service = new CatalogTriggerService(
-                catalog, documents, eventLoader, tools, settings, polls, "https://vance.example/");
+                catalog, documents, eventLoader, tools, settings, polls, resolver, "https://vance.example/");
     }
 
     @Test
     void theTemplateBecomesAnOrdinaryEventThatPointsAtTheWorkflowAndRemembersItsOrigin() {
-        var created = service.createEvent("acme", "p", user, "github", "push", "pr-review", null);
+        var created = service.createEvent("acme", "p", user, "github", "push", "pr-review", null, Map.of());
 
         assertThat(created.getName()).isEqualTo("github-push");
         assertThat(created.getPath()).isEqualTo("_vance/events/github-push.yaml");
@@ -95,7 +120,7 @@ class CatalogTriggerServiceTest {
 
     @Test
     void aTriggerWithoutAuthInItsTemplateGetsABearerTokenSetting() {
-        var created = service.createEvent("acme", "p", user, "github", "ping", "w", "my-ping");
+        var created = service.createEvent("acme", "p", user, "github", "ping", "w", "my-ping", Map.of());
 
         assertThat(created.getName()).isEqualTo("my-ping");
         assertThat(created.getSecretSetting()).isEqualTo("events.my-ping.token");
@@ -110,7 +135,7 @@ class CatalogTriggerServiceTest {
         when(documents.findByPath("acme", "p", "_vance/events/github-push.yaml"))
                 .thenReturn(Optional.of(mock(DocumentDocument.class)));
 
-        assertThatThrownBy(() -> service.createEvent("acme", "p", user, "github", "push", "w", null))
+        assertThatThrownBy(() -> service.createEvent("acme", "p", user, "github", "push", "w", null, Map.of()))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("exists already");
         verify(documents, never()).createText(any(), any(), any(), any(), any(), any(), any(), any());
@@ -118,11 +143,11 @@ class CatalogTriggerServiceTest {
 
     @Test
     void unknownServicesAndTriggersAndPollingTriggersAreRefused() {
-        assertThatThrownBy(() -> service.createEvent("acme", "p", user, "gitlab", "push", "w", null))
+        assertThatThrownBy(() -> service.createEvent("acme", "p", user, "gitlab", "push", "w", null, Map.of()))
                 .hasMessageContaining("not in the catalog");
-        assertThatThrownBy(() -> service.createEvent("acme", "p", user, "github", "nope", "w", null))
+        assertThatThrownBy(() -> service.createEvent("acme", "p", user, "github", "nope", "w", null, Map.of()))
                 .hasMessageContaining("no trigger");
-        assertThatThrownBy(() -> service.createEvent("acme", "p", user, "github", "push", " ", null))
+        assertThatThrownBy(() -> service.createEvent("acme", "p", user, "github", "push", " ", null, Map.of()))
                 .hasMessageContaining("workflow");
     }
 
@@ -131,7 +156,7 @@ class CatalogTriggerServiceTest {
         when(tools.invoke(eq("gh__create_hook"), any(), any(ToolInvocationContext.class)))
                 .thenReturn(Map.of("ok", true, "status", 201, "json", Map.of("id", 4711)));
 
-        var created = service.createEvent("acme", "p", user, "github", "hook", "w", null);
+        var created = service.createEvent("acme", "p", user, "github", "hook", "w", null, Map.of());
 
         assertThat(created.isSubscribed()).isTrue();
         // The server made the secret, so there is nothing the user has to store.
@@ -166,7 +191,7 @@ class CatalogTriggerServiceTest {
         when(tools.invoke(eq("gh__create_hook"), any(), any(ToolInvocationContext.class)))
                 .thenReturn(Map.of("ok", false, "status", 401, "body", "bad credentials"));
 
-        assertThatThrownBy(() -> service.createEvent("acme", "p", user, "github", "hook", "w", null))
+        assertThatThrownBy(() -> service.createEvent("acme", "p", user, "github", "hook", "w", null, Map.of()))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("gh__create_hook");
         verify(documents, never()).createText(any(), any(), any(), any(), any(), any(), any(), any());
@@ -181,7 +206,7 @@ class CatalogTriggerServiceTest {
         when(tools.invoke(eq("gh__delete_hook"), any(), any(ToolInvocationContext.class)))
                 .thenReturn(Map.of("ok", true, "status", 204));
 
-        assertThatThrownBy(() -> service.createEvent("acme", "p", user, "github", "hook", "w", null))
+        assertThatThrownBy(() -> service.createEvent("acme", "p", user, "github", "hook", "w", null, Map.of()))
                 .hasMessageContaining("disk full");
 
         ArgumentCaptor<Map<String, Object>> params = ArgumentCaptor.forClass(Map.class);
@@ -204,8 +229,8 @@ class CatalogTriggerServiceTest {
         when(doc.getId()).thenReturn("doc-1");
         when(documents.findByPath("acme", "p", "_vance/events/github-hook.yaml"))
                 .thenReturn(Optional.of(doc));
-        var svc =
-                new CatalogTriggerService(catalog, documents, loader, tools, settings, polls, "https://vance.example");
+        var svc = new CatalogTriggerService(
+                catalog, documents, loader, tools, settings, polls, resolver, "https://vance.example");
         when(tools.invoke(eq("gh__delete_hook"), any(), any(ToolInvocationContext.class)))
                 .thenReturn(Map.of("ok", false, "status", 503, "body", "down"));
 
@@ -231,7 +256,7 @@ class CatalogTriggerServiceTest {
 
     @Test
     void aPollingTriggerMakesASchedulerAndTheWorkflowItStarts_bothValid() {
-        var created = service.createEvent("acme", "p", user, "github", "new-message", "on-message", "inbox");
+        var created = service.createEvent("acme", "p", user, "github", "new-message", "on-message", "inbox", Map.of());
 
         assertThat(created.getMode()).isEqualTo("poll");
         assertThat(created.getPath()).isEqualTo("_vance/scheduler/inbox.yaml");
@@ -261,7 +286,8 @@ class CatalogTriggerServiceTest {
         when(documents.findByPath("acme", "p", "_vance/scheduler/inbox.yaml"))
                 .thenReturn(Optional.of(mock(DocumentDocument.class)));
 
-        assertThatThrownBy(() -> service.createEvent("acme", "p", user, "github", "new-message", "w", "inbox"))
+        assertThatThrownBy(
+                        () -> service.createEvent("acme", "p", user, "github", "new-message", "w", "inbox", Map.of()))
                 .hasMessageContaining("exists already");
     }
 
@@ -276,8 +302,8 @@ class CatalogTriggerServiceTest {
         when(documents.findByPath("acme", "p", "_vance/scheduler/inbox.yaml")).thenReturn(Optional.of(scheduler));
         when(documents.findByPath("acme", "p", "_vance/workflows/catalog-poll-inbox.yaml"))
                 .thenReturn(Optional.of(workflow));
-        var svc =
-                new CatalogTriggerService(catalog, documents, loader, tools, settings, polls, "https://vance.example");
+        var svc = new CatalogTriggerService(
+                catalog, documents, loader, tools, settings, polls, resolver, "https://vance.example");
 
         svc.deleteEvent("acme", "p", user, "inbox", false);
 
@@ -291,10 +317,110 @@ class CatalogTriggerServiceTest {
     void deletingSomethingThatIsNeitherAnEventNorAPollingTriggerIsNotFound() {
         UrsaEventLoader loader = mock(UrsaEventLoader.class);
         when(loader.load("acme", "p", "nope")).thenReturn(Optional.empty());
-        var svc =
-                new CatalogTriggerService(catalog, documents, loader, tools, settings, polls, "https://vance.example");
+        var svc = new CatalogTriggerService(
+                catalog, documents, loader, tools, settings, polls, resolver, "https://vance.example");
 
         assertThatThrownBy(() -> svc.deleteEvent("acme", "p", user, "nope", false))
                 .hasMessageContaining("not found");
+    }
+
+    @Test
+    void whatThePersonSaysFillsTheTemplateTheRegistrationAndTheRemoval() {
+        // The short names are resolved against the packs the entry describes.
+        when(tools.resolveAll(any())).thenReturn(List.of());
+        var named = new CatalogToolResolver(tools) {
+            @Override
+            public String resolve(ServiceCatalogEntry entry, String tool, ToolInvocationContext ctx) {
+                return "github_rest__" + tool;
+            }
+        };
+        var svc = new CatalogTriggerService(
+                catalog, documents, eventLoader, tools, settings, polls, named, "https://vance.example");
+        when(tools.invoke(eq("github_rest__create_hook"), any(), any(ToolInvocationContext.class)))
+                .thenReturn(Map.of("ok", true, "status", 201, "json", Map.of("id", 77)));
+
+        var created = svc.createEvent(
+                "acme", "p", user, "github", "repo-hook", "w", null, Map.of("owner", "mhus", "repo", "vance"));
+
+        assertThat(created.getName()).isEqualTo("github-repo-hook");
+        ArgumentCaptor<Map<String, Object>> params = ArgumentCaptor.forClass(Map.class);
+        verify(tools).invoke(eq("github_rest__create_hook"), params.capture(), any(ToolInvocationContext.class));
+        assertThat(params.getValue())
+                .containsEntry("owner", "mhus")
+                .containsEntry("repo", "vance")
+                .containsEntry("url", "https://vance.example/brain/acme/event/p/github-repo-hook");
+        ArgumentCaptor<String> yaml = ArgumentCaptor.forClass(String.class);
+        verify(documents).createText(any(), any(), any(), any(), any(), yaml.capture(), any(), any());
+        ResolvedUrsaEvent event = eventLoader.validateYaml("github-repo-hook", yaml.getValue());
+        assertThat(event.idempotencyHeader()).isEqualTo("X-Delivery-vance");
+        // Kept: the removal needs the repository again.
+        assertThat(event.inputs()).containsEntry("owner", "mhus").containsEntry("repo", "vance");
+        assertThat(event.subscription()).isEqualTo("77");
+    }
+
+    @Test
+    void theRemovalGetsWhatWasSaidWhenTheEventWasMade() {
+        var named = new CatalogToolResolver(tools) {
+            @Override
+            public String resolve(ServiceCatalogEntry entry, String tool, ToolInvocationContext ctx) {
+                return "github_rest__" + tool;
+            }
+        };
+        ResolvedUrsaEvent event = eventLoader.validateYaml("github-repo-hook", """
+                workflow: w
+                from: github/repo-hook
+                subscription: "77"
+                inputs: { owner: mhus, repo: vance }
+                auth: { tokenSetting: events.x.secret }
+                """);
+        UrsaEventLoader loader = mock(UrsaEventLoader.class);
+        when(loader.load("acme", "p", "github-repo-hook")).thenReturn(Optional.of(event));
+        DocumentDocument doc = mock(DocumentDocument.class);
+        when(doc.getId()).thenReturn("d-1");
+        when(documents.findByPath("acme", "p", "_vance/events/github-repo-hook.yaml"))
+                .thenReturn(Optional.of(doc));
+        when(tools.invoke(eq("github_rest__delete_hook"), any(), any(ToolInvocationContext.class)))
+                .thenReturn(Map.of("ok", true, "status", 204));
+        var svc = new CatalogTriggerService(
+                catalog, documents, loader, tools, settings, polls, named, "https://vance.example");
+
+        svc.deleteEvent("acme", "p", user, "github-repo-hook", false);
+
+        ArgumentCaptor<Map<String, Object>> params = ArgumentCaptor.forClass(Map.class);
+        verify(tools).invoke(eq("github_rest__delete_hook"), params.capture(), any(ToolInvocationContext.class));
+        assertThat(params.getValue())
+                .containsEntry("owner", "mhus")
+                .containsEntry("repo", "vance")
+                .containsEntry("id", "77");
+    }
+
+    @Test
+    void aMissingRequiredInputAndAnUnknownOneAreRefused() {
+        assertThatThrownBy(() -> service.createEvent(
+                        "acme", "p", user, "github", "repo-hook", "w", null, Map.of("owner", "mhus")))
+                .hasMessageContaining("needs 'repo'");
+        assertThatThrownBy(() -> service.createEvent(
+                        "acme",
+                        "p",
+                        user,
+                        "github",
+                        "repo-hook",
+                        "w",
+                        null,
+                        Map.of("owner", "a", "repo", "b", "ownr", "typo")))
+                .hasMessageContaining("no input 'ownr'");
+        verify(documents, never()).createText(any(), any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void thePollingWorkflowCarriesTheInputsToEveryTick() {
+        service.createEvent("acme", "p", user, "github", "room-poll", "w", "rooms", Map.of("room", "R1"));
+
+        ArgumentCaptor<String> yamls = ArgumentCaptor.forClass(String.class);
+        verify(documents, org.mockito.Mockito.times(2))
+                .createText(any(), any(), any(), any(), any(), yamls.capture(), any(), any());
+        var workflow = de.mhus.vance.shared.magrathea.MagratheaWorkflowLoader.parseYaml(
+                "catalog-poll-rooms", yamls.getAllValues().get(0));
+        assertThat(workflow.yaml()).contains("inputs:").contains("room: R1");
     }
 }

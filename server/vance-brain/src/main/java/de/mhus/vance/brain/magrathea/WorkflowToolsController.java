@@ -128,6 +128,13 @@ public class WorkflowToolsController {
                     .description(ServiceCatalogEntry.localized(t.description(), lang))
                     .mode(t.mode().name().toLowerCase(Locale.ROOT))
                     .subscribes(t.subscribe() != null)
+                    .inputs(t.inputs().stream()
+                            .map(i -> de.mhus.vance.api.tools.ServiceCatalogInputDto.builder()
+                                    .name(i.name())
+                                    .description(ServiceCatalogEntry.localized(i.description(), lang))
+                                    .required(i.required())
+                                    .build())
+                            .toList())
                     .payloadSchema(t.payloadSchema())
                     .build());
         }

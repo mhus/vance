@@ -3,10 +3,13 @@
  Source: de.mhus.vance.api.tools.ServiceCatalogTriggerDto
 */
 
+import { ServiceCatalogInputDto } from './ServiceCatalogInputDto';
+
 export interface ServiceCatalogTriggerDto {
   name: string;
   description: string;
   mode: string;
   subscribes: boolean;
+  inputs: ServiceCatalogInputDto[];
   payloadSchema?: Record<string, any>;
 }

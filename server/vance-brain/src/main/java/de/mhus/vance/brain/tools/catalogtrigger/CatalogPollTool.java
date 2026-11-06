@@ -27,12 +27,11 @@ public class CatalogPollTool implements Tool {
             "properties",
                     Map.of(
                             "name",
-                                    Map.of(
-                                            "type",
-                                            "string",
-                                            "description",
-                                            "Name of the trigger (its scheduler and state)."),
-                            "from", Map.of("type", "string", "description", "<service>/<trigger> of the catalog.")),
+                            Map.of("type", "string", "description", "Name of the trigger (its scheduler and state)."),
+                            "from",
+                            Map.of("type", "string", "description", "<service>/<trigger> of the catalog."),
+                            "inputs",
+                            Map.of("type", "object", "description", "What was said when the trigger was switched on.")),
             "required", List.of("name", "from"));
 
     private final CatalogPollService polls;
@@ -72,8 +71,13 @@ public class CatalogPollTool implements Tool {
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         if (ctx.projectId() == null) throw new ToolException("catalog_poll requires a project scope");
-        CatalogPollService.Polled polled =
-                polls.poll(ctx.tenantId(), ctx.projectId(), ctx.userId(), text(params, "name"), text(params, "from"));
+        CatalogPollService.Polled polled = polls.poll(
+                ctx.tenantId(),
+                ctx.projectId(),
+                ctx.userId(),
+                text(params, "name"),
+                text(params, "from"),
+                inputs(params));
         if (polled.failure() != null) {
             return polled.failure();
         }
@@ -85,6 +89,14 @@ public class CatalogPollTool implements Tool {
         out.put("items", polled.items());
         out.put("count", polled.items().size());
         out.put("pending", pending);
+        return out;
+    }
+
+    private static Map<String, String> inputs(Map<String, Object> params) {
+        Map<String, String> out = new LinkedHashMap<>();
+        if (params != null && params.get("inputs") instanceof Map<?, ?> map) {
+            map.forEach((k, v) -> out.put(String.valueOf(k), String.valueOf(v)));
+        }
         return out;
     }
 

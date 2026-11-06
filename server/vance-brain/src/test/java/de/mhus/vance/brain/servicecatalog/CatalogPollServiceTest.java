@@ -48,9 +48,17 @@ class CatalogPollServiceTest {
     @BeforeEach
     void setUp() {
         ServiceCatalogLoader catalog = mock(ServiceCatalogLoader.class);
-        when(catalog.list("acme", "p")).thenReturn(List.of(ServiceCatalogLoader.parse("slack", CATALOG)));
+        var parsed = ServiceCatalogLoader.parse("slack", CATALOG);
+        when(catalog.list("acme", "p")).thenReturn(List.of(parsed));
+        when(catalog.locate(eq("acme"), eq("p"), any())).thenAnswer(inv -> {
+            String from = inv.getArgument(2);
+            return parsed.triggers().stream()
+                    .filter(t -> from.equals("slack/" + t.name()))
+                    .map(t -> new ServiceCatalogLoader.Located(parsed, t))
+                    .findFirst();
+        });
         when(documents.findByPath(eq("acme"), eq("p"), any())).thenReturn(Optional.empty());
-        polls = new CatalogPollService(catalog, documents, tools);
+        polls = new CatalogPollService(catalog, documents, tools, new CatalogToolResolver(tools));
     }
 
     private static Map<String, Object> answer(String latest, String... timestamps) {
@@ -71,7 +79,7 @@ class CatalogPollServiceTest {
         when(tools.invoke(eq("slack__history"), any(), any(ToolInvocationContext.class)))
                 .thenReturn(answer("3", "1", "2", "3"));
 
-        var polled = polls.poll("acme", "p", "mike", "inbox", "slack/message");
+        var polled = polls.poll("acme", "p", "mike", "inbox", "slack/message", Map.of());
 
         assertThat(polled.items()).isEmpty();
         assertThat(polled.pending().ids()).containsExactly("1", "2", "3");
@@ -84,7 +92,7 @@ class CatalogPollServiceTest {
         when(tools.invoke(eq("slack__history"), any(), any(ToolInvocationContext.class)))
                 .thenReturn(answer("5", "5", "4", "3"));
 
-        var polled = polls.poll("acme", "p", "mike", "inbox", "slack/message");
+        var polled = polls.poll("acme", "p", "mike", "inbox", "slack/message", Map.of());
 
         assertThat(polled.items())
                 .extracting(i -> String.valueOf(((Map<?, ?>) i).get("ts")))
@@ -101,7 +109,8 @@ class CatalogPollServiceTest {
         when(tools.invoke(eq("slack__history"), any(), any(ToolInvocationContext.class)))
                 .thenReturn(answer("2", "1", "2"));
 
-        assertThat(polls.poll("acme", "p", "mike", "inbox", "slack/backfill").items())
+        assertThat(polls.poll("acme", "p", "mike", "inbox", "slack/backfill", Map.of())
+                        .items())
                 .hasSize(2);
     }
 
@@ -111,7 +120,7 @@ class CatalogPollServiceTest {
         when(tools.invoke(eq("slack__history"), any(), any(ToolInvocationContext.class)))
                 .thenReturn(rateLimited);
 
-        var polled = polls.poll("acme", "p", "mike", "inbox", "slack/message");
+        var polled = polls.poll("acme", "p", "mike", "inbox", "slack/message", Map.of());
 
         assertThat(polled.failure()).isSameAs(rateLimited);
         assertThat(polled.items()).isEmpty();
@@ -121,22 +130,22 @@ class CatalogPollServiceTest {
     void anAnswerWithoutAListOrAnEntryWithoutAnIdIsAnError() {
         when(tools.invoke(eq("slack__history"), any(), any(ToolInvocationContext.class)))
                 .thenReturn(Map.of("ok", true, "status", 200, "json", Map.of("other", 1)));
-        assertThatThrownBy(() -> polls.poll("acme", "p", "mike", "inbox", "slack/message"))
+        assertThatThrownBy(() -> polls.poll("acme", "p", "mike", "inbox", "slack/message", Map.of()))
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("json.messages");
 
         when(tools.invoke(eq("slack__history"), any(), any(ToolInvocationContext.class)))
                 .thenReturn(
                         Map.of("ok", true, "status", 200, "json", Map.of("messages", List.of(Map.of("text", "x")))));
-        assertThatThrownBy(() -> polls.poll("acme", "p", "mike", "inbox", "slack/message"))
+        assertThatThrownBy(() -> polls.poll("acme", "p", "mike", "inbox", "slack/message", Map.of()))
                 .hasMessageContaining("no id");
     }
 
     @Test
     void aTriggerThatDoesNotPollOrIsNotThereIsRefused() {
-        assertThatThrownBy(() -> polls.poll("acme", "p", "mike", "inbox", "slack/nope"))
+        assertThatThrownBy(() -> polls.poll("acme", "p", "mike", "inbox", "slack/nope", Map.of()))
                 .hasMessageContaining("not a polling trigger");
-        assertThatThrownBy(() -> polls.poll("acme", "p", "mike", "inbox", "slack"))
+        assertThatThrownBy(() -> polls.poll("acme", "p", "mike", "inbox", "slack", Map.of()))
                 .hasMessageContaining("<service>/<trigger>");
     }
 
@@ -150,7 +159,7 @@ class CatalogPollServiceTest {
                         "x",
                         many.subList(CatalogPollService.MAX_SEEN, many.size()).toArray(new String[0])));
 
-        var polled = polls.poll("acme", "p", "mike", "inbox", "slack/message");
+        var polled = polls.poll("acme", "p", "mike", "inbox", "slack/message", Map.of());
 
         assertThat(polled.pending().ids()).hasSize(CatalogPollService.MAX_SEEN);
         assertThat(polled.pending().ids().get(CatalogPollService.MAX_SEEN - 1)).isEqualTo(many.get(many.size() - 1));
@@ -173,5 +182,47 @@ class CatalogPollServiceTest {
                         any(),
                         any());
         assertThat(yaml.getValue()).contains("cursor: '2'").contains("seen:").contains("- '1'");
+    }
+
+    @Test
+    void theInputsAreAvailableToThePollAsInputPlaceholders() {
+        when(tools.invoke(eq("slack__history"), any(), any(ToolInvocationContext.class)))
+                .thenReturn(answer("1", "1"));
+        var catalog = mock(ServiceCatalogLoader.class);
+        var parsed = ServiceCatalogLoader.parse("slack", """
+                match: [slack]
+                triggers:
+                  - name: message
+                    mode: poll
+                    inputs: [ { name: channel } ]
+                    poll: { tool: slack__history, schedule: "0 0 * * * *", params: { channel: "${input.channel}" }, itemsFrom: json.messages, idFrom: ts }
+                """);
+        when(catalog.locate(eq("acme"), eq("p"), any()))
+                .thenReturn(Optional.of(new ServiceCatalogLoader.Located(
+                        parsed, parsed.triggers().get(0))));
+
+        new CatalogPollService(catalog, documents, tools, new CatalogToolResolver(tools))
+                .poll("acme", "p", "mike", "inbox", "slack/message", Map.of("channel", "C42"));
+
+        ArgumentCaptor<Map<String, Object>> params = ArgumentCaptor.forClass(Map.class);
+        verify(tools).invoke(eq("slack__history"), params.capture(), any(ToolInvocationContext.class));
+        assertThat(params.getValue()).containsEntry("channel", "C42");
+    }
+
+    @Test
+    void aShortOperationNameIsResolvedAgainstThePacksTheEntryDescribes() {
+        var entry = ServiceCatalogLoader.parse("slack", "match: [slack]\n");
+        List<String> names = List.of(
+                "jira_rest__conversations_history",
+                "slack_rest__chat_postMessage",
+                "slack_rest__conversations_history");
+
+        assertThat(CatalogToolResolver.pick(entry, "conversations_history", names.subList(1, 3)))
+                .isEqualTo("slack_rest__conversations_history");
+        assertThat(CatalogToolResolver.pick(entry, "Conversations_History", names.subList(1, 3)))
+                .isEqualTo("slack_rest__conversations_history");
+        assertThatThrownBy(() -> CatalogToolResolver.pick(entry, "nope", names.subList(1, 3)))
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("pack installed");
     }
 }

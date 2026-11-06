@@ -35,6 +35,8 @@ import org.jspecify.annotations.Nullable;
  *     unsubscribe:
  *       tool: github_rest__repos_delete_webhook
  *       params: { hook_id: "${subscription}" }
+ *     inputs:                       # what the person says when switching it on, used as ${input.<name>}
+ *       - { name: channel, description: { en: "Channel id" } }
  *     payloadSchema: { … }          # optional, JSON Schema of the delivered payload
  *   - name: new-message
  *     mode: poll
@@ -88,6 +90,7 @@ public record ServiceCatalogEntry(
      * @param subscribe     webhook: the call that registers the event URL at the service, or {@code null}
      * @param unsubscribe   webhook: the call that removes the registration again, or {@code null}
      * @param payloadSchema JSON Schema of what arrives, or {@code null}
+     * @param inputs        what the person has to say when switching it on; may be empty
      */
     public record Trigger(
             String name,
@@ -98,7 +101,18 @@ public record ServiceCatalogEntry(
             @Nullable Poll poll,
             @Nullable Registration subscribe,
             @Nullable Registration unsubscribe,
-            @Nullable Map<String, Object> payloadSchema) {}
+            @Nullable Map<String, Object> payloadSchema,
+            List<Input> inputs) {}
+
+    /**
+     * Something the person has to say when the trigger is switched on — a channel, a repository. It is available
+     * as {@code ${input.<name>}} in the event template, in {@code subscribe}/{@code unsubscribe} and in the poll.
+     *
+     * @param name        key of the value
+     * @param description per language
+     * @param required    whether the trigger cannot be made without it (default true)
+     */
+    public record Input(String name, Map<String, String> description, boolean required) {}
 
     /**
      * A call of the service that registers or removes the event URL there.

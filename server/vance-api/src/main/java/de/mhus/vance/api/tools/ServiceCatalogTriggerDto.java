@@ -28,6 +28,10 @@ public class ServiceCatalogTriggerDto {
     /** Whether the service registers the event URL itself when the trigger is switched on. */
     private boolean subscribes;
 
+    /** What the person has to say when switching the trigger on. */
+    @Builder.Default
+    private java.util.List<ServiceCatalogInputDto> inputs = new java.util.ArrayList<>();
+
     /** JSON Schema of what arrives, for a workflow to start its parameters from. */
     private @Nullable Map<String, Object> payloadSchema;
 }

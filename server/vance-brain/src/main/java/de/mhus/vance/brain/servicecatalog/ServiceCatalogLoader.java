@@ -52,6 +52,23 @@ public class ServiceCatalogLoader {
         return List.copyOf(out);
     }
 
+    /** A trigger together with the entry it belongs to. */
+    public record Located(ServiceCatalogEntry entry, ServiceCatalogEntry.Trigger trigger) {}
+
+    /** The trigger named by {@code from} ({@code <service>/<trigger>}), as the catalog stands for the project. */
+    public Optional<Located> locate(String tenantId, String projectId, String from) {
+        int slash = from.indexOf('/');
+        if (slash < 0) return Optional.empty();
+        String service = from.substring(0, slash);
+        String trigger = from.substring(slash + 1);
+        return list(tenantId, projectId).stream()
+                .filter(e -> e.name().equalsIgnoreCase(service))
+                .flatMap(e -> e.triggers().stream()
+                        .filter(t -> t.name().equalsIgnoreCase(trigger))
+                        .map(t -> new Located(e, t)))
+                .findFirst();
+    }
+
     /** The entry that describes the pack {@code service}, if any. */
     public Optional<ServiceCatalogEntry> forService(List<ServiceCatalogEntry> entries, String service) {
         return entries.stream().filter(e -> e.describes(service)).findFirst();
@@ -159,6 +176,7 @@ public class ServiceCatalogLoader {
                                     + "': 'subscribe' and 'unsubscribe' come as a pair — a registration that cannot be removed is a leak");
                 }
             }
+            List<ServiceCatalogEntry.Input> inputs = parseInputs(triggerName, t.get("inputs"));
             out.add(new ServiceCatalogEntry.Trigger(
                     triggerName,
                     texts(t.get("description")),
@@ -170,7 +188,30 @@ public class ServiceCatalogLoader {
                     unsubscribe,
                     t.get("payloadSchema") instanceof Map<?, ?> ps
                             ? new LinkedHashMap<>((Map<String, Object>) ps)
-                            : null));
+                            : null,
+                    inputs));
+        }
+        return List.copyOf(out);
+    }
+
+    private static List<ServiceCatalogEntry.Input> parseInputs(String trigger, @Nullable Object raw) {
+        List<ServiceCatalogEntry.Input> out = new ArrayList<>();
+        if (raw == null) return out;
+        if (!(raw instanceof List<?> list)) {
+            throw new IllegalStateException("trigger '" + trigger + "': 'inputs' must be a list");
+        }
+        Set<String> seen = new HashSet<>();
+        for (Object item : list) {
+            if (!(item instanceof Map<?, ?> m) || text(m.get("name")) == null) {
+                throw new IllegalStateException("trigger '" + trigger + "': each input needs a 'name'");
+            }
+            String inputName = text(m.get("name"));
+            if (!seen.add(inputName)) {
+                throw new IllegalStateException(
+                        "trigger '" + trigger + "': input '" + inputName + "' is declared twice");
+            }
+            out.add(new ServiceCatalogEntry.Input(
+                    inputName, texts(m.get("description")), !Boolean.FALSE.equals(m.get("required"))));
         }
         return List.copyOf(out);
     }

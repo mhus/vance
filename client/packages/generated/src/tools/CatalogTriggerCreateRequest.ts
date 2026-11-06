@@ -8,4 +8,5 @@ export interface CatalogTriggerCreateRequest {
   trigger: string;
   workflow: string;
   name?: string;
+  inputs?: Record<string, string>;
 }

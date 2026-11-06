@@ -914,7 +914,8 @@ class UrsaEventServiceTest {
                     idempotencyHeader,
                     /*reply*/ null,
                     /*from*/ null,
-                    /*subscription*/ null);
+                    /*subscription*/ null,
+                    /*inputs*/ Map.of());
         }
     }
 }

@@ -44,3 +44,23 @@ highlights:
     description:
       en: "Add an emoji reaction to a message."
       de: "Fügt einer Nachricht eine Emoji-Reaktion hinzu."
+triggers:
+  - name: new-message
+    description:
+      en: "A new message in a channel. Checked every five minutes; the first look only notes what is there."
+      de: "Eine neue Nachricht in einem Kanal. Wird alle fünf Minuten geprüft; der erste Blick merkt sich nur, was schon da ist."
+    mode: poll
+    inputs:
+      - name: channel
+        description:
+          en: "Channel id, e.g. C0123456789 (channel details → bottom of the About tab)"
+          de: "Kanal-ID, z. B. C0123456789 (Kanaldetails → unten im Tab Info)"
+    poll:
+      tool: conversations_history
+      schedule: "0 */5 * * * *"
+      params:
+        token: "{{secret:user:oauth.slack.access_token}}"
+        channel: "${input.channel}"
+        limit: 100
+      itemsFrom: json.messages
+      idFrom: ts

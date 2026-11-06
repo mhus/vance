@@ -2,6 +2,7 @@ package de.mhus.vance.api.tools;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import de.mhus.vance.api.annotations.GenerateTypeScript;
+import java.util.Map;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -28,4 +29,7 @@ public class CatalogTriggerCreateRequest {
 
     /** Name of the event; {@code <service>-<trigger>} when blank. */
     private @Nullable String name;
+
+    /** What the trigger asked for ({@code ${input.<name>}}), by name. */
+    private @Nullable Map<String, String> inputs;
 }

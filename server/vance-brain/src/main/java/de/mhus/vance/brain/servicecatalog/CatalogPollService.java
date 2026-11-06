@@ -42,6 +42,7 @@ public class CatalogPollService {
     private final ServiceCatalogLoader catalog;
     private final DocumentService documents;
     private final ToolDispatcher tools;
+    private final CatalogToolResolver resolver;
 
     /**
      * What a tick found.
@@ -58,20 +59,28 @@ public class CatalogPollService {
     /** The state to write once the entries are taken care of. */
     public record Pending(List<String> ids, @Nullable String cursor) {}
 
-    public Polled poll(String tenantId, String projectId, @Nullable String userId, String name, String from) {
-        ServiceCatalogEntry.Poll poll = pollOf(tenantId, projectId, from);
+    public Polled poll(
+            String tenantId,
+            String projectId,
+            @Nullable String userId,
+            String name,
+            String from,
+            Map<String, String> inputs) {
+        CatalogPollService.Located located = locate(tenantId, projectId, from);
+        ServiceCatalogEntry.Poll poll = located.poll();
         State state = readState(tenantId, projectId, name);
 
         Map<String, String> values = new LinkedHashMap<>();
+        inputs.forEach((k, v) -> values.put("input." + k, v));
         values.put("cursor", state.cursor() == null ? "" : state.cursor());
         @SuppressWarnings("unchecked")
         Map<String, Object> params = poll.params() == null
                 ? Map.of()
                 : (Map<String, Object>) CatalogTriggerService.substitute(poll.params(), values);
-        Map<String, Object> result = tools.invoke(
-                poll.tool(),
-                params,
-                new ToolInvocationContext(tenantId, projectId, /* sessionId */ null, /* processId */ null, userId));
+        ToolInvocationContext context =
+                new ToolInvocationContext(tenantId, projectId, /* sessionId */ null, /* processId */ null, userId);
+        Map<String, Object> result =
+                tools.invoke(resolver.resolve(located.entry(), poll.tool(), context), params, context);
         if (ToolFailure.classifyResult(result).isPresent()) {
             return new Polled(List.of(), new Pending(state.seen(), state.cursor()), result);
         }
@@ -135,17 +144,13 @@ public class CatalogPollService {
                 .ifPresent(d -> documents.delete(d.getId(), WriteActor.SYSTEM));
     }
 
-    private ServiceCatalogEntry.Poll pollOf(String tenantId, String projectId, String from) {
-        int slash = from.indexOf('/');
-        if (slash < 0) throw new ToolException("'from' is <service>/<trigger>, not '" + from + "'");
-        String service = from.substring(0, slash);
-        String trigger = from.substring(slash + 1);
-        return catalog.list(tenantId, projectId).stream()
-                .filter(e -> e.name().equalsIgnoreCase(service))
-                .flatMap(e -> e.triggers().stream())
-                .filter(t -> t.name().equalsIgnoreCase(trigger))
-                .findFirst()
-                .map(ServiceCatalogEntry.Trigger::poll)
+    private record Located(ServiceCatalogEntry entry, ServiceCatalogEntry.Poll poll) {}
+
+    private Located locate(String tenantId, String projectId, String from) {
+        if (from.indexOf('/') < 0) throw new ToolException("'from' is <service>/<trigger>, not '" + from + "'");
+        return catalog.locate(tenantId, projectId, from)
+                .filter(l -> l.trigger().poll() != null)
+                .map(l -> new Located(l.entry(), l.trigger().poll()))
                 .orElseThrow(() -> new ToolException("'" + from + "' is not a polling trigger of the catalog"));
     }
 

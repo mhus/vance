@@ -100,7 +100,12 @@ public record ResolvedUrsaEvent(
          * {@code subscription:} — id of the registration at the service that points at this event, kept so
          * removing the event can remove the registration too. Written by the catalog, not by hand.
          */
-        @Nullable String subscription) {
+        @Nullable String subscription,
+        /**
+         * {@code inputs:} — what was said when the event was made from a catalog trigger (a repository, a
+         * channel); needed again to remove the registration. Written by the catalog, not by hand.
+         */
+        Map<String, String> inputs) {
 
     /** {@code true} when bearer authentication is required. */
     public boolean requiresAuth() {

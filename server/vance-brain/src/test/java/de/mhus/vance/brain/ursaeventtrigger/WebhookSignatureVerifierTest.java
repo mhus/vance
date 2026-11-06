@@ -64,6 +64,69 @@ class WebhookSignatureVerifierTest {
                 .hasValueSatisfying(r -> assertThat(r).contains("hex"));
     }
 
+    /**
+     * Slack's form: header {@code X-Slack-Signature: v0=<hex>} over {@code v0:<timestamp>:<body>}, with the
+     * timestamp in {@code X-Slack-Request-Timestamp}. Computed here with the same recipe, not taken from Slack's
+     * documentation — it shows the template is honoured, not that Slack's published vector verifies.
+     */
+    @Test
+    void slacksFormIsSpelledOutBySignedText() throws Exception {
+        WebhookSignatureSpec spec = new WebhookSignatureSpec(
+                "X-Slack-Signature",
+                "k",
+                "v0=",
+                Encoding.HEX,
+                "X-Slack-Request-Timestamp",
+                300,
+                "v0:{timestamp}:{body}");
+        long fresh = NOW.getEpochSecond() - 5;
+        byte[] signed =
+                ("v0:" + fresh + ":" + new String(BODY, StandardCharsets.UTF_8)).getBytes(StandardCharsets.UTF_8);
+        Map<String, String> headers = Map.of(
+                "X-Slack-Signature",
+                "v0=" + HexFormat.of().formatHex(mac(signed)),
+                "X-Slack-Request-Timestamp",
+                Long.toString(fresh));
+
+        assertThat(check(spec, headers)).isEmpty();
+        // The default form for a timestamped signature is not Slack's, and does not hold for it.
+        WebhookSignatureSpec stripeForm = new WebhookSignatureSpec(
+                "X-Slack-Signature", "k", "v0=", Encoding.HEX, "X-Slack-Request-Timestamp", 300);
+        assertThat(check(stripeForm, headers)).hasValue("signature does not match");
+    }
+
+    @Test
+    void theDefaultsAreTheBodyAloneAndTimestampDotBody() {
+        assertThat(new WebhookSignatureSpec("h", "k", null, Encoding.HEX, null, 300).effectiveSignedText())
+                .isEqualTo("{body}");
+        assertThat(new WebhookSignatureSpec("h", "k", null, Encoding.HEX, "t", 300).effectiveSignedText())
+                .isEqualTo("{timestamp}.{body}");
+        assertThat(new WebhookSignatureSpec("h", "k", null, Encoding.HEX, "t", 300, "{body}").effectiveSignedText())
+                .isEqualTo("{body}");
+    }
+
+    @Test
+    void theBodyGoesIntoTheSignedTextAsReceivedEvenWhenItIsNotValidUtf8() throws Exception {
+        byte[] binary = {(byte) 0xff, (byte) 0xfe, 'a', 0, (byte) 0x80};
+        WebhookSignatureSpec spec = new WebhookSignatureSpec("X-Sig", "k", null, Encoding.HEX, null, 300, "x:{body}:y");
+        byte[] signed = new byte[binary.length + 4];
+        System.arraycopy("x:".getBytes(StandardCharsets.UTF_8), 0, signed, 0, 2);
+        System.arraycopy(binary, 0, signed, 2, binary.length);
+        System.arraycopy(":y".getBytes(StandardCharsets.UTF_8), 0, signed, 2 + binary.length, 2);
+        String sig = HexFormat.of().formatHex(mac(signed));
+
+        assertThat(WebhookSignatureVerifier.refusal(spec, SECRET, binary, Map.of("X-Sig", sig)::get, NOW))
+                .isEmpty();
+    }
+
+    @Test
+    void renderFillsTheTemplateLiterally() {
+        byte[] out = WebhookSignatureVerifier.render(
+                "a{timestamp}b{body}c{body}", "99", "XY".getBytes(StandardCharsets.UTF_8));
+
+        assertThat(new String(out, StandardCharsets.UTF_8)).isEqualTo("a99bXYcXY");
+    }
+
     @Test
     void aTimestampedSignatureCoversTheTimestampAndRefusesAStaleOne() throws Exception {
         WebhookSignatureSpec spec = new WebhookSignatureSpec("X-Sig", "k", null, Encoding.HEX, "X-Ts", 300);

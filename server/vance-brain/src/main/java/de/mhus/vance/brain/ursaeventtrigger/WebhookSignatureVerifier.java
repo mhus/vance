@@ -28,6 +28,36 @@ final class WebhookSignatureVerifier {
     private WebhookSignatureVerifier() {}
 
     /**
+     * The bytes the HMAC covers: {@code template} with {@code {timestamp}} and {@code {body}} filled in. The body
+     * goes in as the bytes received, never through a string — a body that is not valid UTF-8 must still verify.
+     */
+    static byte[] render(String template, String timestamp, byte[] body) {
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream(template.length() + body.length + 16);
+        int i = 0;
+        while (i < template.length()) {
+            if (template.startsWith("{body}", i)) {
+                out.writeBytes(body);
+                i += "{body}".length();
+            } else if (template.startsWith("{timestamp}", i)) {
+                out.writeBytes(timestamp.getBytes(StandardCharsets.UTF_8));
+                i += "{timestamp}".length();
+            } else {
+                int next = nextPlaceholder(template, i + 1);
+                out.writeBytes(template.substring(i, next).getBytes(StandardCharsets.UTF_8));
+                i = next;
+            }
+        }
+        return out.toByteArray();
+    }
+
+    private static int nextPlaceholder(String template, int from) {
+        int body = template.indexOf("{body}", from);
+        int timestamp = template.indexOf("{timestamp}", from);
+        if (body < 0) return timestamp < 0 ? template.length() : timestamp;
+        return timestamp < 0 ? body : Math.min(body, timestamp);
+    }
+
+    /**
      * @param header reads a request header (case-insensitive), {@code null} when absent
      * @return empty when the signature holds, otherwise why it does not — for the log, never for the caller
      */
@@ -59,7 +89,7 @@ final class WebhookSignatureVerifier {
                     "signature is not valid " + spec.encoding().name().toLowerCase());
         }
 
-        byte[] signed = body;
+        String timestampText = "";
         if (spec.timestampHeader() != null) {
             String raw = header.apply(spec.timestampHeader());
             long timestamp;
@@ -71,11 +101,10 @@ final class WebhookSignatureVerifier {
             if (Math.abs(now.getEpochSecond() - timestamp) > spec.toleranceSeconds()) {
                 return Optional.of("timestamp is more than " + spec.toleranceSeconds() + " s from now");
             }
-            byte[] prefix = (timestamp + ".").getBytes(StandardCharsets.UTF_8);
-            signed = new byte[prefix.length + body.length];
-            System.arraycopy(prefix, 0, signed, 0, prefix.length);
-            System.arraycopy(body, 0, signed, prefix.length, body.length);
+            // The value as the provider wrote it into the signed text, not a number written out again.
+            timestampText = raw.trim();
         }
+        byte[] signed = render(spec.effectiveSignedText(), timestampText, body);
 
         byte[] computed;
         try {

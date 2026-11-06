@@ -77,6 +77,55 @@ class UrsaEventLoaderTest {
     }
 
     @Test
+    void parses_a_signed_text_for_a_provider_with_its_own_form() {
+        ResolvedUrsaEvent e = loader.validateYaml("slack", """
+                workflow: on-slack
+                auth:
+                  signature:
+                    header: X-Slack-Signature
+                    secretSetting: webhook.slack.secret
+                    prefix: "v0="
+                    timestampHeader: X-Slack-Request-Timestamp
+                    signedText: "v0:{timestamp}:{body}"
+                """);
+
+        assertThat(e.signature().signedText()).isEqualTo("v0:{timestamp}:{body}");
+        assertThat(e.signature().effectiveSignedText()).isEqualTo("v0:{timestamp}:{body}");
+    }
+
+    @Test
+    void a_signed_text_needs_the_body_knows_only_two_placeholders_and_a_timestamp_header_for_the_timestamp() {
+        String base = """
+                workflow: w
+                auth:
+                  signature:
+                    header: X-Sig
+                    secretSetting: k
+                """;
+        assertThatThrownBy(() -> loader.validateYaml("x", base + "    signedText: \"nothing\"\n"))
+                .hasMessageContaining("{body}");
+        assertThatThrownBy(() -> loader.validateYaml("x", base + "    signedText: \"{timestamp}.{body}\"\n"))
+                .hasMessageContaining("timestampHeader");
+        assertThatThrownBy(() ->
+                        loader.validateYaml("x", base + "    timestampHeader: T\n    signedText: \"{id}.{body}\"\n"))
+                .hasMessageContaining("knows only");
+    }
+
+    @Test
+    void a_signature_without_a_signed_text_keeps_the_default_form() {
+        ResolvedUrsaEvent e = loader.validateYaml("gh", """
+                workflow: w
+                auth:
+                  signature:
+                    header: X-Sig
+                    secretSetting: k
+                """);
+
+        assertThat(e.signature().signedText()).isNull();
+        assertThat(e.signature().effectiveSignedText()).isEqualTo("{body}");
+    }
+
+    @Test
     void a_signature_is_exclusive_with_the_other_ways_to_authenticate() {
         assertThatThrownBy(() -> loader.validateYaml("x", """
                 workflow: w

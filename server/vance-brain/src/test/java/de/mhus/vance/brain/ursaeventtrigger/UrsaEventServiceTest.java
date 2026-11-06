@@ -3,6 +3,7 @@ package de.mhus.vance.brain.ursaeventtrigger;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -54,6 +55,7 @@ class UrsaEventServiceTest {
     private de.mhus.vance.brain.ursascheduler.SystemSessionResolver systemSessionResolver;
     private UrsaEventLogService eventLogService;
     private UrsaEventService service;
+    private final UrsaEventForwarder forwarder = mock(UrsaEventForwarder.class);
     private final UrsaEventRateLimiter rateLimiter = new UrsaEventRateLimiter();
     private final UrsaEventDeliveryCache deliveries = new UrsaEventDeliveryCache(java.time.Duration.ofMinutes(10));
     private ObjectProvider<de.mhus.vance.brain.project.ProjectLocator> locatorProvider;
@@ -114,7 +116,7 @@ class UrsaEventServiceTest {
                 eventLogService,
                 locatorProvider,
                 managerProvider,
-                mock(UrsaEventForwarder.class),
+                forwarder,
                 projectService,
                 rateLimiter,
                 deliveries,
@@ -293,6 +295,100 @@ class UrsaEventServiceTest {
         // A different delivery is a different run.
         fire(request(new byte[0], Map.of("X-Delivery", "d-2")));
         verify(workflowService, org.mockito.Mockito.times(2)).start(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void the_owning_pod_limits_a_forwarded_call_too_so_the_limit_is_exact_for_the_project() {
+        when(eventLoader.load(TENANT, PROJECT, EVENT)).thenReturn(Optional.of(event(b -> b.rateLimit(2))));
+        when(workflowService.start(any(), any(), any(), any(), any())).thenReturn("run-1");
+
+        service.trigger(TENANT, PROJECT, EVENT, "POST", null, null, true, null);
+        service.trigger(TENANT, PROJECT, EVENT, "POST", null, null, true, null);
+
+        assertThatThrownBy(() -> service.trigger(TENANT, PROJECT, EVENT, "POST", null, null, true, null))
+                .isInstanceOfSatisfying(
+                        ResponseStatusException.class,
+                        ex -> assertThat(ex.getStatusCode().value()).isEqualTo(429));
+        verify(workflowService, org.mockito.Mockito.times(2)).start(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void the_owning_pod_recognises_a_delivery_the_entry_pod_passed_along() {
+        when(eventLoader.load(TENANT, PROJECT, EVENT))
+                .thenReturn(Optional.of(event(b -> b.idempotencyHeader("X-Delivery"))));
+        when(workflowService.start(any(), any(), any(), any(), any())).thenReturn("run-1");
+        // The provider's own headers do not travel with a forward; the entry pod puts the id in an internal one.
+        var hop = request(new byte[0], Map.of(UrsaEventForwarder.DELIVERY_ID_HEADER, "d-1"));
+
+        UrsaEventService.UrsaEventTriggerResult first =
+                service.trigger(TENANT, PROJECT, EVENT, "POST", null, null, true, hop);
+        UrsaEventService.UrsaEventTriggerResult again =
+                service.trigger(TENANT, PROJECT, EVENT, "POST", null, null, true, hop);
+
+        assertThat(again.workflowRunId()).isEqualTo(first.workflowRunId());
+        verify(workflowService, org.mockito.Mockito.times(1)).start(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void the_providers_own_header_is_not_trusted_on_a_forwarded_hop() {
+        when(eventLoader.load(TENANT, PROJECT, EVENT))
+                .thenReturn(Optional.of(event(b -> b.idempotencyHeader("X-Delivery"))));
+        when(workflowService.start(any(), any(), any(), any(), any())).thenReturn("run-1");
+        var withoutInternalHeader = request(new byte[0], Map.of("X-Delivery", "d-1"));
+
+        service.trigger(TENANT, PROJECT, EVENT, "POST", null, null, true, withoutInternalHeader);
+        service.trigger(TENANT, PROJECT, EVENT, "POST", null, null, true, withoutInternalHeader);
+
+        // No internal delivery header, so nothing is recognised: both ran.
+        verify(workflowService, org.mockito.Mockito.times(2)).start(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void the_entry_pod_hands_the_delivery_id_to_the_owner() {
+        when(eventLoader.load(TENANT, PROJECT, EVENT))
+                .thenReturn(Optional.of(event(b -> b.idempotencyHeader("X-Delivery"))));
+        ownerIsAnotherPod("pod-b:8080");
+        when(forwarder.forward(any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(new de.mhus.vance.api.ursaevents.EventTriggerResponse(EVENT, "w-deploy", "run-9", null));
+
+        UrsaEventService.UrsaEventTriggerResult r = fire(request(new byte[0], Map.of("X-Delivery", "d-7")));
+
+        assertThat(r.workflowRunId()).isEqualTo("run-9");
+        verify(forwarder)
+                .forward(eq("pod-b:8080"), eq(TENANT), eq(PROJECT), eq(EVENT), eq("POST"), any(), any(), eq("d-7"));
+    }
+
+    @Test
+    void a_stranger_with_a_wrong_token_cannot_make_the_service_remember_a_delivery_id() {
+        when(eventLoader.load(TENANT, PROJECT, EVENT))
+                .thenReturn(Optional.of(event(b -> b.tokenLiteral("right").idempotencyHeader("X-Delivery"))));
+
+        assertThatThrownBy(() -> service.trigger(
+                        TENANT,
+                        PROJECT,
+                        EVENT,
+                        "POST",
+                        "wrong",
+                        null,
+                        false,
+                        request(new byte[0], Map.of("X-Delivery", "d-1"))))
+                .isInstanceOfSatisfying(
+                        ResponseStatusException.class,
+                        ex -> assertThat(ex.getStatusCode().value()).isEqualTo(401));
+
+        assertThat(deliveries.size()).isZero();
+    }
+
+    private void ownerIsAnotherPod(String endpoint) {
+        de.mhus.vance.brain.project.ProjectLocator locator = mock(de.mhus.vance.brain.project.ProjectLocator.class);
+        when(locator.locate(any(), any(), anyBoolean()))
+                .thenReturn(new de.mhus.vance.brain.project.ProjectLocator.Location(
+                        TENANT, PROJECT, Optional.of(endpoint), null, null, null));
+        de.mhus.vance.brain.project.ProjectManagerService manager =
+                mock(de.mhus.vance.brain.project.ProjectManagerService.class);
+        when(manager.isLocalPod(endpoint)).thenReturn(false);
+        when(locatorProvider.getIfAvailable()).thenReturn(locator);
+        when(managerProvider.getIfAvailable()).thenReturn(manager);
     }
 
     @Test

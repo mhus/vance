@@ -52,8 +52,15 @@ public class UrsaEventForwarder {
      */
     public static final String FORWARDED_HEADER = "X-Vance-Event-Forwarded";
 
+    /**
+     * The provider's delivery id, handed on to the owning pod. The provider's own headers do not travel with the
+     * forward, and the owner has to recognise a repeat as well — only on a trusted hop is this header read.
+     */
+    public static final String DELIVERY_ID_HEADER = "X-Vance-Event-Delivery";
+
     /** Shared pod-to-pod secret, mirroring {@code InternalAccessFilter}. */
     public static final String INTERNAL_TOKEN_HEADER = "X-Vance-Internal-Token";
+
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(3);
     /**
      * Generous: the owner pod may still be finishing its bring when the request
@@ -66,16 +73,14 @@ public class UrsaEventForwarder {
     private final byte[] expectedInternalToken;
 
     public UrsaEventForwarder(
-            @org.springframework.beans.factory.annotation.Value("${vance.internal.token:}")
-            String internalToken) {
+            @org.springframework.beans.factory.annotation.Value("${vance.internal.token:}") String internalToken) {
         java.net.http.HttpClient httpClient = java.net.http.HttpClient.newBuilder()
                 .connectTimeout(CONNECT_TIMEOUT)
                 .build();
         JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(httpClient);
         factory.setReadTimeout(READ_TIMEOUT);
-        this.expectedInternalToken = internalToken == null
-                ? new byte[0]
-                : internalToken.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        this.expectedInternalToken =
+                internalToken == null ? new byte[0] : internalToken.getBytes(java.nio.charset.StandardCharsets.UTF_8);
         this.restClientBuilder = RestClient.builder()
                 .requestFactory(factory)
                 .defaultHeader(FORWARDED_HEADER, "1")
@@ -93,8 +98,7 @@ public class UrsaEventForwarder {
      * <p>An unconfigured {@code vance.internal.token} trusts nothing. That is
      * the single-pod case, where nothing forwards in the first place.
      */
-    public boolean isTrustedHop(
-            @Nullable String forwardedHeader, @Nullable String presentedToken) {
+    public boolean isTrustedHop(@Nullable String forwardedHeader, @Nullable String presentedToken) {
         if (forwardedHeader == null) return false;
         if (presentedToken == null || presentedToken.isEmpty() || expectedInternalToken.length == 0) {
             return false;
@@ -115,27 +119,32 @@ public class UrsaEventForwarder {
             String eventName,
             String httpMethod,
             @Nullable String bearerToken,
-            @Nullable Object payload) {
-        String url = baseUrl(endpoint)
-                + "/brain/" + tenantId + "/event/" + projectId + "/" + eventName;
+            @Nullable Object payload,
+            @Nullable String deliveryId) {
+        String url = baseUrl(endpoint) + "/brain/" + tenantId + "/event/" + projectId + "/" + eventName;
         try {
             RestClient client = restClientBuilder.build();
             RestClient.RequestHeadersSpec<?> spec;
             if ("GET".equalsIgnoreCase(httpMethod)) {
                 spec = client.get().uri(url);
             } else {
-                spec = client.post().uri(url)
+                spec = client.post()
+                        .uri(url)
                         .contentType(MediaType.APPLICATION_JSON)
                         .body(payload == null ? java.util.Map.of() : payload);
             }
             if (bearerToken != null && !bearerToken.isBlank()) {
                 spec = spec.header("Authorization", "Bearer " + bearerToken);
             }
-            EventTriggerResponse response = spec
-                    .retrieve()
+            if (deliveryId != null && !deliveryId.isBlank()) {
+                spec = spec.header(DELIVERY_ID_HEADER, deliveryId);
+            }
+            EventTriggerResponse response = spec.retrieve()
                     .onStatus(HttpStatusCode::isError, (req, res) -> {
-                        throw new ResponseStatusException(res.getStatusCode(),
-                                "Event '" + eventName + "' rejected by the owning pod");
+                        throw new RejectedByOwner(
+                                res.getStatusCode(),
+                                "Event '" + eventName + "' rejected by the owning pod",
+                                res.getHeaders().getFirst(org.springframework.http.HttpHeaders.RETRY_AFTER));
                     })
                     .body(EventTriggerResponse.class);
             if (response == null) {
@@ -150,14 +159,33 @@ public class UrsaEventForwarder {
             // failure, not a fallback.
             throw new ResponseStatusException(
                     org.springframework.http.HttpStatus.BAD_GATEWAY,
-                    "Could not reach the pod holding '" + tenantId + "/" + projectId
-                            + "' for event '" + eventName + "'", e);
+                    "Could not reach the pod holding '" + tenantId + "/" + projectId + "' for event '" + eventName
+                            + "'",
+                    e);
+        }
+    }
+
+    /**
+     * The owning pod said no. Its status is passed through, and so is its {@code Retry-After}: a {@code 429} from the
+     * owner has to reach the provider with the wait the owner named, or the provider retries at once.
+     */
+    static final class RejectedByOwner extends ResponseStatusException {
+        private final @Nullable String retryAfter;
+
+        RejectedByOwner(HttpStatusCode status, String reason, @Nullable String retryAfter) {
+            super(status, reason);
+            this.retryAfter = retryAfter;
+        }
+
+        @Override
+        public org.springframework.http.HttpHeaders getHeaders() {
+            org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
+            if (retryAfter != null) headers.set(org.springframework.http.HttpHeaders.RETRY_AFTER, retryAfter);
+            return headers;
         }
     }
 
     private static String baseUrl(String endpoint) {
-        return endpoint.startsWith("http://") || endpoint.startsWith("https://")
-                ? endpoint
-                : "http://" + endpoint;
+        return endpoint.startsWith("http://") || endpoint.startsWith("https://") ? endpoint : "http://" + endpoint;
     }
 }

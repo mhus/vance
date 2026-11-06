@@ -304,6 +304,8 @@ public class UrsaEventService {
         // A delivery id this request claimed; released if the request fails, so a retry is a fresh try.
         String claimedDelivery = null;
         UrsaEventDeliveryCache.Claim deliveryClaim = null;
+        // The delivery id of this request, handed on to the owning pod so it can recognise a repeat as well.
+        String forwardDeliveryId = null;
         boolean delivered = false;
 
         try {
@@ -341,9 +343,11 @@ public class UrsaEventService {
                         HttpStatus.METHOD_NOT_ALLOWED, "Event '" + eventName + "' does not accept " + httpMethod);
             }
 
-            if (!alreadyForwarded) {
-                // Before the authentication, so a flood of wrong tokens or signatures is turned away too. A
-                // forwarded hop was counted by the pod that received the request.
+            {
+                // Before the authentication, so a flood of wrong tokens or signatures is turned away too. Counted on
+                // the pod that received the request — which protects that pod and spares the forward — and again on
+                // the owning pod: a project has one owner, so there the limit is exact whatever number of pods the
+                // requests came in through.
                 int limit = event.rateLimitPerMinute() != null ? event.rateLimitPerMinute() : defaultRateLimitPerMinute;
                 java.util.Optional<Duration> wait =
                         rateLimiter.refusal(tenantId + "/" + projectId + "/" + eventName, limit);
@@ -378,38 +382,6 @@ public class UrsaEventService {
                 }
             }
 
-            if (event.idempotencyHeader() != null && webhook != null && !alreadyForwarded) {
-                String deliveryId = webhook.header().apply(event.idempotencyHeader());
-                if (deliveryId != null && deliveryId.length() > MAX_DELIVERY_ID_LENGTH) {
-                    // A caller picks the id, so a huge one would be memory it gets us to hold.
-                    countOutcome(eventName, "bad_delivery_id");
-                    outcome = "bad_delivery_id";
-                    skipLog = true;
-                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Delivery id is too long");
-                }
-                if (deliveryId != null && !deliveryId.isBlank()) {
-                    String key = tenantId + "/" + projectId + "/" + eventName + "/" + deliveryId.trim();
-                    UrsaEventDeliveryCache.Claim claim = deliveries.claim(key);
-                    if (!claim.first()) {
-                        if (claim.inFlight()) {
-                            countOutcome(eventName, "duplicate_in_flight");
-                            outcome = "duplicate_in_flight";
-                            skipLog = true;
-                            throw new ResponseStatusException(
-                                    HttpStatus.CONFLICT, "Delivery '" + deliveryId.trim() + "' is being handled");
-                        }
-                        // Seen and answered: same answer, no second run.
-                        countOutcome(eventName, "duplicate");
-                        outcome = "duplicate";
-                        skipLog = true;
-                        return claim.delivery().result();
-                    }
-                    claimedDelivery = key;
-                    // Remembered at the two places the request ends in success, below.
-                    deliveryClaim = claim;
-                }
-            }
-
             if (event.requiresAuth()) {
                 String expected = resolveExpectedToken(tenantId, projectId, event);
                 if (expected == null || expected.isBlank()) {
@@ -432,6 +404,41 @@ public class UrsaEventService {
                 }
             }
 
+            // The delivery id is looked at only now, after the caller has proved who it is (bearer, signature or an
+            // event that is deliberately open) and passed the rate limit: a stranger cannot make us remember ids.
+            // Checked on the pod that received the request and again on the owning pod — a project has exactly one
+            // owner, so there a delivery is recognised whichever pod the provider's retry came in through.
+            String deliveryId = deliveryIdOf(event, webhook, alreadyForwarded);
+            if (deliveryId != null && deliveryId.length() > MAX_DELIVERY_ID_LENGTH) {
+                // A caller picks the id, so a huge one would be memory it gets us to hold.
+                countOutcome(eventName, "bad_delivery_id");
+                outcome = "bad_delivery_id";
+                skipLog = true;
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Delivery id is too long");
+            }
+            if (deliveryId != null && !deliveryId.isBlank()) {
+                forwardDeliveryId = deliveryId.trim();
+                String key = tenantId + "/" + projectId + "/" + eventName + "/" + forwardDeliveryId;
+                UrsaEventDeliveryCache.Claim claim = deliveries.claim(key);
+                if (!claim.first()) {
+                    if (claim.inFlight()) {
+                        countOutcome(eventName, "duplicate_in_flight");
+                        outcome = "duplicate_in_flight";
+                        skipLog = true;
+                        throw new ResponseStatusException(
+                                HttpStatus.CONFLICT, "Delivery '" + forwardDeliveryId + "' is being handled");
+                    }
+                    // Seen and answered: same answer, no second run.
+                    countOutcome(eventName, "duplicate");
+                    outcome = "duplicate";
+                    skipLog = true;
+                    return claim.delivery().result();
+                }
+                claimedDelivery = key;
+                // Remembered at the two places the request ends in success, below.
+                deliveryClaim = claim;
+            }
+
             if (!alreadyForwarded && !projectWantsToRun(tenantId, projectId)) {
                 // An event is a machine trigger: it never starts a project. An idle
                 // project is idle because its users stayed away, a suspended one
@@ -447,8 +454,8 @@ public class UrsaEventService {
             if (!alreadyForwarded) {
                 String owner = bringUpAndFindOwner(tenantId, projectId, eventName);
                 if (owner != null) {
-                    de.mhus.vance.api.ursaevents.EventTriggerResponse remote =
-                            forwarder.forward(owner, tenantId, projectId, eventName, httpMethod, bearerToken, payload);
+                    de.mhus.vance.api.ursaevents.EventTriggerResponse remote = forwarder.forward(
+                            owner, tenantId, projectId, eventName, httpMethod, bearerToken, payload, forwardDeliveryId);
                     countOutcome(eventName, "forwarded");
                     outcome = "forwarded";
                     targetName = remote.getWorkflowName();
@@ -1013,6 +1020,18 @@ public class UrsaEventService {
         metricService
                 .counter(METRIC_TRIGGERS, "event", eventName, "source", "admin", "outcome", outcome)
                 .increment();
+    }
+
+    /**
+     * The provider's delivery id for this request: the header the event names, or — on a request another pod
+     * forwarded, whose provider headers did not travel — the id that pod passed along. The internal header is only
+     * read on a trusted hop, which the controller has already checked.
+     */
+    private static @Nullable String deliveryIdOf(
+            ResolvedUrsaEvent event, @Nullable WebhookRequest webhook, boolean alreadyForwarded) {
+        if (event.idempotencyHeader() == null || webhook == null) return null;
+        return webhook.header()
+                .apply(alreadyForwarded ? UrsaEventForwarder.DELIVERY_ID_HEADER : event.idempotencyHeader());
     }
 
     /** The shared secret of the provider's signature: a password setting, else a plain one, cascade project → tenant. */

@@ -378,6 +378,8 @@ export * from './events/EventDto';
 export * from './events/EventSource';
 export * from './events/EventSummary';
 export * from './events/EventTriggerResponse';
+export * from './events/WebhookCreateRequest';
+export * from './events/WebhookCreateResponse';
 
 export * from './runs/RunAction';
 export * from './runs/RunBreakpointsRequest';

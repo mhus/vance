@@ -10,7 +10,12 @@
 import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { brainFetch } from '@vance/shared';
-import type { CatalogTriggerCreateRequest, CatalogTriggerCreateResponse } from '@vance/generated';
+import type {
+  CatalogTriggerCreateRequest,
+  CatalogTriggerCreateResponse,
+  WebhookCreateRequest,
+  WebhookCreateResponse,
+} from '@vance/generated';
 import { VAlert, VButton, VInput, VModal, VSegment, VSelect } from '@/components';
 import { useSchedulers } from '@/composables/useSchedulers';
 import type { WorkflowTools } from './useWorkflowTools';
@@ -36,11 +41,13 @@ const emit = defineEmits<{
 const { t } = useI18n();
 const schedulers = useSchedulers();
 
-type Kind = 'service' | 'schedule';
+type Kind = 'service' | 'webhook' | 'schedule';
 const kind = ref<Kind>('service');
 const busy = ref(false);
 const error = ref<string | null>(null);
 const created = ref<CatalogTriggerCreateResponse | null>(null);
+/** A plain webhook that was made; its token is shown here and never again. */
+const webhook = ref<WebhookCreateResponse | null>(null);
 
 // ── the choice of service trigger ────────────────────────────────
 
@@ -71,6 +78,11 @@ watch(chosen, (next) => {
   sourceName.value = next ? freeSourceName(`${next.service}-${next.trigger.name}`, props.takenNames) : '';
 });
 
+// ── the plain webhook ────────────────────────────────────────────
+
+const hookName = ref('');
+const hookDescription = ref('');
+
 // ── the schedule ─────────────────────────────────────────────────
 
 const scheduleName = ref('');
@@ -83,16 +95,22 @@ watch(() => props.modelValue, (open) => {
   if (!open) return;
   error.value = null;
   created.value = null;
+  webhook.value = null;
   void props.tools.ensureLoaded().then(() => {
-    kind.value = choices.value.length > 0 ? 'service' : 'schedule';
+    kind.value = choices.value.length > 0 ? 'service' : 'webhook';
     service.value = serviceOptions.value[0]?.value ?? null;
   });
   scheduleName.value = freeSourceName(`${props.workflow}-schedule`, props.takenNames);
+  hookName.value = freeSourceName(props.workflow, props.takenNames);
+  hookDescription.value = '';
   description.value = t('documents.workflowView.sources.defaultDescription', { workflow: props.workflow });
 });
 
 const kindOptions = computed(() => [
-  { value: 'service' as const, label: t('documents.workflowView.sources.kindService') },
+  ...(choices.value.length > 0
+    ? [{ value: 'service' as const, label: t('documents.workflowView.sources.kindService') }]
+    : []),
+  { value: 'webhook' as const, label: t('documents.workflowView.sources.kindWebhook') },
   { value: 'schedule' as const, label: t('documents.workflowView.sources.kindSchedule') },
 ]);
 
@@ -102,6 +120,7 @@ const missingInput = computed(
 );
 const canSubmit = computed(() => {
   if (busy.value) return false;
+  if (kind.value === 'webhook') return hookName.value.trim() !== '';
   if (kind.value === 'schedule') return scheduleName.value.trim() !== '' && cron.value.trim() !== '' && description.value.trim() !== '';
   return chosen.value !== undefined && sourceName.value.trim() !== '' && !missingInput.value;
 });
@@ -123,6 +142,20 @@ async function submit(): Promise<void> {
       );
       emit('created');
       close();
+      return;
+    }
+    if (kind.value === 'webhook') {
+      const hook: WebhookCreateRequest = {
+        workflow: props.workflow,
+        name: hookName.value.trim(),
+        description: hookDescription.value.trim() || undefined,
+      };
+      webhook.value = await brainFetch<WebhookCreateResponse>(
+        'POST',
+        `project/${encodeURIComponent(props.projectId)}/events`,
+        { body: hook },
+      );
+      emit('created');
       return;
     }
     const c = chosen.value!;
@@ -155,7 +188,23 @@ async function submit(): Promise<void> {
     @update:model-value="emit('update:modelValue', $event)"
   >
     <div class="wf-source">
-      <template v-if="created">
+      <template v-if="webhook">
+        <VAlert variant="success">
+          {{ t('documents.workflowView.sources.created', { name: webhook.name }) }}
+        </VAlert>
+        <VAlert variant="warning">{{ t('documents.workflowView.sources.tokenOnce') }}</VAlert>
+        <dl class="wf-source-result">
+          <dt>{{ t('documents.workflowView.sources.urlPath') }}</dt>
+          <dd><code>{{ webhook.urlPath }}</code></dd>
+          <dt>{{ t('documents.workflowView.sources.token') }}</dt>
+          <dd><code>{{ webhook.token }}</code></dd>
+          <dt>{{ t('documents.workflowView.sources.tokenSetting') }}</dt>
+          <dd><code>{{ webhook.tokenSetting }}</code></dd>
+        </dl>
+        <p class="wf-source-note">{{ t('documents.workflowView.sources.tokenUse') }}</p>
+      </template>
+
+      <template v-else-if="created">
         <VAlert variant="success">
           {{ t('documents.workflowView.sources.created', { name: created.name }) }}
         </VAlert>
@@ -175,12 +224,10 @@ async function submit(): Promise<void> {
 
       <template v-else>
         <VSegment
-          v-if="choices.length > 0"
           v-model="kind"
           :options="kindOptions"
           :aria-label="t('documents.workflowView.sources.kindLabel')"
         />
-        <p v-else-if="tools.busy.value" class="wf-source-note">{{ t('documents.workflowView.palette.loading') }}</p>
 
         <template v-if="kind === 'service' && choices.length > 0">
           <VSelect v-model="service" :options="serviceOptions" :label="t('documents.workflowView.sources.service')" />
@@ -197,6 +244,12 @@ async function submit(): Promise<void> {
           />
         </template>
 
+        <template v-else-if="kind === 'webhook'">
+          <p class="wf-source-note">{{ t('documents.workflowView.sources.webhookNote') }}</p>
+          <VInput v-model="hookName" :label="t('documents.workflowView.sources.name')" />
+          <VInput v-model="hookDescription" :label="t('documents.workflowView.sources.description')" />
+        </template>
+
         <template v-else>
           <VInput v-model="scheduleName" :label="t('documents.workflowView.sources.name')" />
           <VInput v-model="description" :label="t('documents.workflowView.sources.description')" />
@@ -208,7 +261,7 @@ async function submit(): Promise<void> {
     </div>
 
     <template #actions>
-      <template v-if="created">
+      <template v-if="created || webhook">
         <VButton variant="primary" @click="close">{{ t('documents.workflowView.sources.done') }}</VButton>
       </template>
       <template v-else>

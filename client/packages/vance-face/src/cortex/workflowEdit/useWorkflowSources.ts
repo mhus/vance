@@ -2,7 +2,7 @@ import { computed, watch } from 'vue';
 import { brainFetch } from '@vance/shared';
 import { useEvents } from '@/composables/useEvents';
 import { useSchedulers } from '@/composables/useSchedulers';
-import { sourcesOf } from './workflowSources';
+import { sourcesOf, type WorkflowSource } from './workflowSources';
 
 /**
  * What starts one workflow — the events and schedulers of the project that
@@ -36,17 +36,21 @@ export function useWorkflowSources(
 
   watch([projectId, workflow], () => { void reload(); }, { immediate: true });
 
-  /** Remove a source made from a catalog trigger (the service is told too) or a scheduler. */
-  async function remove(kind: 'event' | 'scheduler', name: string): Promise<void> {
+  /**
+   * Remove a source. An event made from a catalog trigger goes through the catalog, which also tells the service;
+   * any other event is deleted with the token made for it.
+   */
+  async function remove(source: WorkflowSource): Promise<void> {
     const project = projectId();
     if (!project) return;
-    if (kind === 'scheduler') {
-      await schedulers.remove(project, name);
+    const name = encodeURIComponent(source.name);
+    const base = `project/${encodeURIComponent(project)}`;
+    if (source.kind === 'scheduler') {
+      await schedulers.remove(project, source.name);
+    } else if (source.from) {
+      await brainFetch<void>('DELETE', `${base}/workflow-triggers/${name}`);
     } else {
-      await brainFetch<void>(
-        'DELETE',
-        `project/${encodeURIComponent(project)}/workflow-triggers/${encodeURIComponent(name)}`,
-      );
+      await brainFetch<void>('DELETE', `${base}/events/${name}`);
     }
     await reload();
   }

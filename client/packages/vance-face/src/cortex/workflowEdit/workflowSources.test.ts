@@ -9,8 +9,8 @@ import {
   workflowNameOf,
 } from './workflowSources';
 
-const event = (name: string, workflow: string, from?: string): EventSummary =>
-  ({ name, workflow, from, enabled: true, authConfigured: true, source: 'PROJECT' }) as unknown as EventSummary;
+const event = (name: string, workflow: string, from?: string, source = 'PROJECT'): EventSummary =>
+  ({ name, workflow, from, enabled: true, authConfigured: true, source }) as unknown as EventSummary;
 const scheduler = (name: string, workflow: string | undefined, source = 'PROJECT'): SchedulerSummary =>
   ({ name, workflow, cron: '0 0 6 * * *', enabled: true, source }) as unknown as SchedulerSummary;
 
@@ -25,21 +25,21 @@ describe('workflowNameOf', () => {
 
 describe('sourcesOf', () => {
   const sources = sourcesOf(
-    [event('b', 'audit'), event('a', 'audit', 'github/push'), event('c', 'other')],
+    [event('b', 'audit'), event('a', 'audit', 'github/push'), event('c', 'other'), event('t', 'audit', undefined, 'TENANT')],
     [scheduler('nightly', 'audit'), scheduler('chat', undefined), scheduler('shared', 'audit', 'TENANT')],
     'audit',
   );
 
   it('keeps only what starts the workflow, events first, each group by name', () => {
     expect(sources.map((s) => `${s.kind}:${s.name}`)).toEqual([
-      'event:a', 'event:b', 'scheduler:nightly', 'scheduler:shared',
+      'event:a', 'event:b', 'event:t', 'scheduler:nightly', 'scheduler:shared',
     ]);
   });
 
-  it('lets the editor remove a catalog event and a scheduler of the project, nothing else', () => {
-    expect(sources.map((s) => s.removable)).toEqual([true, false, true, false]);
+  it('lets the editor remove what the project owns and nothing inherited from the tenant', () => {
+    expect(sources.map((s) => s.removable)).toEqual([true, true, false, true, false]);
     expect(sources[0].from).toBe('github/push');
-    expect(sources[2].summary).toBe('0 0 6 * * *');
+    expect(sources[3].summary).toBe('0 0 6 * * *');
   });
 });
 

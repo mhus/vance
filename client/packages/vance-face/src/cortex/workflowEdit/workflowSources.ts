@@ -1,5 +1,6 @@
 import { stringify } from 'yaml';
 import {
+  EventSource,
   SchedulerSource,
   type EventSummary,
   type SchedulerSummary,
@@ -24,7 +25,7 @@ export interface WorkflowSource {
   /** {@code <service>/<trigger>} when it was made from a catalog trigger. */
   from?: string;
   enabled: boolean;
-  /** The editor can remove it: a catalog event, or a scheduler of this project. */
+  /** The editor can remove it: an event or a scheduler of this project (not one inherited from the tenant). */
   removable: boolean;
 }
 
@@ -54,7 +55,7 @@ export function sourcesOf(
       summary: 'webhook',
       from: e.from,
       enabled: e.enabled,
-      removable: e.from !== undefined,
+      removable: e.source === EventSource.PROJECT,
     }));
   const fromSchedulers = schedulers
     .filter((s) => s.workflow === workflow)

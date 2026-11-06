@@ -39,15 +39,17 @@ const shown = computed(() => store.sources.value);
 async function remove(source: WorkflowSource): Promise<void> {
   const confirmed = await confirmAction({
     title: t('documents.workflowView.sources.removeTitle', { name: source.name }),
-    message: source.kind === 'event'
-      ? t('documents.workflowView.sources.removeEvent')
-      : t('documents.workflowView.sources.removeScheduler'),
+    message: source.kind === 'scheduler'
+      ? t('documents.workflowView.sources.removeScheduler')
+      : source.from
+        ? t('documents.workflowView.sources.removeEvent')
+        : t('documents.workflowView.sources.removeWebhook'),
     confirmLabel: t('documents.workflowView.sources.remove'),
   });
   if (!confirmed) return;
   failure.value = null;
   try {
-    await store.remove(source.kind, source.name);
+    await store.remove(source);
   } catch (e) {
     failure.value = e instanceof Error ? e.message : String(e);
   }

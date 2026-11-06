@@ -162,7 +162,8 @@ async function submit(): Promise<void> {
     const body: CatalogTriggerCreateRequest = {
       service: c.service,
       trigger: c.trigger.name,
-      workflow: props.workflow,
+      // A poll makes a workflow of its own; only a webhook starts this one.
+      workflow: c.trigger.mode === 'poll' ? undefined : props.workflow,
       name: sourceName.value.trim(),
       inputs: Object.fromEntries(Object.entries(inputs.value).filter(([, v]) => v.trim() !== '')),
     };
@@ -209,6 +210,10 @@ async function submit(): Promise<void> {
           {{ t('documents.workflowView.sources.created', { name: created.name }) }}
         </VAlert>
         <dl class="wf-source-result">
+          <template v-if="created.workflow">
+            <dt>{{ t('documents.workflowView.sources.pollWorkflow') }}</dt>
+            <dd><code>{{ created.workflow }}</code></dd>
+          </template>
           <template v-if="created.urlPath">
             <dt>{{ t('documents.workflowView.sources.urlPath') }}</dt>
             <dd><code>{{ created.urlPath }}</code></dd>
@@ -217,8 +222,10 @@ async function submit(): Promise<void> {
             <dt>{{ t('documents.workflowView.sources.secretSetting') }}</dt>
             <dd><code>{{ created.secretSetting }}</code></dd>
           </template>
-          <dt>{{ t('documents.workflowView.sources.registered') }}</dt>
-          <dd>{{ created.subscribed ? t('documents.workflowView.sources.yes') : t('documents.workflowView.sources.no') }}</dd>
+          <template v-if="created.mode !== 'poll'">
+            <dt>{{ t('documents.workflowView.sources.registered') }}</dt>
+            <dd>{{ created.subscribed ? t('documents.workflowView.sources.yes') : t('documents.workflowView.sources.no') }}</dd>
+          </template>
         </dl>
       </template>
 
@@ -233,6 +240,9 @@ async function submit(): Promise<void> {
           <VSelect v-model="service" :options="serviceOptions" :label="t('documents.workflowView.sources.service')" />
           <VSelect v-model="triggerName" :options="triggerOptions" :label="t('documents.workflowView.sources.trigger')" />
           <p v-if="chosen?.trigger.description" class="wf-source-note">{{ chosen.trigger.description }}</p>
+          <p v-if="chosen?.trigger.mode === 'poll'" class="wf-source-note">
+            {{ t('documents.workflowView.sources.pollNote') }}
+          </p>
           <VInput v-model="sourceName" :label="t('documents.workflowView.sources.name')" />
           <VInput
             v-for="input in chosen?.trigger.inputs ?? []"

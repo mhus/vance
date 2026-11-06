@@ -37,18 +37,19 @@ export function useWorkflowSources(
   watch([projectId, workflow], () => { void reload(); }, { immediate: true });
 
   /**
-   * Remove a source. An event made from a catalog trigger goes through the catalog, which also tells the service;
-   * any other event is deleted with the token made for it.
+   * Remove a source. One made from a catalog trigger goes through the catalog (it tells the service, or forgets
+   * what a poll remembered); any other event is deleted with the token made for it, any other scheduler as it is.
    */
   async function remove(source: WorkflowSource): Promise<void> {
     const project = projectId();
     if (!project) return;
     const name = encodeURIComponent(source.name);
     const base = `project/${encodeURIComponent(project)}`;
-    if (source.kind === 'scheduler') {
-      await schedulers.remove(project, source.name);
-    } else if (source.from) {
+    if (source.from) {
+      // Made from a catalog trigger: the catalog also tells the service, or forgets what a poll remembered.
       await brainFetch<void>('DELETE', `${base}/workflow-triggers/${name}`);
+    } else if (source.kind === 'scheduler') {
+      await schedulers.remove(project, source.name);
     } else {
       await brainFetch<void>('DELETE', `${base}/events/${name}`);
     }

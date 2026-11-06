@@ -40,7 +40,7 @@ async function remove(source: WorkflowSource): Promise<void> {
   const confirmed = await confirmAction({
     title: t('documents.workflowView.sources.removeTitle', { name: source.name }),
     message: source.kind === 'scheduler'
-      ? t('documents.workflowView.sources.removeScheduler')
+      ? t(source.from ? 'documents.workflowView.sources.removePoll' : 'documents.workflowView.sources.removeScheduler')
       : source.from
         ? t('documents.workflowView.sources.removeEvent')
         : t('documents.workflowView.sources.removeWebhook'),

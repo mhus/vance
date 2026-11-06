@@ -11,8 +11,13 @@ import {
 
 const event = (name: string, workflow: string, from?: string, source = 'PROJECT'): EventSummary =>
   ({ name, workflow, from, enabled: true, authConfigured: true, source }) as unknown as EventSummary;
-const scheduler = (name: string, workflow: string | undefined, source = 'PROJECT'): SchedulerSummary =>
-  ({ name, workflow, cron: '0 0 6 * * *', enabled: true, source }) as unknown as SchedulerSummary;
+const scheduler = (
+  name: string,
+  workflow: string | undefined,
+  source = 'PROJECT',
+  tags?: string[],
+): SchedulerSummary =>
+  ({ name, workflow, cron: '0 0 6 * * *', enabled: true, source, tags }) as unknown as SchedulerSummary;
 
 describe('workflowNameOf', () => {
   it('is the name under _vance/workflows/, also with a folder, and null elsewhere', () => {
@@ -26,20 +31,33 @@ describe('workflowNameOf', () => {
 describe('sourcesOf', () => {
   const sources = sourcesOf(
     [event('b', 'audit'), event('a', 'audit', 'github/push'), event('c', 'other'), event('t', 'audit', undefined, 'TENANT')],
-    [scheduler('nightly', 'audit'), scheduler('chat', undefined), scheduler('shared', 'audit', 'TENANT')],
+    [
+      scheduler('nightly', 'audit'),
+      scheduler('chat', undefined),
+      scheduler('shared', 'audit', 'TENANT'),
+      scheduler('inbox', 'audit', 'PROJECT', ['catalog', 'slack/new-message']),
+      scheduler('tagged', 'audit', 'PROJECT', ['ops']),
+    ],
     'audit',
   );
 
   it('keeps only what starts the workflow, events first, each group by name', () => {
     expect(sources.map((s) => `${s.kind}:${s.name}`)).toEqual([
-      'event:a', 'event:b', 'event:t', 'scheduler:nightly', 'scheduler:shared',
+      'event:a', 'event:b', 'event:t', 'scheduler:inbox', 'scheduler:nightly', 'scheduler:shared',
+      'scheduler:tagged',
     ]);
   });
 
   it('lets the editor remove what the project owns and nothing inherited from the tenant', () => {
-    expect(sources.map((s) => s.removable)).toEqual([true, true, false, true, false]);
+    expect(sources.map((s) => s.removable)).toEqual([true, true, false, true, true, false, true]);
     expect(sources[0].from).toBe('github/push');
     expect(sources[3].summary).toBe('0 0 6 * * *');
+  });
+
+  it('names the origin of a scheduler made from a catalog trigger, and of no other', () => {
+    expect(sources.filter((s) => s.kind === 'scheduler').map((s) => s.from)).toEqual([
+      'slack/new-message', undefined, undefined, undefined,
+    ]);
   });
 });
 

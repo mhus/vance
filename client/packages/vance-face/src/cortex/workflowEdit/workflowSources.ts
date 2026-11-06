@@ -41,6 +41,11 @@ export function workflowNameOf(path: string | undefined): string | null {
   return hit ? hit[1] : null;
 }
 
+/** {@code <service>/<trigger>} of a scheduler made from a catalog trigger: the tag that goes with {@code catalog}. */
+function catalogOrigin(tags: string[] | undefined): string | undefined {
+  return tags?.includes('catalog') ? tags.find((tag) => tag !== 'catalog') : undefined;
+}
+
 /** The events and schedulers that start {@code workflow}, events first, each group by name. */
 export function sourcesOf(
   events: EventSummary[],
@@ -63,6 +68,7 @@ export function sourcesOf(
       kind: 'scheduler',
       name: s.name,
       summary: s.cron ?? '',
+      from: catalogOrigin(s.tags),
       enabled: s.enabled,
       removable: s.source === SchedulerSource.PROJECT,
     }));

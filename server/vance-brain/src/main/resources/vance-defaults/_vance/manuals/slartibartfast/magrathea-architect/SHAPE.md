@@ -127,6 +127,7 @@ This is **distinct** from `condition_task` branching, which uses SpEL
 | `condition_task` | yes | `transitions: [{if:<SpEL>, to}, …, {else}]` | (sets next state directly) |
 | `workflow_task` | no | `workflow:`, `params:`, optional `items:` (for-each) | success / failure |
 | `for_each_task` | yes | `items:`, `as:?`, `maxItems:?`, `collect:?`; `on: {each, done}` | each / done (/ failure) |
+| `end` | yes | none; no `on:`/`catch:`; must sit in a loop body | (back to the loop: next element) |
 | `terminal` | yes | `outcome: success\|failure`, `result?` | (ends the run) |
 
 Notes:
@@ -142,17 +143,21 @@ Notes:
 - **Loop over a list in the same workflow:** `for_each_task` with
   `items: "${state.list}"`. Its `on:` has two outcomes: `each` leads to
   the first state of the loop body, `done` leaves the loop. The body is
-  ordinary states; the last of them points back at the loop state
-  (`on: { success: <loop> }`) — that is "next element". Each pass sets
+  ordinary states and ends in an `end` state (`type: end`, no `on:`, no
+  `catch:`) — that is "next element". A body may have several `end`s, for
+  example one for the normal way and one a `catch:` points at. An `end`
+  ends the innermost loop whose body it sits in; outside a loop body it is
+  an error (use a `terminal` to end the run). Each pass sets
   `${state.<as>}` (default `item`), `${state.index}` and
   `${state.count}`. `collect: "${state.reply}"` gathers one value per
   pass into a list that `storeAs:` receives when the loop is done. An
   empty list goes to `done` at once; a non-list `items:` fails the loop
   state. There is no `onItemError`: catch errors in the body with
-  `catch:` — an arrow from a body state back to the loop means "skip to
-  the next element", an arrow anywhere else leaves the loop. Entering
+  `catch:` — an arrow to an `end` means "skip to the next element", an
+  arrow anywhere else leaves the loop. Entering
   the loop from outside the body always starts a new loop. Every pass
-  counts against `bounds.maxTaskSpawns` (body states + the loop state).
+  counts against `bounds.maxTaskSpawns` (body states + the `end` + the
+  loop state).
   Use this for "do X for each Y"; do not build counter loops by hand.
 - **For-each with a sub-workflow:** `workflow_task` with `items: "${params.list}"` starts
   one sub-run per element, sequentially. Keys: `as:` (param name of the

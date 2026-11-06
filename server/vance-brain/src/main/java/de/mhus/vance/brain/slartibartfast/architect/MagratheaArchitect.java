@@ -194,14 +194,17 @@ public class MagratheaArchitect implements SchemaArchitect {
                 on:
                   each: <first-body-state>    # once per element
                   done: <state-after-the-loop>
-                The body is ordinary states; the last body state points
-                back at the loop state (`on: { success: <loop-state> }`)
-                — that means "next element". Each pass sets
+                The body is ordinary states and ends in an `end` state
+                (`type: end`, NO `on:`, NO `catch:`) — that means "next
+                element". A body may have several `end` states (one for
+                the normal way, one a `catch:` points at). An `end` must
+                sit in a loop body; use `terminal` to end the run. Each
+                pass sets
                 ${state.<as>}, ${state.index} (from 0) and ${state.count}.
                 An empty list goes to `done` at once; a non-list `items:`
                 fails the loop state. There is no per-element error
                 option: catch errors in the body with `catch:` — an arrow
-                back to the loop skips to the next element, an arrow
+                to an `end` skips to the next element, an arrow
                 anywhere else leaves the loop. Every pass counts against
                 bounds.maxTaskSpawns. PREFER THIS for "do X for each Y".
             - workflow_task  — spawn a sub-workflow and block on it.
@@ -218,6 +221,8 @@ public class MagratheaArchitect implements SchemaArchitect {
                   storeAs: handled             # list of the sub-run results, in order
                 Each sub-run also gets `index` (from 0) and `count`.
                 The sub-workflow reads the element as ${params.ticket.name}.
+            - end            — the end of a loop body (see for_each_task).
+                (no fields; no `on:`, no `catch:`)
             - terminal       — end state.
                 outcome: success | failure         # MANDATORY
                 result: { ... }                    # optional result payload

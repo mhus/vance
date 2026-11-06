@@ -119,6 +119,7 @@ the workflow, where it shows up in the diagram and counts against
 | `condition_task` | Branches on an expression, no side effects |
 | `workflow_task` | Runs another workflow and waits for it — with `items:` once per list element |
 | `for_each_task` | Loops over a list inside this workflow: `each` leads into the body, `done` leaves |
+| `end` | Ends one pass through a loop body; the loop goes on with the next element |
 | `terminal` | Ends the run with `success` or `failure` |
 
 ## Passing data along
@@ -149,13 +150,18 @@ handle:
   params: { prompt: "Answer: ${state.message.text}" }
   storeAs: reply
   on:
-    success: handle_all        # back to the loop = next element
+    success: next              # the end of the body
+next:
+  type: end                    # back to the loop: next element
 ```
 
-The body is every state reachable from `each` before the arrow back.
+The body is every state reachable from `each` until the loop would be
+reached again. An `end` state closes it — it has no `on:` of its own,
+and a body may have several (one for the normal way, one for errors).
+It ends the innermost loop it sits in.
 Each pass sets the element (`${state.message}`), `${state.index}` and
 `${state.count}`. There is no per-element error option: catch errors in
-the body with `catch:` — an arrow back to the loop skips to the next
+the body with `catch:` — an arrow to an `end` skips to the next
 element, an arrow elsewhere leaves the loop. An empty list goes to
 `done` at once; the list may hold at most `maxItems:` elements (default
 100, at most 1000). Every pass counts against `bounds.maxTaskSpawns`.

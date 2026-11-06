@@ -123,6 +123,7 @@ Workflow, wo er im Diagramm auftaucht und gegen `bounds` zählt.
 | `condition_task` | Verzweigt über einen Ausdruck, ohne Seiteneffekt |
 | `workflow_task` | Startet einen anderen Workflow und wartet auf ihn — mit `items:` einmal pro Listenelement |
 | `for_each_task` | Schleife über eine Liste in diesem Workflow: `each` führt in den Körper, `done` verlässt sie |
+| `end` | Beendet einen Durchlauf durch den Schleifenkörper; die Schleife nimmt das nächste Element |
 | `terminal` | Beendet den Lauf mit `success` oder `failure` |
 
 ## Daten weiterreichen
@@ -153,14 +154,19 @@ handle:
   params: { prompt: "Beantworte: ${state.message.text}" }
   storeAs: reply
   on:
-    success: handle_all        # zurück zur Schleife = nächstes Element
+    success: next              # das Ende des Körpers
+next:
+  type: end                    # zurück zur Schleife: nächstes Element
 ```
 
-Der Körper sind alle States, die von `each` aus erreichbar sind, bevor
-der Pfeil zurückführt. Jeder Durchlauf setzt das Element
+Der Körper sind alle States, die von `each` aus erreichbar sind, bis
+die Schleife wieder erreicht würde. Ein `end`-State schließt ihn — er hat
+keinen eigenen `on:`, und ein Körper darf mehrere haben (einen für den
+normalen Weg, einen für Fehler). Er beendet die innerste Schleife, in der
+er liegt. Jeder Durchlauf setzt das Element
 (`${state.message}`), `${state.index}` und `${state.count}`. Eine
 Fehleroption je Element gibt es nicht: Fehler im Körper fängst du mit
-`catch:` — ein Pfeil zurück zur Schleife überspringt zum nächsten
+`catch:` — ein Pfeil auf ein `end` überspringt zum nächsten
 Element, ein Pfeil woandershin verlässt die Schleife. Eine leere Liste
 geht sofort nach `done`; die Liste darf höchstens `maxItems:` Elemente
 haben (Standard 100, höchstens 1000). Jeder Durchlauf zählt gegen

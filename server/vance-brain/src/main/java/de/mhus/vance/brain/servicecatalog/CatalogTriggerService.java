@@ -306,9 +306,10 @@ public class CatalogTriggerService {
     }
 
     /**
-     * The workflow a tick runs: poll, then for each new entry {@code handle}, then commit. An entry that fails is
-     * skipped rather than stopping the run — a run that stopped would never commit and would be handed the same
-     * entry again at every tick. Taking the {@code catch} away makes the run stop instead.
+     * The workflow a tick runs: poll, then for each new entry {@code handle}, then commit. {@code next} is the end
+     * of the body; an entry that fails is sent there too, so it is skipped rather than stopping the run — a run
+     * that stopped would never commit and would be handed the same entry again at every tick. Taking the
+     * {@code catch} away makes the run stop instead.
      */
     private static Map<String, Object> pollWorkflow(
             String from, String name, @Nullable String targetWorkflow, Map<String, String> given) {
@@ -346,21 +347,24 @@ public class CatalogTriggerService {
             handle.put("type", "agent_task");
             handle.put("recipe", "ford");
             handle.put("params", Map.of("prompt", "Handle this new entry from " + from + ":\n${state.item}"));
-            handle.put("on", Map.of("success", "each"));
+            handle.put("on", Map.of("success", "next"));
             Map<String, Object> skip = new LinkedHashMap<>();
-            skip.put("agent_error", "each");
-            skip.put("technical_error", "each");
-            skip.put("timeout", "each");
+            skip.put("agent_error", "next");
+            skip.put("technical_error", "next");
+            skip.put("timeout", "next");
             handle.put("catch", skip);
         } else {
             handle.put("type", "workflow_task");
             handle.put("workflow", targetWorkflow);
             handle.put("params", Map.of("payload", "${state.item}"));
             Map<String, Object> handled = new LinkedHashMap<>();
-            handled.put("success", "each");
-            handled.put("failure", "each");
+            handled.put("success", "next");
+            handled.put("failure", "next");
             handle.put("on", handled);
         }
+
+        Map<String, Object> next = new LinkedHashMap<>();
+        next.put("type", "end");
 
         Map<String, Object> commit = new LinkedHashMap<>();
         commit.put("type", "tool_task");
@@ -376,6 +380,7 @@ public class CatalogTriggerService {
         states.put("poll", poll);
         states.put("each", each);
         states.put("handle", handle);
+        states.put("next", next);
         states.put("commit", commit);
         states.put("done", done);
         doc.put("states", states);

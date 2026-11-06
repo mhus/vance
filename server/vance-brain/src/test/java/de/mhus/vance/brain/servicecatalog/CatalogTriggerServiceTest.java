@@ -295,13 +295,14 @@ class CatalogTriggerServiceTest {
         var workflow = de.mhus.vance.shared.magrathea.MagratheaWorkflowLoader.parseYaml(
                 "inbox", yamls.getAllValues().get(0));
         assertThat(workflow.startState()).isEqualTo("poll");
-        assertThat(workflow.states().keySet()).containsExactly("poll", "each", "handle", "commit", "done");
+        assertThat(workflow.states().keySet()).containsExactly("poll", "each", "handle", "next", "commit", "done");
         var loop = workflow.states().get("each");
         assertThat(loop.type()).isEqualTo(de.mhus.vance.api.magrathea.MagratheaTaskType.FOR_EACH_TASK);
         assertThat(loop.spec()).containsEntry("items", "${state.polled.items}");
         assertThat(loop.onOutcomes()).containsEntry("each", "handle").containsEntry("done", "commit");
-        // The body leads back to the loop, and the loop is the only way on to the commit.
-        assertThat(workflow.states().get("handle").onOutcomes()).containsEntry("success", "each");
+        // The body ends at an end state, which sends the run back to the loop; the loop is the only way to the commit.
+        assertThat(workflow.states().get("handle").onOutcomes()).containsEntry("success", "next");
+        assertThat(workflow.states().get("next").type()).isEqualTo(de.mhus.vance.api.magrathea.MagratheaTaskType.END);
         assertThat(workflow.states().get("poll").spec().get("tool")).isEqualTo("catalog_poll");
         assertThat(workflow.states().get("commit").spec().get("tool")).isEqualTo("catalog_poll_commit");
 
@@ -326,7 +327,7 @@ class CatalogTriggerServiceTest {
 
         assertThat(handle.type()).isEqualTo(de.mhus.vance.api.magrathea.MagratheaTaskType.AGENT_TASK);
         assertThat(handle.spec().toString()).contains("${state.item}");
-        assertThat(handle.catchKinds().values()).containsOnly("each");
+        assertThat(handle.catchKinds().values()).containsOnly("next");
     }
 
     @Test
@@ -343,7 +344,7 @@ class CatalogTriggerServiceTest {
 
         assertThat(handle.type()).isEqualTo(de.mhus.vance.api.magrathea.MagratheaTaskType.WORKFLOW_TASK);
         assertThat(handle.spec()).containsEntry("workflow", "on-message");
-        assertThat(handle.onOutcomes()).containsEntry("success", "each").containsEntry("failure", "each");
+        assertThat(handle.onOutcomes()).containsEntry("success", "next").containsEntry("failure", "next");
     }
 
     @Test

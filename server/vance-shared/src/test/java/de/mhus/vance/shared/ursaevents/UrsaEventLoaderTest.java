@@ -33,6 +33,94 @@ class UrsaEventLoaderTest {
     }
 
     @Test
+    void parses_a_provider_signature_as_the_authentication() {
+        ResolvedUrsaEvent e = loader.validateYaml("gh", """
+                workflow: on-push
+                auth:
+                  signature:
+                    header: X-Hub-Signature-256
+                    secretSetting: webhook.github.secret
+                    prefix: "sha256="
+                rateLimit:
+                  perMinute: 30
+                idempotencyHeader: X-GitHub-Delivery
+                """);
+
+        assertThat(e.requiresAuth()).isFalse();
+        assertThat(e.authenticated()).isTrue();
+        assertThat(e.signature().header()).isEqualTo("X-Hub-Signature-256");
+        assertThat(e.signature().secretSettingKey()).isEqualTo("webhook.github.secret");
+        assertThat(e.signature().prefix()).isEqualTo("sha256=");
+        assertThat(e.signature().encoding()).isEqualTo(WebhookSignatureSpec.Encoding.HEX);
+        assertThat(e.signature().timestampHeader()).isNull();
+        assertThat(e.signature().toleranceSeconds()).isEqualTo(300);
+        assertThat(e.rateLimitPerMinute()).isEqualTo(30);
+        assertThat(e.idempotencyHeader()).isEqualTo("X-GitHub-Delivery");
+    }
+
+    @Test
+    void parses_a_timestamped_base64_signature() {
+        ResolvedUrsaEvent e = loader.validateYaml("pay", """
+                workflow: on-payment
+                auth:
+                  signature:
+                    header: X-Sig
+                    secretSetting: webhook.pay.secret
+                    encoding: base64
+                    timestampHeader: X-Ts
+                    toleranceSeconds: 60
+                """);
+
+        assertThat(e.signature().encoding()).isEqualTo(WebhookSignatureSpec.Encoding.BASE64);
+        assertThat(e.signature().timestampHeader()).isEqualTo("X-Ts");
+        assertThat(e.signature().toleranceSeconds()).isEqualTo(60);
+    }
+
+    @Test
+    void a_signature_is_exclusive_with_the_other_ways_to_authenticate() {
+        assertThatThrownBy(() -> loader.validateYaml("x", """
+                workflow: w
+                auth:
+                  token: t
+                  signature:
+                    header: X-Sig
+                    secretSetting: k
+                """)).hasMessageContaining("mutually exclusive");
+    }
+
+    @Test
+    void a_signature_needs_a_header_and_a_secret_and_a_known_encoding() {
+        assertThatThrownBy(() -> loader.validateYaml("x", """
+                workflow: w
+                auth:
+                  signature:
+                    header: X-Sig
+                """)).hasMessageContaining("'header' and 'secretSetting'");
+        assertThatThrownBy(() -> loader.validateYaml("x", """
+                workflow: w
+                auth:
+                  signature:
+                    header: X-Sig
+                    secretSetting: k
+                    encoding: rot13
+                """)).hasMessageContaining("encoding");
+    }
+
+    @Test
+    void a_rate_limit_must_state_a_non_negative_number_a_zero_switches_it_off() {
+        assertThat(loader.validateYaml("x", """
+                workflow: w
+                auth: { public: true }
+                rateLimit: { perMinute: 0 }
+                """).rateLimitPerMinute()).isZero();
+        assertThatThrownBy(() -> loader.validateYaml("x", """
+                workflow: w
+                auth: { public: true }
+                rateLimit: { perMinute: -1 }
+                """)).hasMessageContaining("rateLimit");
+    }
+
+    @Test
     void parses_full_event_with_inline_token_and_methods() {
         ResolvedUrsaEvent e = loader.validateYaml("deploy", """
                 description: trigger a deploy
@@ -102,8 +190,7 @@ class UrsaEventLoaderTest {
 
     @Test
     void rejects_missing_workflow() {
-        assertThatThrownBy(() -> loader.validateYaml("x",
-                "description: nope\nauth:\n  public: true\n"))
+        assertThatThrownBy(() -> loader.validateYaml("x", "description: nope\nauth:\n  public: true\n"))
                 .isInstanceOf(UrsaEventParseException.class)
                 .hasMessageContaining("workflow");
     }

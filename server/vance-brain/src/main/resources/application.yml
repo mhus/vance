@@ -196,6 +196,10 @@ vance:
     # unwind. Deliberately far above the deadlines above — reaching it
     # means they failed too. Master-pod only. 0 switches it off.
     stall-ceiling: P14D
+    # How many calls to outside services (tool_task) one project has in flight at once. Such a call
+    # runs off the project lane, so a slow one does not hold up the project's other steps; this
+    # bounds a burst of runs against one service. A call past the limit waits for a place. 0: no limit.
+    max-concurrent-calls: 5
     # How often the watchdog looks. Decides how late a verdict may be,
     # not when it is due — an hour against a 14-day ceiling is nothing.
     watchdog-interval: PT1H
@@ -408,6 +412,11 @@ vance:
       #   0    — INFINITE retention (no TTL set).
       #   < 0  — DISABLED (no document written).
       retention-days: 7
+    # Calls per minute an event accepts when it states no rateLimit of its own (token bucket, per pod).
+    # The endpoint carries no JWT; this bounds how fast a caller may start runs. 0 = no limit.
+    rate-limit-per-minute: 120
+    # How long a delivery id is remembered for events that name an idempotencyHeader (per pod).
+    idempotency-ttl: PT10M
   session:
     # Max age of a bound session's lastActivityAt (= last heartbeat)
     # before the bind is considered dead. Also drives tryBind's

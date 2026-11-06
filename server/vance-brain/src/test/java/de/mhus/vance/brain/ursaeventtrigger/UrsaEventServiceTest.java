@@ -54,6 +54,8 @@ class UrsaEventServiceTest {
     private de.mhus.vance.brain.ursascheduler.SystemSessionResolver systemSessionResolver;
     private UrsaEventLogService eventLogService;
     private UrsaEventService service;
+    private final UrsaEventRateLimiter rateLimiter = new UrsaEventRateLimiter();
+    private final UrsaEventDeliveryCache deliveries = new UrsaEventDeliveryCache(java.time.Duration.ofMinutes(10));
     private ObjectProvider<de.mhus.vance.brain.project.ProjectLocator> locatorProvider;
     private ObjectProvider<de.mhus.vance.brain.project.ProjectManagerService> managerProvider;
 
@@ -114,7 +116,10 @@ class UrsaEventServiceTest {
                 managerProvider,
                 mock(UrsaEventForwarder.class),
                 projectService,
-                asyncMaxConcurrent);
+                rateLimiter,
+                deliveries,
+                asyncMaxConcurrent,
+                /*defaultRateLimitPerMinute*/ 0);
     }
 
     // ─── synchronous output ─────────────────────────────────────────────
@@ -171,6 +176,138 @@ class UrsaEventServiceTest {
         // The async task owns the single log write — same correlationId,
         // so the logPath the caller was handed still resolves.
         verify(eventLogService, org.mockito.Mockito.timeout(5000)).record(eq(r.correlationId()), any());
+    }
+
+    // ─── webhook hardening: signature, rate limit, delivery id ──────────
+
+    private static final String SECRET = "s3cret";
+
+    private static de.mhus.vance.shared.ursaevents.WebhookSignatureSpec githubStyle() {
+        return new de.mhus.vance.shared.ursaevents.WebhookSignatureSpec(
+                "X-Hub-Signature-256",
+                "webhook.secret",
+                "sha256=",
+                de.mhus.vance.shared.ursaevents.WebhookSignatureSpec.Encoding.HEX,
+                null,
+                300);
+    }
+
+    private static String hmacHex(String secret, byte[] body) throws Exception {
+        javax.crypto.Mac mac = javax.crypto.Mac.getInstance("HmacSHA256");
+        mac.init(new javax.crypto.spec.SecretKeySpec(
+                secret.getBytes(java.nio.charset.StandardCharsets.UTF_8), "HmacSHA256"));
+        return java.util.HexFormat.of().formatHex(mac.doFinal(body));
+    }
+
+    private UrsaEventService.WebhookRequest request(byte[] body, Map<String, String> headers) {
+        return new UrsaEventService.WebhookRequest(
+                body,
+                name -> headers.entrySet().stream()
+                        .filter(e -> e.getKey().equalsIgnoreCase(name))
+                        .map(Map.Entry::getValue)
+                        .findFirst()
+                        .orElse(null));
+    }
+
+    private UrsaEventService.UrsaEventTriggerResult fire(UrsaEventService.WebhookRequest webhook) {
+        return service.trigger(TENANT, PROJECT, EVENT, "POST", null, null, false, webhook);
+    }
+
+    private void givenSecret() {
+        when(settingService.getDecryptedPasswordCascade(eq(TENANT), eq(PROJECT), any(), eq("webhook.secret")))
+                .thenReturn(SECRET);
+    }
+
+    @Test
+    void a_correctly_signed_webhook_is_accepted() throws Exception {
+        when(eventLoader.load(TENANT, PROJECT, EVENT)).thenReturn(Optional.of(event(b -> b.signature(githubStyle()))));
+        givenSecret();
+        when(workflowService.start(any(), any(), any(), any(), any())).thenReturn("run-1");
+        byte[] body = "{\"action\":\"opened\"}".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+
+        UrsaEventService.UrsaEventTriggerResult r =
+                fire(request(body, Map.of("X-Hub-Signature-256", "sha256=" + hmacHex(SECRET, body))));
+
+        assertThat(r.workflowRunId()).isEqualTo("run-1");
+    }
+
+    @Test
+    void a_webhook_with_a_wrong_missing_or_unverifiable_signature_is_refused() throws Exception {
+        when(eventLoader.load(TENANT, PROJECT, EVENT)).thenReturn(Optional.of(event(b -> b.signature(githubStyle()))));
+        givenSecret();
+        byte[] body = "{}".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+
+        for (UrsaEventService.WebhookRequest bad : List.of(
+                request(body, Map.of("X-Hub-Signature-256", "sha256=" + hmacHex("other", body))),
+                request(body, Map.of()),
+                request(body, Map.of("X-Hub-Signature-256", hmacHex(SECRET, body))))) {
+            assertThatThrownBy(() -> fire(bad))
+                    .isInstanceOf(ResponseStatusException.class)
+                    .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                    .isEqualTo(org.springframework.http.HttpStatus.UNAUTHORIZED);
+        }
+        // A caller that gives no request at all cannot be checked, so it is refused too.
+        assertThatThrownBy(() -> service.trigger(TENANT, PROJECT, EVENT, "POST", null, null))
+                .isInstanceOf(ResponseStatusException.class);
+        verify(workflowService, never()).start(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void a_signature_event_without_a_secret_is_misconfigured_not_open() {
+        when(eventLoader.load(TENANT, PROJECT, EVENT)).thenReturn(Optional.of(event(b -> b.signature(githubStyle()))));
+
+        assertThatThrownBy(() -> fire(request(new byte[0], Map.of())))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE);
+    }
+
+    @Test
+    void an_event_over_its_rate_limit_answers_429_with_retry_after() {
+        when(eventLoader.load(TENANT, PROJECT, EVENT)).thenReturn(Optional.of(event(b -> b.rateLimit(2))));
+        when(workflowService.start(any(), any(), any(), any(), any())).thenReturn("run-1");
+
+        service.trigger(TENANT, PROJECT, EVENT, "POST", null, null);
+        service.trigger(TENANT, PROJECT, EVENT, "POST", null, null);
+
+        assertThatThrownBy(() -> service.trigger(TENANT, PROJECT, EVENT, "POST", null, null))
+                .isInstanceOfSatisfying(ResponseStatusException.class, ex -> {
+                    assertThat(ex.getStatusCode().value()).isEqualTo(429);
+                    assertThat(ex.getHeaders().getFirst("Retry-After")).isNotNull();
+                });
+        verify(workflowService, org.mockito.Mockito.times(2)).start(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void a_delivery_the_provider_sends_again_is_answered_without_running_again() {
+        when(eventLoader.load(TENANT, PROJECT, EVENT))
+                .thenReturn(Optional.of(event(b -> b.idempotencyHeader("X-Delivery"))));
+        when(workflowService.start(any(), any(), any(), any(), any())).thenReturn("run-1");
+        var request = request(new byte[0], Map.of("X-Delivery", "d-1"));
+
+        UrsaEventService.UrsaEventTriggerResult first = fire(request);
+        UrsaEventService.UrsaEventTriggerResult again = fire(request);
+
+        assertThat(again.workflowRunId()).isEqualTo(first.workflowRunId());
+        verify(workflowService, org.mockito.Mockito.times(1)).start(any(), any(), any(), any(), any());
+        // A different delivery is a different run.
+        fire(request(new byte[0], Map.of("X-Delivery", "d-2")));
+        verify(workflowService, org.mockito.Mockito.times(2)).start(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void a_delivery_whose_first_try_failed_may_be_tried_again() {
+        when(eventLoader.load(TENANT, PROJECT, EVENT))
+                .thenReturn(Optional.of(event(b -> b.idempotencyHeader("X-Delivery"))));
+        when(workflowService.start(any(), any(), any(), any(), any()))
+                .thenThrow(new IllegalStateException("boom"))
+                .thenReturn("run-2");
+        var request = request(new byte[0], Map.of("X-Delivery", "d-1"));
+
+        assertThatThrownBy(() -> fire(request)).isInstanceOf(RuntimeException.class);
+        UrsaEventService.UrsaEventTriggerResult retried = fire(request);
+
+        assertThat(retried.workflowRunId()).isEqualTo("run-2");
     }
 
     // ─── stopped projects ───────────────────────────────────────────────
@@ -563,6 +700,9 @@ class UrsaEventServiceTest {
         Boolean async = null;
         Boolean outputToAgents = null;
         List<String> tags = List.of();
+        de.mhus.vance.shared.ursaevents.WebhookSignatureSpec signature = null;
+        Integer rateLimitPerMinute = null;
+        String idempotencyHeader = null;
         de.mhus.vance.shared.ursascheduler.ResolvedUrsaScheduler.ScriptSpec script = null;
 
         /** Switches the event from a workflow spawn to a script run. */
@@ -570,6 +710,22 @@ class UrsaEventServiceTest {
             this.script = new de.mhus.vance.shared.ursascheduler.ResolvedUrsaScheduler.ScriptSpec(
                     de.mhus.vance.api.action.ScriptSource.DOCUMENT, null, path, null);
             this.workflow = null;
+            return this;
+        }
+
+        EventBuilder signature(de.mhus.vance.shared.ursaevents.WebhookSignatureSpec v) {
+            this.signature = v;
+            this.authPublic = false;
+            return this;
+        }
+
+        EventBuilder rateLimit(int perMinute) {
+            this.rateLimitPerMinute = perMinute;
+            return this;
+        }
+
+        EventBuilder idempotencyHeader(String v) {
+            this.idempotencyHeader = v;
             return this;
         }
 
@@ -641,7 +797,10 @@ class UrsaEventServiceTest {
                     runAs,
                     async,
                     outputToAgents,
-                    tags);
+                    tags,
+                    signature,
+                    rateLimitPerMinute,
+                    idempotencyHeader);
         }
     }
 }

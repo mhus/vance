@@ -35,16 +35,14 @@ class UrsaEventControllerForwardMarkerTest {
     @BeforeEach
     void setUp() {
         service = mock(UrsaEventService.class);
-        when(service.trigger(any(), any(), any(), any(), any(), any(), anyBoolean()))
-                .thenReturn(new UrsaEventService.UrsaEventTriggerResult(
-                        "w-deploy", "run-1", null, "evt_1", Instant.EPOCH));
+        when(service.trigger(any(), any(), any(), any(), any(), any(), anyBoolean(), any()))
+                .thenReturn(
+                        new UrsaEventService.UrsaEventTriggerResult("w-deploy", "run-1", null, "evt_1", Instant.EPOCH));
         // GET carries no body, so the mapper is never asked anything here.
-        controller = new UrsaEventController(
-                service, mock(ObjectMapper.class), new UrsaEventForwarder(INTERNAL_TOKEN));
+        controller = new UrsaEventController(service, mock(ObjectMapper.class), new UrsaEventForwarder(INTERNAL_TOKEN));
         request = mock(HttpServletRequest.class);
         when(request.getMethod()).thenReturn("GET");
-        when(request.getRequestURI())
-                .thenReturn("/brain/" + TENANT + "/event/" + PROJECT + "/" + EVENT);
+        when(request.getRequestURI()).thenReturn("/brain/" + TENANT + "/event/" + PROJECT + "/" + EVENT);
     }
 
     @Test
@@ -88,8 +86,7 @@ class UrsaEventControllerForwardMarkerTest {
 
     private boolean capturedForwardedFlag() {
         ArgumentCaptor<Boolean> flag = ArgumentCaptor.forClass(Boolean.class);
-        verify(service).trigger(eq(TENANT), eq(PROJECT), eq(EVENT), eq("GET"),
-                any(), any(), flag.capture());
+        verify(service).trigger(eq(TENANT), eq(PROJECT), eq(EVENT), eq("GET"), any(), any(), flag.capture(), any());
         return flag.getValue();
     }
 }

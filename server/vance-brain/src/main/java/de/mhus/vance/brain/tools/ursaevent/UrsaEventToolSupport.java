@@ -162,7 +162,11 @@ class UrsaEventToolSupport {
         if (!r.methods().isEmpty()) {
             out.put("methods", List.copyOf(r.methods()));
         }
-        out.put("authConfigured", r.requiresAuth());
+        out.put("authConfigured", r.authenticated());
+        if (r.signature() != null) {
+            out.put("authType", "signature");
+            out.put("authSignatureHeader", r.signature().header());
+        }
         if (r.requiresAuth()) {
             out.put("authType", "bearer");
             // Never leak the token literal. Surface the Setting key (if any)

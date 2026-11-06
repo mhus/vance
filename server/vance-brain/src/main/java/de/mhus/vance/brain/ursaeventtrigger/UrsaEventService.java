@@ -83,6 +83,11 @@ public class UrsaEventService {
     private final ObjectProvider<de.mhus.vance.brain.project.ProjectManagerService> projectManagerProvider;
     private final UrsaEventForwarder forwarder;
     private final ProjectService projectService;
+    private final UrsaEventRateLimiter rateLimiter;
+    private final UrsaEventDeliveryCache deliveries;
+
+    /** Calls per minute an event accepts that states no {@code rateLimit}; {@code 0} is no limit. */
+    private final int defaultRateLimitPerMinute;
 
     /**
      * Runs {@code async: true} script events off the request thread.
@@ -129,9 +134,16 @@ public class UrsaEventService {
             ObjectProvider<de.mhus.vance.brain.project.ProjectManagerService> projectManagerProvider,
             UrsaEventForwarder forwarder,
             ProjectService projectService,
+            UrsaEventRateLimiter rateLimiter,
+            UrsaEventDeliveryCache deliveries,
             @org.springframework.beans.factory.annotation.Value(
                             "${vance.events.async.max-concurrent:" + DEFAULT_ASYNC_MAX_CONCURRENT + "}")
-                    int asyncMaxConcurrent) {
+                    int asyncMaxConcurrent,
+            @org.springframework.beans.factory.annotation.Value("${vance.events.rate-limit-per-minute:120}")
+                    int defaultRateLimitPerMinute) {
+        this.rateLimiter = rateLimiter;
+        this.deliveries = deliveries;
+        this.defaultRateLimitPerMinute = defaultRateLimitPerMinute;
         // The default lives in DEFAULT_ASYNC_MAX_CONCURRENT so the number is
         // stated once; 0 disables the ceiling.
         this.eventLoader = eventLoader;
@@ -226,6 +238,52 @@ public class UrsaEventService {
             @Nullable String bearerToken,
             @Nullable Object payload,
             boolean alreadyForwarded) {
+        return trigger(
+                tenantId, projectId, eventName, httpMethod, bearerToken, payload, alreadyForwarded, /*webhook*/ null);
+    }
+
+    /**
+     * The request as it came in, for the checks that need the bytes and not the parsed payload: a provider's
+     * signature covers the body exactly as sent.
+     *
+     * @param body   the raw request body ({@code GET}: empty)
+     * @param header reads a request header, {@code null} when absent
+     */
+    public record WebhookRequest(byte[] body, java.util.function.Function<String, @Nullable String> header) {}
+
+    /**
+     * A call the event's rate limit turned away. A {@code 429} carrying {@code Retry-After}, so a provider that
+     * honours it backs off instead of hammering.
+     */
+    static final class RateLimitedException extends ResponseStatusException {
+        private final Duration retryAfter;
+
+        RateLimitedException(String reason, Duration retryAfter) {
+            super(HttpStatus.TOO_MANY_REQUESTS, reason);
+            this.retryAfter = retryAfter;
+        }
+
+        @Override
+        public org.springframework.http.HttpHeaders getHeaders() {
+            org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
+            headers.set(org.springframework.http.HttpHeaders.RETRY_AFTER, Long.toString(retryAfter.toSeconds()));
+            return headers;
+        }
+    }
+
+    /**
+     * @param webhook the request as received, for signature and delivery-id checks; {@code null} when the caller
+     *        has no such request (a forwarded hop, a test) — an event that demands a signature then refuses it
+     */
+    public UrsaEventTriggerResult trigger(
+            String tenantId,
+            String projectId,
+            String eventName,
+            String httpMethod,
+            @Nullable String bearerToken,
+            @Nullable Object payload,
+            boolean alreadyForwarded,
+            @Nullable WebhookRequest webhook) {
         long startNanos = System.nanoTime();
         Instant firedAt = Instant.now();
         String correlationId = UrsaEventLogService.TriggerOutcome.mintCorrelationId();
@@ -240,6 +298,10 @@ public class UrsaEventService {
         String outputSummary = null;
         String errorMessage = null;
         boolean skipLog = false;
+        // A delivery id this request claimed; released if the request fails, so a retry is a fresh try.
+        String claimedDelivery = null;
+        UrsaEventDeliveryCache.Claim deliveryClaim = null;
+        boolean delivered = false;
 
         try {
             ResolvedUrsaEvent event;
@@ -274,6 +336,68 @@ public class UrsaEventService {
                 errorMessage = "method " + httpMethod + " not in " + event.methods();
                 throw new ResponseStatusException(
                         HttpStatus.METHOD_NOT_ALLOWED, "Event '" + eventName + "' does not accept " + httpMethod);
+            }
+
+            if (!alreadyForwarded) {
+                // Before the authentication, so a flood of wrong tokens or signatures is turned away too. A
+                // forwarded hop was counted by the pod that received the request.
+                int limit = event.rateLimitPerMinute() != null ? event.rateLimitPerMinute() : defaultRateLimitPerMinute;
+                java.util.Optional<Duration> wait =
+                        rateLimiter.refusal(tenantId + "/" + projectId + "/" + eventName, limit);
+                if (wait.isPresent()) {
+                    countOutcome(eventName, "rate_limited");
+                    outcome = "rate_limited";
+                    skipLog = true;
+                    errorMessage = "more than " + limit + " calls per minute";
+                    throw new RateLimitedException("Event '" + eventName + "' is called too often", wait.get());
+                }
+            }
+
+            if (event.signature() != null && !alreadyForwarded) {
+                // The provider's signature is the authentication. A forwarded hop skips it: the pod that received
+                // the request checked it against the original bytes, and the hop is proven by the internal token.
+                String secret = resolveSignatureSecret(tenantId, projectId, event);
+                if (secret == null || secret.isBlank()) {
+                    countOutcome(eventName, "auth_misconfigured");
+                    outcome = "auth_misconfigured";
+                    errorMessage = "secretSetting '" + event.signature().secretSettingKey() + "' unresolved";
+                    throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Event auth is misconfigured");
+                }
+                java.util.Optional<String> refusal = webhook == null
+                        ? java.util.Optional.of("no request body to check")
+                        : WebhookSignatureVerifier.refusal(
+                                event.signature(), secret, webhook.body(), webhook.header(), Instant.now());
+                if (refusal.isPresent()) {
+                    countOutcome(eventName, "unauthorized");
+                    outcome = "unauthorized";
+                    errorMessage = "signature refused: " + refusal.get();
+                    throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid or missing signature");
+                }
+            }
+
+            if (event.idempotencyHeader() != null && webhook != null && !alreadyForwarded) {
+                String deliveryId = webhook.header().apply(event.idempotencyHeader());
+                if (deliveryId != null && !deliveryId.isBlank()) {
+                    String key = tenantId + "/" + projectId + "/" + eventName + "/" + deliveryId.trim();
+                    UrsaEventDeliveryCache.Claim claim = deliveries.claim(key);
+                    if (!claim.first()) {
+                        if (claim.inFlight()) {
+                            countOutcome(eventName, "duplicate_in_flight");
+                            outcome = "duplicate_in_flight";
+                            skipLog = true;
+                            throw new ResponseStatusException(
+                                    HttpStatus.CONFLICT, "Delivery '" + deliveryId.trim() + "' is being handled");
+                        }
+                        // Seen and answered: same answer, no second run.
+                        countOutcome(eventName, "duplicate");
+                        outcome = "duplicate";
+                        skipLog = true;
+                        return claim.delivery().result();
+                    }
+                    claimedDelivery = key;
+                    // Remembered at the two places the request ends in success, below.
+                    deliveryClaim = claim;
+                }
             }
 
             if (event.requiresAuth()) {
@@ -322,12 +446,17 @@ public class UrsaEventService {
                     // correlationId and firedAt stay ours: they identify *this*
                     // request, and the owning pod wrote its own log entry under
                     // its own id.
-                    return new UrsaEventTriggerResult(
+                    UrsaEventTriggerResult forwardedResult = new UrsaEventTriggerResult(
                             remote.getWorkflowName(),
                             remote.getWorkflowRunId(),
                             remote.getOutput(),
                             correlationId,
                             firedAt);
+                    if (deliveryClaim != null) {
+                        deliveries.complete(deliveryClaim, forwardedResult);
+                        delivered = true;
+                    }
+                    return forwardedResult;
                 }
             }
 
@@ -368,7 +497,11 @@ public class UrsaEventService {
             targetName = result.workflowName();
             spawnedId = result.workflowRunId();
             outputSummary = summariseOutput(result.output(), event.outputVisibleToAgents());
-            if (!event.requiresAuth() && !event.outputVisibleToAgents()) {
+            if (deliveryClaim != null) {
+                deliveries.complete(deliveryClaim, result);
+                delivered = true;
+            }
+            if (!event.authenticated() && !event.outputVisibleToAgents()) {
                 // Same rule as triggerAdmin, same reason: the caller did not
                 // authenticate. `auth.public: true` plus `runAs:` is exactly
                 // that combination on the webhook surface — withholding from
@@ -385,6 +518,9 @@ public class UrsaEventService {
             }
             return result;
         } finally {
+            if (claimedDelivery != null && !delivered) {
+                deliveries.release(claimedDelivery);
+            }
             if (!skipLog) {
                 long durationMs =
                         Duration.ofNanos(System.nanoTime() - startNanos).toMillis();
@@ -867,6 +1003,14 @@ public class UrsaEventService {
         metricService
                 .counter(METRIC_TRIGGERS, "event", eventName, "source", "admin", "outcome", outcome)
                 .increment();
+    }
+
+    /** The shared secret of the provider's signature: a password setting, else a plain one, cascade project → tenant. */
+    private @Nullable String resolveSignatureSecret(String tenantId, String projectId, ResolvedUrsaEvent event) {
+        String key = event.signature().secretSettingKey();
+        String secret = settingService.getDecryptedPasswordCascade(tenantId, projectId, /*thinkProcessId*/ null, key);
+        if (secret != null && !secret.isBlank()) return secret;
+        return settingService.getStringValueCascade(tenantId, projectId, /*thinkProcessId*/ null, key);
     }
 
     private @Nullable String resolveExpectedToken(String tenantId, String projectId, ResolvedUrsaEvent event) {

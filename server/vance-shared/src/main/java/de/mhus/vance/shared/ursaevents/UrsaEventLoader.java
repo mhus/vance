@@ -197,15 +197,36 @@ public class UrsaEventLoader implements RunAsReader {
         String tokenLiteral = stringOrNull(auth.get("token"));
         String tokenSettingKey = stringOrNull(auth.get("tokenSetting"));
         boolean authPublic = auth.get("public") instanceof Boolean pub && pub;
-        int authCount = (tokenLiteral != null ? 1 : 0) + (tokenSettingKey != null ? 1 : 0) + (authPublic ? 1 : 0);
+        WebhookSignatureSpec signature = null;
+        if (auth.get("signature") != null) {
+            if (!(auth.get("signature") instanceof Map<?, ?> sm)) {
+                throw new IllegalStateException("'auth.signature' must be a map");
+            }
+            signature = WebhookSignatureSpec.parse(sm);
+        }
+        int authCount = (tokenLiteral != null ? 1 : 0)
+                + (tokenSettingKey != null ? 1 : 0)
+                + (authPublic ? 1 : 0)
+                + (signature != null ? 1 : 0);
         if (authCount > 1) {
-            throw new IllegalStateException("'auth.token', 'auth.tokenSetting' and 'auth.public' are mutually "
-                    + "exclusive — set exactly one");
+            throw new IllegalStateException("'auth.token', 'auth.tokenSetting', 'auth.signature' and 'auth.public' "
+                    + "are mutually exclusive — set exactly one");
         }
         if (authCount == 0) {
-            throw new IllegalStateException(
-                    "'auth' block carries none of 'tokenSetting', 'token', 'public: true' " + "— set exactly one");
+            throw new IllegalStateException("'auth' block carries none of 'tokenSetting', 'token', 'signature', "
+                    + "'public: true' — set exactly one");
         }
+
+        Integer rateLimitPerMinute = null;
+        if (spec.get("rateLimit") != null) {
+            if (!(spec.get("rateLimit") instanceof Map<?, ?> rl)
+                    || !(rl.get("perMinute") instanceof Number perMinute)
+                    || perMinute.intValue() < 0) {
+                throw new IllegalStateException("'rateLimit' must be a map with a non-negative 'perMinute'");
+            }
+            rateLimitPerMinute = perMinute.intValue();
+        }
+        String idempotencyHeader = stringOrNull(spec.get("idempotencyHeader"));
 
         Boolean async = booleanOrNull(spec.get("async"), "async");
         if (Boolean.FALSE.equals(async) && script == null) {
@@ -259,7 +280,10 @@ public class UrsaEventLoader implements RunAsReader {
                 runAs,
                 async,
                 outputToAgents,
-                tags);
+                tags,
+                signature,
+                rateLimitPerMinute,
+                idempotencyHeader);
     }
 
     /** Parses the {@code script:} block when present; returns {@code null} when absent. */

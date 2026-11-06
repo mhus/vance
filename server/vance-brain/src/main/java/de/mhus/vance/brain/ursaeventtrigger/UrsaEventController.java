@@ -1,8 +1,6 @@
 package de.mhus.vance.brain.ursaeventtrigger;
 
 import de.mhus.vance.api.ursaevents.EventTriggerResponse;
-import tools.jackson.core.JacksonException;
-import tools.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -16,6 +14,8 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * REST endpoint for external event triggers. Mapped at
@@ -59,10 +59,15 @@ public class UrsaEventController {
             HttpServletRequest request) {
         String bearer = extractBearer(request);
         UrsaEventService.UrsaEventTriggerResult result = eventService.trigger(
-                tenant, project, event,
-                "GET", bearer, /*payload*/ null, isForwarded(request));
-        return new EventTriggerResponse(
-                event, result.workflowName(), result.workflowRunId(), result.output());
+                tenant,
+                project,
+                event,
+                "GET",
+                bearer, /*payload*/
+                null,
+                isForwarded(request),
+                new UrsaEventService.WebhookRequest(new byte[0], request::getHeader));
+        return new EventTriggerResponse(event, result.workflowName(), result.workflowRunId(), result.output());
     }
 
     @PostMapping("/brain/{tenant}/event/{project}/{event}")
@@ -72,12 +77,18 @@ public class UrsaEventController {
             @PathVariable("event") String event,
             HttpServletRequest request) {
         String bearer = extractBearer(request);
-        Object payload = readJsonBody(request);
+        byte[] raw = readRawBody(request);
+        Object payload = parseJsonBody(request, raw);
         UrsaEventService.UrsaEventTriggerResult result = eventService.trigger(
-                tenant, project, event,
-                "POST", bearer, payload, isForwarded(request));
-        return new EventTriggerResponse(
-                event, result.workflowName(), result.workflowRunId(), result.output());
+                tenant,
+                project,
+                event,
+                "POST",
+                bearer,
+                payload,
+                isForwarded(request),
+                new UrsaEventService.WebhookRequest(raw, request::getHeader));
+        return new EventTriggerResponse(event, result.workflowName(), result.workflowRunId(), result.output());
     }
 
     /**
@@ -96,42 +107,45 @@ public class UrsaEventController {
         if (marker == null) {
             return false;
         }
-        boolean trusted = forwarder.isTrustedHop(
-                marker, request.getHeader(UrsaEventForwarder.INTERNAL_TOKEN_HEADER));
+        boolean trusted = forwarder.isTrustedHop(marker, request.getHeader(UrsaEventForwarder.INTERNAL_TOKEN_HEADER));
         if (!trusted) {
-            log.warn("Ignoring {} on {} {} — no valid internal token, treating the request "
-                            + "as un-routed",
+            log.warn(
+                    "Ignoring {} on {} {} — no valid internal token, treating the request " + "as un-routed",
                     UrsaEventForwarder.FORWARDED_HEADER,
-                    request.getMethod(), request.getRequestURI());
+                    request.getMethod(),
+                    request.getRequestURI());
         }
         return trusted;
     }
 
+    /** The request body as received — a provider's signature covers exactly these bytes. */
+    private static byte[] readRawBody(HttpServletRequest request) {
+        try {
+            return request.getInputStream().readAllBytes();
+        } catch (IOException ex) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "Failed to read request body: " + ex.getMessage(), ex);
+        }
+    }
+
     /**
-     * Reads the request body as JSON when present. Empty body → {@code null}
+     * Parses the body as JSON when present. Empty body → {@code null}
      * (omits the {@code payload} key). Non-JSON content-type → 415.
      */
-    private @Nullable Object readJsonBody(HttpServletRequest request) {
+    private @Nullable Object parseJsonBody(HttpServletRequest request, byte[] raw) {
         String contentType = request.getContentType();
-        byte[] raw;
-        try {
-            raw = request.getInputStream().readAllBytes();
-        } catch (IOException ex) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Failed to read request body: " + ex.getMessage(), ex);
-        }
         if (raw.length == 0) {
             return null;
         }
         if (contentType == null || !contentType.toLowerCase().startsWith(MediaType.APPLICATION_JSON_VALUE)) {
-            throw new ResponseStatusException(HttpStatus.UNSUPPORTED_MEDIA_TYPE,
-                    "Event POST body must be application/json");
+            throw new ResponseStatusException(
+                    HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Event POST body must be application/json");
         }
         try {
             return objectMapper.readValue(new String(raw, StandardCharsets.UTF_8), Object.class);
         } catch (JacksonException ex) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Event POST body is not valid JSON: " + ex.getOriginalMessage(), ex);
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "Event POST body is not valid JSON: " + ex.getOriginalMessage(), ex);
         }
     }
 

@@ -73,11 +73,28 @@ public record ResolvedUrsaEvent(
          * means "not stated" — see {@link #outputVisibleToAgents()}.
          */
         @Nullable Boolean outputToAgents,
-        List<String> tags) {
+        List<String> tags,
+        /**
+         * {@code auth.signature} — the provider signs the body (GitHub, Stripe, …). One of the four ways to
+         * authenticate; exclusive with the other three.
+         */
+        @Nullable WebhookSignatureSpec signature,
+        /** {@code rateLimit.perMinute} — calls per minute this event accepts, or {@code null} for the default. */
+        @Nullable Integer rateLimitPerMinute,
+        /**
+         * {@code idempotencyHeader} — header holding the provider's delivery id; a delivery seen again is
+         * answered with the first answer instead of running again. {@code null} when not asked for.
+         */
+        @Nullable String idempotencyHeader) {
 
     /** {@code true} when bearer authentication is required. */
     public boolean requiresAuth() {
         return tokenLiteral != null || tokenSettingKey != null;
+    }
+
+    /** {@code true} when the caller has to prove who it is — by bearer token or by signature. */
+    public boolean authenticated() {
+        return requiresAuth() || signature != null;
     }
 
     /**
@@ -149,7 +166,6 @@ public record ResolvedUrsaEvent(
                     mergedParams,
                     effectiveRunAs());
         }
-        throw new IllegalStateException(
-                "event '" + name + "' has no trigger target");
+        throw new IllegalStateException("event '" + name + "' has no trigger target");
     }
 }

@@ -4,10 +4,10 @@ import de.mhus.vance.api.ursaevents.EventDto;
 import de.mhus.vance.api.ursaevents.EventSummary;
 import de.mhus.vance.api.ursaevents.EventTriggerResponse;
 import de.mhus.vance.brain.permission.RequestAuthority;
-import de.mhus.vance.shared.ursaevents.UrsaEventLoader;
-import de.mhus.vance.shared.ursaevents.ResolvedUrsaEvent;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
+import de.mhus.vance.shared.ursaevents.ResolvedUrsaEvent;
+import de.mhus.vance.shared.ursaevents.UrsaEventLoader;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -78,9 +78,10 @@ public class UrsaEventAdminController {
             HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, project), Action.READ);
         String norm = normalizeName(name);
-        ResolvedUrsaEvent r = eventLoader.load(tenant, project, norm)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Event '" + norm + "' not found in project '" + project + "'"));
+        ResolvedUrsaEvent r = eventLoader
+                .load(tenant, project, norm)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Event '" + norm + "' not found in project '" + project + "'"));
         return toDto(r);
     }
 
@@ -108,13 +109,12 @@ public class UrsaEventAdminController {
         String triggeredBy = authority.contextOf(request).subjectId();
         Object payload = body == null ? null : body.payload();
 
-        UrsaEventService.UrsaEventTriggerResult result = eventService.triggerAdmin(
-                tenant, project, norm, payload, triggeredBy);
+        UrsaEventService.UrsaEventTriggerResult result =
+                eventService.triggerAdmin(tenant, project, norm, payload, triggeredBy);
         // `result.output()` is already withheld by triggerAdmin when the
         // event sets outputToAgents:false — this surface skips the bearer
         // check too, so it falls under the same rule.
-        return new EventTriggerResponse(
-                norm, result.workflowName(), result.workflowRunId(), result.output());
+        return new EventTriggerResponse(norm, result.workflowName(), result.workflowRunId(), result.output());
     }
 
     /**
@@ -126,26 +126,22 @@ public class UrsaEventAdminController {
     // ─── Mappers ──────────────────────────────────────────────────────────
 
     private static EventSummary toSummary(ResolvedUrsaEvent r) {
-        List<String> methods = r.methods().isEmpty()
-                ? null
-                : new ArrayList<>(r.methods());
+        List<String> methods = r.methods().isEmpty() ? null : new ArrayList<>(r.methods());
         return EventSummary.builder()
                 .name(r.name())
                 .description(r.description())
                 .workflow(r.workflow())
                 .enabled(r.enabled())
                 .methods(methods)
-                .authConfigured(r.requiresAuth())
-                .authType(r.requiresAuth() ? "bearer" : "none")
+                .authConfigured(r.authenticated())
+                .authType(r.requiresAuth() ? "bearer" : r.signature() != null ? "signature" : "none")
                 .source(r.source())
                 .tags(r.tags().isEmpty() ? null : r.tags())
                 .build();
     }
 
     private static EventDto toDto(ResolvedUrsaEvent r) {
-        List<String> methods = r.methods().isEmpty()
-                ? null
-                : new ArrayList<>(r.methods());
+        List<String> methods = r.methods().isEmpty() ? null : new ArrayList<>(r.methods());
         Map<String, Object> params = r.params().isEmpty() ? null : r.params();
         // Redact an inline auth.token literal from the returned YAML: getEvent is
         // gated on READ only, and a project-READ user could otherwise lift the
@@ -164,8 +160,8 @@ public class UrsaEventAdminController {
                 .workflow(r.workflow())
                 .enabled(r.enabled())
                 .methods(methods)
-                .authConfigured(r.requiresAuth())
-                .authType(r.requiresAuth() ? "bearer" : "none")
+                .authConfigured(r.authenticated())
+                .authType(r.requiresAuth() ? "bearer" : r.signature() != null ? "signature" : "none")
                 .params(params)
                 .runAs(r.runAs())
                 .tags(r.tags().isEmpty() ? null : r.tags())
@@ -174,8 +170,7 @@ public class UrsaEventAdminController {
 
     private static String normalizeName(String name) {
         if (name == null || name.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Event name must not be blank");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Event name must not be blank");
         }
         return name.trim().toLowerCase(Locale.ROOT);
     }

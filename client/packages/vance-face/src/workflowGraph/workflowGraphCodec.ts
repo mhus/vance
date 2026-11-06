@@ -68,6 +68,13 @@ export interface WorkflowEdge {
   /** Outcome name, error kind, or condition expression. */
   label: string;
   kind: WorkflowEdgeKind;
+  /**
+   * Where the edge sits inside its source state, so an editor can address it:
+   * the untruncated outcome / error kind for {@code on} and {@code catch},
+   * the position in {@code transitions:} (as a string) for {@code condition}
+   * and {@code else}.
+   */
+  key: string;
   /** True when {@link target} is a {@link WorkflowStateNode.missing} node. */
   dangling: boolean;
 }
@@ -255,17 +262,17 @@ function collectEdges(source: string, raw: Record<string, unknown>, out: Workflo
 
   const transitions = raw.transitions;
   if (!Array.isArray(transitions)) return;
-  for (const entry of transitions) {
+  for (const [index, entry] of transitions.entries()) {
     if (!isRecord(entry)) continue;
     if ('else' in entry) {
       const target = optionalString(entry.else);
-      if (target) out.push(edge(source, target, 'else', 'else', out.length));
+      if (target) out.push(edge(source, target, 'else', 'else', String(index), out.length));
       continue;
     }
     const target = optionalString(entry.to);
     if (!target) continue;
     const condition = optionalString(entry.if) ?? '';
-    out.push(edge(source, target, truncate(condition), 'condition', out.length));
+    out.push(edge(source, target, truncate(condition), 'condition', String(index), out.length));
   }
 }
 
@@ -278,7 +285,7 @@ function pushMapEdges(
   if (!isRecord(raw)) return;
   for (const [outcome, target] of Object.entries(raw)) {
     if (typeof target !== 'string' || !target.trim()) continue;
-    out.push(edge(source, target, outcome, kind, out.length));
+    out.push(edge(source, target, outcome, kind, outcome, out.length));
   }
 }
 
@@ -287,6 +294,7 @@ function edge(
   target: string,
   label: string,
   kind: WorkflowEdgeKind,
+  key: string,
   index: number,
 ): WorkflowEdge {
   return {
@@ -297,6 +305,7 @@ function edge(
     target,
     label,
     kind,
+    key,
     dangling: false,
   };
 }

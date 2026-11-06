@@ -4,7 +4,6 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import de.mhus.vance.api.annotations.GenerateTypeScript;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -43,22 +42,9 @@ public class ServiceCatalogDto {
     private @Nullable String manual;
 
     @Builder.Default
-    private List<Highlight> highlights = new ArrayList<>();
+    private List<ServiceCatalogHighlightDto> highlights = new ArrayList<>();
 
-    /** A tool of the service worth pointing at. */
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    @JsonInclude(JsonInclude.Include.NON_NULL)
-    public static class Highlight {
-
-        /** The full tool name, as it is listed. */
-        private String tool;
-
-        private String description;
-
-        /** An example of the parameters, for a form to start from. */
-        private @Nullable Map<String, Object> params;
-    }
+    /** What the service can start a workflow with. */
+    @Builder.Default
+    private List<ServiceCatalogTriggerDto> triggers = new ArrayList<>();
 }

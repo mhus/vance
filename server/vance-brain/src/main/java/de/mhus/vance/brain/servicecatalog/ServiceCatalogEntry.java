@@ -20,6 +20,20 @@ import org.jspecify.annotations.Nullable;
  *   - tool: createIssue             # an operation of the pack, by the part after the pack's prefix
  *     description: { en: "…" }
  *     params: { body: { fields: { … } } }     # an example for a form to start from
+ * triggers:
+ *   - name: push                    # what the service can start a workflow with
+ *     description: { en: "…" }
+ *     mode: webhook                 # webhook (default) | poll
+ *     handler: github               # optional SPI name for what cannot be declared
+ *     event:                        # webhook: what the generated event document starts from
+ *       auth: { signature: { header: X-Hub-Signature-256, algorithm: HmacSHA256, prefix: "sha256=" } }
+ *       idempotencyHeader: X-GitHub-Delivery
+ *     subscribe: createWebhook      # optional pair: tools that register/unregister the event URL at the service
+ *     unsubscribe: deleteWebhook
+ *     payloadSchema: { … }          # optional, JSON Schema of the delivered payload
+ *   - name: new-message
+ *     mode: poll
+ *     poll: { tool: listMessages, schedule: "0 0/5 * * * *", params: { … } }
  * </pre>
  *
  * @param name        file name without {@code .yaml}
@@ -30,6 +44,7 @@ import org.jspecify.annotations.Nullable;
  * @param provider    OAuth provider id, or {@code null} when the tools need no user login
  * @param manual      manual name, or {@code null}
  * @param highlights  the operations people reach for first
+ * @param triggers    what the service can start a workflow with; may be empty
  */
 public record ServiceCatalogEntry(
         String name,
@@ -39,7 +54,43 @@ public record ServiceCatalogEntry(
         List<String> match,
         @Nullable String provider,
         @Nullable String manual,
-        List<Highlight> highlights) {
+        List<Highlight> highlights,
+        List<Trigger> triggers) {
+
+    /** How a trigger reaches us: the service calls (webhook) or we ask on a schedule (poll). */
+    public enum TriggerMode {
+        WEBHOOK,
+        POLL
+    }
+
+    /**
+     * A trigger of the service. It is a <em>template</em>: it describes what the generated event document (webhook)
+     * or scheduler document (poll) starts from. Nothing of it runs on its own.
+     *
+     * @param name          unique within the entry
+     * @param description   per language
+     * @param mode          webhook or poll
+     * @param handler       name of an SPI class for what cannot be declared, or {@code null}
+     * @param event         webhook: the fields the generated event document starts from, or {@code null}
+     * @param poll          poll: the call to ask with and when, or {@code null}
+     * @param subscribe     webhook: tool that registers the event URL at the service, or {@code null}
+     * @param unsubscribe   webhook: tool that removes the registration again, or {@code null}
+     * @param payloadSchema JSON Schema of what arrives, or {@code null}
+     */
+    public record Trigger(
+            String name,
+            Map<String, String> description,
+            TriggerMode mode,
+            @Nullable String handler,
+            @Nullable Map<String, Object> event,
+            @Nullable Poll poll,
+            @Nullable String subscribe,
+            @Nullable String unsubscribe,
+            @Nullable Map<String, Object> payloadSchema) {}
+
+    /** The call a polling trigger asks with, and how often. */
+    public record Poll(
+            String tool, String schedule, @Nullable Map<String, Object> params) {}
 
     /** An operation worth pointing at. */
     public record Highlight(

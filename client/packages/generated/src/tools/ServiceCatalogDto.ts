@@ -3,6 +3,9 @@
  Source: de.mhus.vance.api.tools.ServiceCatalogDto
 */
 
+import { ServiceCatalogHighlightDto } from './ServiceCatalogHighlightDto';
+import { ServiceCatalogTriggerDto } from './ServiceCatalogTriggerDto';
+
 export interface ServiceCatalogDto {
   title: string;
   description: string;
@@ -10,5 +13,6 @@ export interface ServiceCatalogDto {
   loginProvider?: string;
   connected?: boolean;
   manual?: string;
-  highlights: Highlight[];
+  highlights: ServiceCatalogHighlightDto[];
+  triggers: ServiceCatalogTriggerDto[];
 }

@@ -102,6 +102,73 @@ class ServiceCatalogTest {
         assertThat(names).contains("jira", "slack");
     }
 
+    private static final String WITH_TRIGGERS = """
+            match: [github]
+            highlights: []
+            triggers:
+              - name: push
+                description: { en: "A push" }
+                handler: github
+                event:
+                  auth: { signature: { header: X-Hub-Signature-256 } }
+                  idempotencyHeader: X-GitHub-Delivery
+                subscribe: createWebhook
+                unsubscribe: deleteWebhook
+                payloadSchema: { type: object }
+              - name: new-message
+                mode: poll
+                poll: { tool: listMessages, schedule: "0 0/5 * * * *", params: { limit: 50 } }
+            """;
+
+    @Test
+    void triggersAreParsedAsWebhookOrPoll() {
+        ServiceCatalogEntry e = ServiceCatalogLoader.parse("github", WITH_TRIGGERS);
+
+        assertThat(e.triggers()).hasSize(2);
+        ServiceCatalogEntry.Trigger push = e.triggers().get(0);
+        assertThat(push.mode()).isEqualTo(ServiceCatalogEntry.TriggerMode.WEBHOOK);
+        assertThat(push.handler()).isEqualTo("github");
+        assertThat(push.event()).containsKey("auth").containsEntry("idempotencyHeader", "X-GitHub-Delivery");
+        assertThat(push.subscribe()).isEqualTo("createWebhook");
+        assertThat(push.unsubscribe()).isEqualTo("deleteWebhook");
+        assertThat(push.payloadSchema()).containsEntry("type", "object");
+        ServiceCatalogEntry.Trigger poll = e.triggers().get(1);
+        assertThat(poll.mode()).isEqualTo(ServiceCatalogEntry.TriggerMode.POLL);
+        assertThat(poll.poll().tool()).isEqualTo("listMessages");
+        assertThat(poll.poll().schedule()).isEqualTo("0 0/5 * * * *");
+        assertThat(poll.poll().params()).containsEntry("limit", 50);
+    }
+
+    @Test
+    void anEntryWithoutTriggersHasNone() {
+        assertThat(ServiceCatalogLoader.parse("jira", YAML).triggers()).isEmpty();
+    }
+
+    @Test
+    void aBrokenTriggerRefusesTheEntry() {
+        String head = "match: [x]\ntriggers:\n";
+        assertThatThrownBy(() -> ServiceCatalogLoader.parse("x", head + "  - description: d\n"))
+                .hasMessageContaining("name");
+        assertThatThrownBy(() -> ServiceCatalogLoader.parse("x", head + "  - name: a\n  - name: a\n"))
+                .hasMessageContaining("twice");
+        assertThatThrownBy(() -> ServiceCatalogLoader.parse("x", head + "  - name: a\n    mode: carrier-pigeon\n"))
+                .hasMessageContaining("mode");
+        // A registration that cannot be removed is a leak.
+        assertThatThrownBy(() -> ServiceCatalogLoader.parse("x", head + "  - name: a\n    subscribe: s\n"))
+                .hasMessageContaining("pair");
+        assertThatThrownBy(() -> ServiceCatalogLoader.parse("x", head + "  - name: a\n    mode: poll\n"))
+                .hasMessageContaining("poll");
+        assertThatThrownBy(
+                        () -> ServiceCatalogLoader.parse(
+                                "x",
+                                head
+                                        + "  - name: a\n    mode: poll\n    poll: { tool: t, schedule: s }\n    subscribe: s\n    unsubscribe: u\n"))
+                .hasMessageContaining("webhook");
+        assertThatThrownBy(() ->
+                        ServiceCatalogLoader.parse("x", head + "  - name: a\n    poll: { tool: t, schedule: s }\n"))
+                .hasMessageContaining("polling");
+    }
+
     private static LookupResult lookup(String content) {
         LookupResult r = mock(LookupResult.class);
         when(r.content()).thenReturn(content);

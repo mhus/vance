@@ -1,6 +1,8 @@
 package de.mhus.vance.brain.magrathea;
 
 import de.mhus.vance.api.tools.ServiceCatalogDto;
+import de.mhus.vance.api.tools.ServiceCatalogHighlightDto;
+import de.mhus.vance.api.tools.ServiceCatalogTriggerDto;
 import de.mhus.vance.api.tools.ToolServiceDto;
 import de.mhus.vance.api.tools.ToolSpec;
 import de.mhus.vance.brain.oauth.OAuthTokenOwner;
@@ -89,7 +91,7 @@ public class WorkflowToolsController {
                     .filter(e -> e.describes(group.getService()))
                     .findFirst()
                     .ifPresent(entry -> {
-                        List<ServiceCatalogDto.Highlight> highlights = new ArrayList<>();
+                        List<ServiceCatalogHighlightDto> highlights = new ArrayList<>();
                         for (ServiceCatalogEntry.Highlight h : entry.highlights()) {
                             group.getTools().stream()
                                     .map(ToolSpec::getName)
@@ -98,7 +100,7 @@ public class WorkflowToolsController {
                                                     .endsWith("__" + h.tool().toLowerCase(Locale.ROOT)))
                                     .findFirst()
                                     // A highlight the pack does not offer is dropped, not shown as a dead pointer.
-                                    .ifPresent(name -> highlights.add(ServiceCatalogDto.Highlight.builder()
+                                    .ifPresent(name -> highlights.add(ServiceCatalogHighlightDto.builder()
                                             .tool(name)
                                             .description(ServiceCatalogEntry.localized(h.description(), lang))
                                             .params(h.params())
@@ -112,9 +114,24 @@ public class WorkflowToolsController {
                                 .connected(entry.provider() == null ? null : connected.apply(entry.provider()))
                                 .manual(entry.manual())
                                 .highlights(highlights)
+                                .triggers(triggers(entry, lang))
                                 .build());
                     });
         }
+    }
+
+    private static List<ServiceCatalogTriggerDto> triggers(ServiceCatalogEntry entry, String lang) {
+        List<ServiceCatalogTriggerDto> out = new ArrayList<>();
+        for (ServiceCatalogEntry.Trigger t : entry.triggers()) {
+            out.add(ServiceCatalogTriggerDto.builder()
+                    .name(t.name())
+                    .description(ServiceCatalogEntry.localized(t.description(), lang))
+                    .mode(t.mode().name().toLowerCase(Locale.ROOT))
+                    .subscribes(t.subscribe() != null)
+                    .payloadSchema(t.payloadSchema())
+                    .build());
+        }
+        return out;
     }
 
     /**

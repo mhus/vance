@@ -71,9 +71,32 @@ class WorkflowToolsControllerTest {
                 "oauth-tools",
                 List.of(
                         new ServiceCatalogEntry.Highlight("createIssue", Map.of("en", "Create"), Map.of("a", 1)),
-                        new ServiceCatalogEntry.Highlight("noSuchOperation", Map.of("en", "Gone"), null)));
+                        new ServiceCatalogEntry.Highlight("noSuchOperation", Map.of("en", "Gone"), null)),
+                List.of(new ServiceCatalogEntry.Trigger(
+                        "created",
+                        Map.of("en", "Issue created"),
+                        ServiceCatalogEntry.TriggerMode.WEBHOOK,
+                        null,
+                        null,
+                        null,
+                        "createWebhook",
+                        "deleteWebhook",
+                        null)));
 
         WorkflowToolsController.decorate(groups, List.of(jira), "de", provider -> "atlassian".equals(provider));
+
+        assertThat(groups.stream()
+                        .filter(g -> g.getService().equals("jira_rest"))
+                        .findFirst()
+                        .orElseThrow()
+                        .getCatalog()
+                        .getTriggers())
+                .singleElement()
+                .satisfies(t -> {
+                    assertThat(t.getName()).isEqualTo("created");
+                    assertThat(t.getMode()).isEqualTo("webhook");
+                    assertThat(t.isSubscribes()).isTrue();
+                });
 
         var jiraGroup = groups.stream()
                 .filter(g -> g.getService().equals("jira_rest"))
@@ -99,10 +122,10 @@ class WorkflowToolsControllerTest {
         List<ToolServiceDto> groups = WorkflowToolsController.group(List.of(
                 resolved(tool("a__x", "a", Map.of("type", "object")), pack),
                 resolved(tool("b__x", "b", Map.of("type", "object")), pack)));
-        var needsLogin =
-                new ServiceCatalogEntry("a", Map.of("en", "A"), Map.of(), null, List.of("a"), "p", null, List.of());
-        var needsNone =
-                new ServiceCatalogEntry("b", Map.of("en", "B"), Map.of(), null, List.of("b"), null, null, List.of());
+        var needsLogin = new ServiceCatalogEntry(
+                "a", Map.of("en", "A"), Map.of(), null, List.of("a"), "p", null, List.of(), List.of());
+        var needsNone = new ServiceCatalogEntry(
+                "b", Map.of("en", "B"), Map.of(), null, List.of("b"), null, null, List.of(), List.of());
 
         WorkflowToolsController.decorate(groups, List.of(needsLogin, needsNone), "en", provider -> null);
 

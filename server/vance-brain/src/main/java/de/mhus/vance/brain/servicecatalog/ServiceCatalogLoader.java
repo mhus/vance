@@ -4,10 +4,12 @@ import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.document.LookupResult;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -83,6 +85,7 @@ public class ServiceCatalogLoader {
                         new ServiceCatalogEntry.Highlight(text(h.get("tool")), texts(h.get("description")), params));
             }
         }
+        List<ServiceCatalogEntry.Trigger> triggers = parseTriggers(m.get("triggers"));
         return new ServiceCatalogEntry(
                 name,
                 texts(m.get("title")),
@@ -91,7 +94,78 @@ public class ServiceCatalogLoader {
                 match,
                 provider,
                 manual,
-                List.copyOf(highlights));
+                List.copyOf(highlights),
+                triggers);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<ServiceCatalogEntry.Trigger> parseTriggers(@Nullable Object raw) {
+        List<ServiceCatalogEntry.Trigger> out = new ArrayList<>();
+        if (raw == null) return out;
+        if (!(raw instanceof List<?> list)) {
+            throw new IllegalStateException("'triggers' must be a list");
+        }
+        Set<String> seen = new HashSet<>();
+        for (Object item : list) {
+            if (!(item instanceof Map<?, ?> t) || text(t.get("name")) == null) {
+                throw new IllegalStateException("each trigger needs a 'name'");
+            }
+            String triggerName = text(t.get("name"));
+            if (!seen.add(triggerName)) {
+                throw new IllegalStateException("trigger '" + triggerName + "' is declared twice");
+            }
+            ServiceCatalogEntry.TriggerMode mode = triggerMode(triggerName, text(t.get("mode")));
+            Map<String, Object> event =
+                    t.get("event") instanceof Map<?, ?> e ? new LinkedHashMap<>((Map<String, Object>) e) : null;
+            String subscribe = text(t.get("subscribe"));
+            String unsubscribe = text(t.get("unsubscribe"));
+            ServiceCatalogEntry.Poll poll = null;
+            if (mode == ServiceCatalogEntry.TriggerMode.POLL) {
+                if (event != null || subscribe != null || unsubscribe != null) {
+                    throw new IllegalStateException("trigger '" + triggerName
+                            + "' polls: 'event', 'subscribe' and 'unsubscribe' belong to a webhook");
+                }
+                if (!(t.get("poll") instanceof Map<?, ?> p)
+                        || text(p.get("tool")) == null
+                        || text(p.get("schedule")) == null) {
+                    throw new IllegalStateException(
+                            "trigger '" + triggerName + "' polls: 'poll' needs a 'tool' and a 'schedule'");
+                }
+                poll = new ServiceCatalogEntry.Poll(
+                        text(p.get("tool")),
+                        text(p.get("schedule")),
+                        p.get("params") instanceof Map<?, ?> pp ? new LinkedHashMap<>((Map<String, Object>) pp) : null);
+            } else {
+                if (t.get("poll") != null) {
+                    throw new IllegalStateException(
+                            "trigger '" + triggerName + "' is a webhook: 'poll' belongs to a polling trigger");
+                }
+                if ((subscribe == null) != (unsubscribe == null)) {
+                    throw new IllegalStateException(
+                            "trigger '" + triggerName
+                                    + "': 'subscribe' and 'unsubscribe' come as a pair — a registration that cannot be removed is a leak");
+                }
+            }
+            out.add(new ServiceCatalogEntry.Trigger(
+                    triggerName,
+                    texts(t.get("description")),
+                    mode,
+                    text(t.get("handler")),
+                    event,
+                    poll,
+                    subscribe,
+                    unsubscribe,
+                    t.get("payloadSchema") instanceof Map<?, ?> ps
+                            ? new LinkedHashMap<>((Map<String, Object>) ps)
+                            : null));
+        }
+        return List.copyOf(out);
+    }
+
+    private static ServiceCatalogEntry.TriggerMode triggerMode(String trigger, @Nullable String mode) {
+        if (mode == null || mode.equalsIgnoreCase("webhook")) return ServiceCatalogEntry.TriggerMode.WEBHOOK;
+        if (mode.equalsIgnoreCase("poll")) return ServiceCatalogEntry.TriggerMode.POLL;
+        throw new IllegalStateException("trigger '" + trigger + "': 'mode' is 'webhook' or 'poll', not '" + mode + "'");
     }
 
     private static @Nullable String text(@Nullable Object o) {

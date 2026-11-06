@@ -27,6 +27,7 @@ import '@vue-flow/core/dist/style.css';
 import '@vue-flow/core/dist/theme-default.css';
 import { VAlert, VButton } from '@/components';
 import { toFlowEdges, toFlowNodes } from './flowElements';
+import { useFitOnResize } from './useFitOnResize';
 import { layoutPositions, type GraphDirection } from './layout';
 import { parseWorkflowGraph } from './workflowGraphCodec';
 import type { GraphOverlay } from './overlay';
@@ -47,6 +48,8 @@ interface Props {
   breakpoints?: string[];
   /** Nodes answer a click (event `node-click`) and look clickable. */
   interactive?: boolean;
+  /** The state to mark as picked; the caller owns the selection. */
+  selected?: string | null;
 }
 const props = withDefaults(defineProps<Props>(), {
   overlay: undefined,
@@ -54,10 +57,14 @@ const props = withDefaults(defineProps<Props>(), {
   showProblems: true,
   breakpoints: () => [],
   interactive: false,
+  selected: null,
 });
 const emit = defineEmits<{ (e: 'node-click', state: string): void }>();
 
 const { t } = useI18n();
+
+const canvas = ref<HTMLElement | null>(null);
+const { onPaneReady } = useFitOnResize(canvas);
 
 const direction = ref<GraphDirection>('TB');
 
@@ -71,6 +78,7 @@ const vfNodes = computed(() =>
     (state) => ({
       run: props.overlay?.[state.name],
       breakpoint: props.breakpoints.includes(state.name),
+      selected: props.selected === state.name,
     }),
     { draggable: false, selectable: false, connectable: false },
   ),
@@ -122,7 +130,7 @@ function toggleDirection(): void {
       </ul>
     </VAlert>
 
-    <div v-if="hasStates" class="canvas" :style="{ height }">
+    <div v-if="hasStates" ref="canvas" class="canvas" :style="{ height }">
       <VueFlow
         :nodes="vfNodes"
         :edges="vfEdges"
@@ -131,6 +139,7 @@ function toggleDirection(): void {
         :nodes-connectable="false"
         :elements-selectable="false"
         :zoom-on-double-click="false"
+        @pane-ready="onPaneReady"
         @node-click="onNodeClick"
       >
         <template #node-state="{ data }">
@@ -140,6 +149,7 @@ function toggleDirection(): void {
             :breakpoint="data.breakpoint"
             :direction="direction"
             :interactive="interactive"
+            :selected="data.selected"
           />
         </template>
       </VueFlow>

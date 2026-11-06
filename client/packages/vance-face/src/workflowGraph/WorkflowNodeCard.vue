@@ -30,12 +30,15 @@ interface Props {
   interactive?: boolean;
   /** Handles accept new connections (the editor). */
   connectable?: boolean;
+  /** The card is the one picked in an inspector. */
+  selected?: boolean;
 }
 withDefaults(defineProps<Props>(), {
   run: undefined,
   breakpoint: false,
   interactive: false,
   connectable: false,
+  selected: false,
 });
 
 const { t } = useI18n();
@@ -58,7 +61,7 @@ function runLine(run: GraphStateRun): string {
 
 <template>
   <div
-    :class="[...nodeClasses(state, run, breakpoint), { 'wf-node--interactive': interactive }]"
+    :class="[...nodeClasses(state, run, breakpoint), { 'wf-node--interactive': interactive, 'wf-node--selected': selected }]"
     :style="{ borderLeftColor: typeColor(state) }"
   >
     <Handle
@@ -168,6 +171,10 @@ function runLine(run: GraphStateRun): string {
   background: color-mix(in oklab, var(--color-primary) 20%, transparent);
   text-transform: uppercase;
   letter-spacing: 0.04em;
+}
+.wf-node--selected {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--color-primary) 35%, transparent);
 }
 .wf-node--interactive { cursor: pointer; }
 .wf-node--interactive:hover {

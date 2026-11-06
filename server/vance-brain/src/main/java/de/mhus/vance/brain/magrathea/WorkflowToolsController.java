@@ -1,8 +1,13 @@
 package de.mhus.vance.brain.magrathea;
 
+import de.mhus.vance.api.tools.ServiceCatalogDto;
 import de.mhus.vance.api.tools.ToolServiceDto;
 import de.mhus.vance.api.tools.ToolSpec;
+import de.mhus.vance.brain.oauth.OAuthTokenOwner;
+import de.mhus.vance.brain.oauth.OAuthTokenStore;
 import de.mhus.vance.brain.permission.RequestAuthority;
+import de.mhus.vance.brain.servicecatalog.ServiceCatalogEntry;
+import de.mhus.vance.brain.servicecatalog.ServiceCatalogLoader;
 import de.mhus.vance.brain.tools.ToolDispatcher;
 import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.permission.Action;
@@ -13,12 +18,15 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.Nullable;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -42,21 +50,71 @@ public class WorkflowToolsController {
 
     private final ToolDispatcher toolDispatcher;
     private final RequestAuthority authority;
+    private final ServiceCatalogLoader catalogLoader;
+    private final OAuthTokenStore tokenStore;
 
     @GetMapping("/workflow-tools")
     public List<ToolServiceDto> list(
             @PathVariable("tenant") String tenant,
             @PathVariable("project") String project,
+            @RequestParam(value = "lang", defaultValue = "en") String lang,
             HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, project), Action.READ);
         Object user = request.getAttribute(AccessFilterBase.ATTR_USERNAME);
-        ToolInvocationContext ctx = new ToolInvocationContext(
-                tenant,
-                project, /* sessionId */
-                null, /* processId */
-                null,
-                user instanceof String s && !s.isBlank() ? s : null);
-        return group(toolDispatcher.resolveAll(ctx));
+        String userId = user instanceof String s && !s.isBlank() ? s : null;
+        ToolInvocationContext ctx =
+                new ToolInvocationContext(tenant, project, /* sessionId */ null, /* processId */ null, userId);
+        List<ToolServiceDto> groups = group(toolDispatcher.resolveAll(ctx));
+        decorate(
+                groups,
+                catalogLoader.list(tenant, project),
+                lang,
+                provider ->
+                        userId == null ? null : tokenStore.isConnected(tenant, OAuthTokenOwner.user(userId), provider));
+        return groups;
+    }
+
+    /**
+     * Put what the catalog says onto each group that has an entry. A group without one is left as it is.
+     *
+     * @param connected whether the caller has connected an OAuth provider; {@code null} when that is not known
+     */
+    static void decorate(
+            List<ToolServiceDto> groups,
+            List<ServiceCatalogEntry> entries,
+            String lang,
+            java.util.function.Function<String, @Nullable Boolean> connected) {
+        for (ToolServiceDto group : groups) {
+            entries.stream()
+                    .filter(e -> e.describes(group.getService()))
+                    .findFirst()
+                    .ifPresent(entry -> {
+                        List<ServiceCatalogDto.Highlight> highlights = new ArrayList<>();
+                        for (ServiceCatalogEntry.Highlight h : entry.highlights()) {
+                            group.getTools().stream()
+                                    .map(ToolSpec::getName)
+                                    .filter(n -> n.equalsIgnoreCase(group.getService() + "__" + h.tool())
+                                            || n.toLowerCase(Locale.ROOT)
+                                                    .endsWith("__" + h.tool().toLowerCase(Locale.ROOT)))
+                                    .findFirst()
+                                    // A highlight the pack does not offer is dropped, not shown as a dead pointer.
+                                    .ifPresent(name -> highlights.add(ServiceCatalogDto.Highlight.builder()
+                                            .tool(name)
+                                            .description(ServiceCatalogEntry.localized(h.description(), lang))
+                                            .params(h.params())
+                                            .build()));
+                        }
+                        group.setCatalog(ServiceCatalogDto.builder()
+                                .title(ServiceCatalogEntry.localized(entry.title(), lang))
+                                .description(ServiceCatalogEntry.localized(entry.description(), lang))
+                                .icon(entry.icon())
+                                .loginProvider(entry.provider())
+                                .connected(entry.provider() == null ? null : connected.apply(entry.provider()))
+                                .manual(entry.manual())
+                                .highlights(highlights)
+                                .build());
+                    });
+        }
     }
 
     /**

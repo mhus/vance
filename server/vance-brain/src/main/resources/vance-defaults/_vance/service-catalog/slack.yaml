@@ -1,0 +1,46 @@
+# Catalog entry for a Slack REST or MCP pack. The tools themselves come from the pack; this
+# only describes the service and points at the operations people reach for first.
+title: { en: "Slack", de: "Slack" }
+description:
+  en: "Post messages, read channel history, look people up, search. The REST tools take the token as a parameter — pass the user's login with {{secret:user:oauth.slack.access_token}}."
+  de: "Nachrichten senden, Kanalverlauf lesen, Personen nachschlagen, suchen. Die REST-Tools nehmen das Token als Parameter — die Anmeldung des Benutzers mit {{secret:user:oauth.slack.access_token}} übergeben."
+icon: message-square
+match: [slack]
+login:
+  provider: slack
+  manual: oauth-tools
+highlights:
+  - tool: chat_postMessage
+    description:
+      en: "Post a message to a channel or person."
+      de: "Sendet eine Nachricht an einen Kanal oder eine Person."
+    params:
+      token: "{{secret:user:oauth.slack.access_token}}"
+      body:
+        channel: "C0123456789"
+        text: "Hello from a workflow"
+  - tool: conversations_history
+    description:
+      en: "Read the latest messages of a channel."
+      de: "Liest die letzten Nachrichten eines Kanals."
+    params:
+      token: "{{secret:user:oauth.slack.access_token}}"
+      channel: "C0123456789"
+  - tool: users_lookupByEmail
+    description:
+      en: "Find a person by e-mail address. The result's json carries the user id."
+      de: "Findet eine Person über die E-Mail-Adresse. Das json des Ergebnisses trägt die Benutzer-ID."
+    params:
+      token: "{{secret:user:oauth.slack.access_token}}"
+      email: "someone@example.com"
+  - tool: search_messages
+    description:
+      en: "Search messages."
+      de: "Durchsucht Nachrichten."
+    params:
+      token: "{{secret:user:oauth.slack.access_token}}"
+      query: "deploy in:#ops"
+  - tool: reactions_add
+    description:
+      en: "Add an emoji reaction to a message."
+      de: "Fügt einer Nachricht eine Emoji-Reaktion hinzu."

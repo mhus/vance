@@ -5,6 +5,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.tools.ToolServiceDto;
+import de.mhus.vance.brain.servicecatalog.ServiceCatalogEntry;
 import de.mhus.vance.brain.tools.ToolDispatcher;
 import de.mhus.vance.brain.tools.ToolSource;
 import de.mhus.vance.toolpack.Tool;
@@ -52,6 +53,62 @@ class WorkflowToolsControllerTest {
 
         assertThat(WorkflowToolsController.group(List.of(resolved(restricted, builtin))))
                 .isEmpty();
+    }
+
+    @Test
+    void a_group_with_a_catalog_entry_gets_its_description_login_state_and_the_highlights_that_exist() {
+        List<ToolServiceDto> groups = WorkflowToolsController.group(List.of(
+                resolved(tool("jira_rest__createIssue", "jira_rest", Map.of("type", "object")), pack),
+                resolved(tool("jira_rest__getIssue", "jira_rest", Map.of("type", "object")), pack),
+                resolved(tool("slack_rest__chat_postMessage", "slack_rest", Map.of("type", "object")), pack)));
+        var jira = new ServiceCatalogEntry(
+                "jira",
+                Map.of("en", "Jira", "de", "Jira DE"),
+                Map.of("en", "Tickets"),
+                "ticket",
+                List.of("jira"),
+                "atlassian",
+                "oauth-tools",
+                List.of(
+                        new ServiceCatalogEntry.Highlight("createIssue", Map.of("en", "Create"), Map.of("a", 1)),
+                        new ServiceCatalogEntry.Highlight("noSuchOperation", Map.of("en", "Gone"), null)));
+
+        WorkflowToolsController.decorate(groups, List.of(jira), "de", provider -> "atlassian".equals(provider));
+
+        var jiraGroup = groups.stream()
+                .filter(g -> g.getService().equals("jira_rest"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(jiraGroup.getCatalog().getTitle()).isEqualTo("Jira DE");
+        assertThat(jiraGroup.getCatalog().getLoginProvider()).isEqualTo("atlassian");
+        assertThat(jiraGroup.getCatalog().getConnected()).isTrue();
+        // The highlight the pack does not offer is dropped; the one it does is named by its full tool name.
+        assertThat(jiraGroup.getCatalog().getHighlights())
+                .singleElement()
+                .satisfies(h -> assertThat(h.getTool()).isEqualTo("jira_rest__createIssue"));
+        // A group without an entry is left as it is.
+        var slackGroup = groups.stream()
+                .filter(g -> g.getService().equals("slack_rest"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(slackGroup.getCatalog()).isNull();
+    }
+
+    @Test
+    void whether_the_user_is_connected_is_unknown_without_a_user_and_absent_without_a_login() {
+        List<ToolServiceDto> groups = WorkflowToolsController.group(List.of(
+                resolved(tool("a__x", "a", Map.of("type", "object")), pack),
+                resolved(tool("b__x", "b", Map.of("type", "object")), pack)));
+        var needsLogin =
+                new ServiceCatalogEntry("a", Map.of("en", "A"), Map.of(), null, List.of("a"), "p", null, List.of());
+        var needsNone =
+                new ServiceCatalogEntry("b", Map.of("en", "B"), Map.of(), null, List.of("b"), null, null, List.of());
+
+        WorkflowToolsController.decorate(groups, List.of(needsLogin, needsNone), "en", provider -> null);
+
+        assertThat(groups.get(0).getCatalog().getConnected()).isNull();
+        assertThat(groups.get(1).getCatalog().getLoginProvider()).isNull();
+        assertThat(groups.get(1).getCatalog().getConnected()).isNull();
     }
 
     private static ToolSource source(String id) {

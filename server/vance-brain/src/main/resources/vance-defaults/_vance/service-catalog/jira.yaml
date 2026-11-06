@@ -1,0 +1,46 @@
+# Catalog entry for a Jira (Atlassian) REST or MCP pack. The tools themselves come from the pack; this
+# only describes the service and points at the operations people reach for first.
+title: { en: "Jira", de: "Jira" }
+description:
+  en: "Create and change issues, add comments, search with JQL. Uses the Atlassian login of the user the workflow runs as."
+  de: "Tickets anlegen und ändern, kommentieren, mit JQL suchen. Nutzt die Atlassian-Anmeldung des Benutzers, als der der Workflow läuft."
+icon: ticket
+# The pack names this entry describes: a pack called "jira" or "jira_rest" matches.
+match: [jira]
+login:
+  provider: atlassian
+  manual: oauth-tools
+highlights:
+  - tool: createIssue
+    description:
+      en: "Create an issue. The result's json carries id and key."
+      de: "Legt ein Ticket an. Das json des Ergebnisses trägt id und key."
+    params:
+      body:
+        fields:
+          project: { key: "OPS" }
+          summary: "A short title"
+          issuetype: { name: "Task" }
+  - tool: getIssue
+    description:
+      en: "Read one issue by key, e.g. OPS-12."
+      de: "Liest ein Ticket anhand des Schlüssels, z. B. OPS-12."
+    params:
+      issueIdOrKey: "OPS-12"
+  - tool: searchAndReconsileIssuesUsingJqlPost
+    description:
+      en: "Find issues with a JQL query. The result's json lists them under issues."
+      de: "Findet Tickets mit einer JQL-Abfrage. Das json des Ergebnisses listet sie unter issues."
+    params:
+      body:
+        jql: "project = OPS AND status = Open ORDER BY created DESC"
+        maxResults: 50
+        fields: [summary, status]
+  - tool: addComment
+    description:
+      en: "Add a comment to an issue."
+      de: "Fügt einem Ticket einen Kommentar hinzu."
+  - tool: editIssue
+    description:
+      en: "Change fields of an issue."
+      de: "Ändert Felder eines Tickets."

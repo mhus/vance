@@ -3,9 +3,11 @@
  Source: de.mhus.vance.api.tools.ToolServiceDto
 */
 
+import { ServiceCatalogDto } from './ServiceCatalogDto';
 import { ToolSpec } from './ToolSpec';
 
 export interface ToolServiceDto {
   service: string;
   tools: ToolSpec[];
+  catalog?: ServiceCatalogDto;
 }

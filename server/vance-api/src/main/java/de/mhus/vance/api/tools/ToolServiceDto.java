@@ -26,4 +26,7 @@ public class ToolServiceDto {
 
     @Builder.Default
     private List<ToolSpec> tools = new ArrayList<>();
+
+    /** What the service catalog says about this service; {@code null} when it has no entry. */
+    private @org.jspecify.annotations.Nullable ServiceCatalogDto catalog;
 }

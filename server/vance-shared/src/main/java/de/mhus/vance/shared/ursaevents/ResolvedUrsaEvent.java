@@ -95,7 +95,12 @@ public record ResolvedUrsaEvent(
          * {@code from:} — {@code <service>/<trigger>} of the catalog trigger this event was made from. Information
          * only: nothing at run time reads it; the editor uses it to offer an update when the template changed.
          */
-        @Nullable String from) {
+        @Nullable String from,
+        /**
+         * {@code subscription:} — id of the registration at the service that points at this event, kept so
+         * removing the event can remove the registration too. Written by the catalog, not by hand.
+         */
+        @Nullable String subscription) {
 
     /** {@code true} when bearer authentication is required. */
     public boolean requiresAuth() {

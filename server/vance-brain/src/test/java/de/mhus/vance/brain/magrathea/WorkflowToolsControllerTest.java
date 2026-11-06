@@ -79,8 +79,8 @@ class WorkflowToolsControllerTest {
                         null,
                         null,
                         null,
-                        "createWebhook",
-                        "deleteWebhook",
+                        new ServiceCatalogEntry.Registration("createWebhook", Map.of(), null),
+                        new ServiceCatalogEntry.Registration("deleteWebhook", Map.of(), null),
                         null)));
 
         WorkflowToolsController.decorate(groups, List.of(jira), "de", provider -> "atlassian".equals(provider));

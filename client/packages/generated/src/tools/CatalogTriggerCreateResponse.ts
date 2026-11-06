@@ -8,4 +8,5 @@ export interface CatalogTriggerCreateResponse {
   path: string;
   urlPath: string;
   secretSetting?: string;
+  subscribed: boolean;
 }

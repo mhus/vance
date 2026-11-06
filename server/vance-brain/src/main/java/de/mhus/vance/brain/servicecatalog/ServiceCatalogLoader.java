@@ -117,8 +117,9 @@ public class ServiceCatalogLoader {
             ServiceCatalogEntry.TriggerMode mode = triggerMode(triggerName, text(t.get("mode")));
             Map<String, Object> event =
                     t.get("event") instanceof Map<?, ?> e ? new LinkedHashMap<>((Map<String, Object>) e) : null;
-            String subscribe = text(t.get("subscribe"));
-            String unsubscribe = text(t.get("unsubscribe"));
+            ServiceCatalogEntry.Registration subscribe = registration(triggerName, "subscribe", t.get("subscribe"));
+            ServiceCatalogEntry.Registration unsubscribe =
+                    registration(triggerName, "unsubscribe", t.get("unsubscribe"));
             ServiceCatalogEntry.Poll poll = null;
             if (mode == ServiceCatalogEntry.TriggerMode.POLL) {
                 if (event != null || subscribe != null || unsubscribe != null) {
@@ -160,6 +161,21 @@ public class ServiceCatalogLoader {
                             : null));
         }
         return List.copyOf(out);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static ServiceCatalogEntry.@Nullable Registration registration(
+            String trigger, String field, @Nullable Object raw) {
+        if (raw == null) return null;
+        if (!(raw instanceof Map<?, ?> m) || text(m.get("tool")) == null) {
+            throw new IllegalStateException("trigger '" + trigger + "': '" + field + "' needs a 'tool'");
+        }
+        return new ServiceCatalogEntry.Registration(
+                text(m.get("tool")),
+                m.get("params") instanceof Map<?, ?> p
+                        ? new LinkedHashMap<>((Map<String, Object>) p)
+                        : new LinkedHashMap<>(),
+                text(m.get("idFrom")));
     }
 
     private static ServiceCatalogEntry.TriggerMode triggerMode(String trigger, @Nullable String mode) {

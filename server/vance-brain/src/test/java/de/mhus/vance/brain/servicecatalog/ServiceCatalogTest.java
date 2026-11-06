@@ -112,8 +112,8 @@ class ServiceCatalogTest {
                 event:
                   auth: { signature: { header: X-Hub-Signature-256 } }
                   idempotencyHeader: X-GitHub-Delivery
-                subscribe: createWebhook
-                unsubscribe: deleteWebhook
+                subscribe: { tool: github__create_hook, params: { url: "${url}" }, idFrom: json.id }
+                unsubscribe: { tool: github__delete_hook, params: { id: "${subscription}" } }
                 payloadSchema: { type: object }
               - name: new-message
                 mode: poll
@@ -129,8 +129,11 @@ class ServiceCatalogTest {
         assertThat(push.mode()).isEqualTo(ServiceCatalogEntry.TriggerMode.WEBHOOK);
         assertThat(push.handler()).isEqualTo("github");
         assertThat(push.event()).containsKey("auth").containsEntry("idempotencyHeader", "X-GitHub-Delivery");
-        assertThat(push.subscribe()).isEqualTo("createWebhook");
-        assertThat(push.unsubscribe()).isEqualTo("deleteWebhook");
+        assertThat(push.subscribe().tool()).isEqualTo("github__create_hook");
+        assertThat(push.subscribe().params()).containsEntry("url", "${url}");
+        assertThat(push.subscribe().idFrom()).isEqualTo("json.id");
+        assertThat(push.unsubscribe().tool()).isEqualTo("github__delete_hook");
+        assertThat(push.unsubscribe().idFrom()).isNull();
         assertThat(push.payloadSchema()).containsEntry("type", "object");
         ServiceCatalogEntry.Trigger poll = e.triggers().get(1);
         assertThat(poll.mode()).isEqualTo(ServiceCatalogEntry.TriggerMode.POLL);
@@ -154,7 +157,7 @@ class ServiceCatalogTest {
         assertThatThrownBy(() -> ServiceCatalogLoader.parse("x", head + "  - name: a\n    mode: carrier-pigeon\n"))
                 .hasMessageContaining("mode");
         // A registration that cannot be removed is a leak.
-        assertThatThrownBy(() -> ServiceCatalogLoader.parse("x", head + "  - name: a\n    subscribe: s\n"))
+        assertThatThrownBy(() -> ServiceCatalogLoader.parse("x", head + "  - name: a\n    subscribe: { tool: s }\n"))
                 .hasMessageContaining("pair");
         assertThatThrownBy(() -> ServiceCatalogLoader.parse("x", head + "  - name: a\n    mode: poll\n"))
                 .hasMessageContaining("poll");
@@ -162,7 +165,7 @@ class ServiceCatalogTest {
                         () -> ServiceCatalogLoader.parse(
                                 "x",
                                 head
-                                        + "  - name: a\n    mode: poll\n    poll: { tool: t, schedule: s }\n    subscribe: s\n    unsubscribe: u\n"))
+                                        + "  - name: a\n    mode: poll\n    poll: { tool: t, schedule: s }\n    subscribe: { tool: s }\n    unsubscribe: { tool: u }\n"))
                 .hasMessageContaining("webhook");
         assertThatThrownBy(() ->
                         ServiceCatalogLoader.parse("x", head + "  - name: a\n    poll: { tool: t, schedule: s }\n"))

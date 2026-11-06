@@ -913,7 +913,8 @@ class UrsaEventServiceTest {
                     rateLimitPerMinute,
                     idempotencyHeader,
                     /*reply*/ null,
-                    /*from*/ null);
+                    /*from*/ null,
+                    /*subscription*/ null);
         }
     }
 }

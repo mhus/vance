@@ -28,8 +28,13 @@ import org.jspecify.annotations.Nullable;
  *     event:                        # webhook: what the generated event document starts from
  *       auth: { signature: { header: X-Hub-Signature-256, algorithm: HmacSHA256, prefix: "sha256=" } }
  *       idempotencyHeader: X-GitHub-Delivery
- *     subscribe: createWebhook      # optional pair: tools that register/unregister the event URL at the service
- *     unsubscribe: deleteWebhook
+ *     subscribe:                    # optional pair: calls that register/remove the event URL at the service
+ *       tool: github_rest__repos_create_webhook
+ *       params: { url: "${url}", secret: "${secret}" }
+ *       idFrom: json.id             # where the registration's id is in the result
+ *     unsubscribe:
+ *       tool: github_rest__repos_delete_webhook
+ *       params: { hook_id: "${subscription}" }
  *     payloadSchema: { … }          # optional, JSON Schema of the delivered payload
  *   - name: new-message
  *     mode: poll
@@ -73,8 +78,8 @@ public record ServiceCatalogEntry(
      * @param handler       name of an SPI class for what cannot be declared, or {@code null}
      * @param event         webhook: the fields the generated event document starts from, or {@code null}
      * @param poll          poll: the call to ask with and when, or {@code null}
-     * @param subscribe     webhook: tool that registers the event URL at the service, or {@code null}
-     * @param unsubscribe   webhook: tool that removes the registration again, or {@code null}
+     * @param subscribe     webhook: the call that registers the event URL at the service, or {@code null}
+     * @param unsubscribe   webhook: the call that removes the registration again, or {@code null}
      * @param payloadSchema JSON Schema of what arrives, or {@code null}
      */
     public record Trigger(
@@ -84,9 +89,26 @@ public record ServiceCatalogEntry(
             @Nullable String handler,
             @Nullable Map<String, Object> event,
             @Nullable Poll poll,
-            @Nullable String subscribe,
-            @Nullable String unsubscribe,
+            @Nullable Registration subscribe,
+            @Nullable Registration unsubscribe,
             @Nullable Map<String, Object> payloadSchema) {}
+
+    /**
+     * A call of the service that registers or removes the event URL there.
+     *
+     * <p>In {@code params}, {@code ${url}} is the URL of the event, {@code ${secret}} the secret the event
+     * checks, {@code ${event}} its name — and, for the removal, {@code ${subscription}} the id the registration
+     * returned.
+     *
+     * @param tool   an operation of the service's pack, by its full tool name
+     * @param params parameters with placeholders
+     * @param idFrom dotted path into the result that holds the registration's id ({@code json.id}); registration
+     *               only
+     */
+    public record Registration(
+            String tool,
+            Map<String, Object> params,
+            @Nullable String idFrom) {}
 
     /** The call a polling trigger asks with, and how often. */
     public record Poll(

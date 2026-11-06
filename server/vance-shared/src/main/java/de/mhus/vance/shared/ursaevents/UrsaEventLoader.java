@@ -286,7 +286,8 @@ public class UrsaEventLoader implements RunAsReader {
                 rateLimitPerMinute,
                 idempotencyHeader,
                 reply,
-                stringOrNull(spec.get("from")));
+                stringOrNull(spec.get("from")),
+                stringOrNull(spec.get("subscription")));
     }
 
     /** Parses {@code reply:}; {@code null} when absent. */

@@ -28,7 +28,13 @@ public class CatalogTriggerCreateResponse {
 
     /**
      * The setting the secret of the event has to be stored under before the service calls (bearer token or
-     * signature secret), or {@code null} when the event is open.
+     * signature secret), or {@code null} when the event is open or the server made the secret itself.
      */
     private @Nullable String secretSetting;
+
+    /**
+     * Whether the service was told the event's URL, so nothing has to be entered there by hand. Then the
+     * secret was made and stored by the server as well.
+     */
+    private boolean subscribed;
 }

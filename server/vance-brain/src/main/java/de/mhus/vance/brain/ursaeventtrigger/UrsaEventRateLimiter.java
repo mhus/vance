@@ -1,9 +1,9 @@
 package de.mhus.vance.brain.ursaeventtrigger;
 
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import java.time.Duration;
-import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.LongSupplier;
 import org.springframework.stereotype.Component;
 
@@ -17,7 +17,15 @@ import org.springframework.stereotype.Component;
 @Component
 class UrsaEventRateLimiter {
 
-    private final Map<String, Bucket> buckets = new ConcurrentHashMap<>();
+    /**
+     * Idle buckets are dropped: a bucket untouched for five minutes has refilled to full anyway, so forgetting it
+     * loses nothing, and the map cannot grow with every event that was ever called. Bounded in size as well.
+     */
+    private final Cache<String, Bucket> buckets = Caffeine.newBuilder()
+            .expireAfterAccess(Duration.ofMinutes(5))
+            .maximumSize(10_000)
+            .build();
+
     private final LongSupplier nanoClock;
 
     UrsaEventRateLimiter() {
@@ -40,7 +48,7 @@ class UrsaEventRateLimiter {
      */
     Optional<Duration> refusal(String key, int perMinute) {
         if (perMinute <= 0) return Optional.empty();
-        Bucket bucket = buckets.computeIfAbsent(key, k -> {
+        Bucket bucket = buckets.get(key, k -> {
             Bucket b = new Bucket();
             b.tokens = perMinute;
             b.lastNanos = nanoClock.getAsLong();

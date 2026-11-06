@@ -296,6 +296,21 @@ class UrsaEventServiceTest {
     }
 
     @Test
+    void a_delivery_id_longer_than_the_cap_is_refused_and_nothing_is_held() {
+        when(eventLoader.load(TENANT, PROJECT, EVENT))
+                .thenReturn(Optional.of(event(b -> b.idempotencyHeader("X-Delivery"))));
+        var request =
+                request(new byte[0], Map.of("X-Delivery", "x".repeat(UrsaEventService.MAX_DELIVERY_ID_LENGTH + 1)));
+
+        assertThatThrownBy(() -> fire(request))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(org.springframework.http.HttpStatus.BAD_REQUEST);
+        assertThat(deliveries.size()).isZero();
+        verify(workflowService, never()).start(any(), any(), any(), any(), any());
+    }
+
+    @Test
     void a_delivery_whose_first_try_failed_may_be_tried_again() {
         when(eventLoader.load(TENANT, PROJECT, EVENT))
                 .thenReturn(Optional.of(event(b -> b.idempotencyHeader("X-Delivery"))));

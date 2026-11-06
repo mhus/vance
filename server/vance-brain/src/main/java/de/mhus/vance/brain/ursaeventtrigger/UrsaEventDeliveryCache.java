@@ -37,11 +37,26 @@ class UrsaEventDeliveryCache {
         }
     }
 
+    /** How many delivery ids are kept at most. */
+    static final int MAX_ENTRIES = 10_000;
+
     private final Cache<String, Delivery> deliveries;
 
+    /** How many ids are held now — for tests and diagnostics. */
+    long size() {
+        deliveries.cleanUp();
+        return deliveries.estimatedSize();
+    }
+
     UrsaEventDeliveryCache(@Value("${vance.events.idempotency-ttl:PT10M}") Duration ttl) {
-        this.deliveries =
-                Caffeine.newBuilder().expireAfterWrite(ttl).maximumSize(10_000).build();
+        // Three bounds, none of which a caller controls: a time to live, a number of entries, and soft values — under
+        // memory pressure the JVM may drop entries before either bound is reached. A flood of new ids can push old
+        // ones out (an old delivery sent again then runs again), but it cannot fill the heap.
+        this.deliveries = Caffeine.newBuilder()
+                .expireAfterWrite(ttl)
+                .maximumSize(MAX_ENTRIES)
+                .softValues()
+                .build();
     }
 
     /** Register {@code key} if it is new; otherwise say it was seen. */

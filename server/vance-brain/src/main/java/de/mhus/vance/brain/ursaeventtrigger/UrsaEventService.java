@@ -63,6 +63,9 @@ public class UrsaEventService {
      */
     private static final String DEFAULT_ASYNC_MAX_CONCURRENT = "32";
 
+    /** Longest delivery id accepted — real ones are UUIDs or short counters. */
+    static final int MAX_DELIVERY_ID_LENGTH = 256;
+
     private final UrsaEventLoader eventLoader;
     private final SettingService settingService;
     private final MetricService metricService;
@@ -377,6 +380,13 @@ public class UrsaEventService {
 
             if (event.idempotencyHeader() != null && webhook != null && !alreadyForwarded) {
                 String deliveryId = webhook.header().apply(event.idempotencyHeader());
+                if (deliveryId != null && deliveryId.length() > MAX_DELIVERY_ID_LENGTH) {
+                    // A caller picks the id, so a huge one would be memory it gets us to hold.
+                    countOutcome(eventName, "bad_delivery_id");
+                    outcome = "bad_delivery_id";
+                    skipLog = true;
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Delivery id is too long");
+                }
                 if (deliveryId != null && !deliveryId.isBlank()) {
                     String key = tenantId + "/" + projectId + "/" + eventName + "/" + deliveryId.trim();
                     UrsaEventDeliveryCache.Claim claim = deliveries.claim(key);

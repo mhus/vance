@@ -4,7 +4,6 @@ import de.mhus.vance.api.ursaevents.EventTriggerResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpStatus;
@@ -43,13 +42,33 @@ import tools.jackson.databind.ObjectMapper;
  * completion.
  */
 @RestController
-@RequiredArgsConstructor
 @Slf4j
 public class UrsaEventController {
+
+    /** Default for {@code vance.events.max-body-bytes}: one MiB, far above any webhook payload that is not a file. */
+    static final long DEFAULT_MAX_BODY_BYTES = 1024 * 1024;
 
     private final UrsaEventService eventService;
     private final ObjectMapper objectMapper;
     private final UrsaEventForwarder forwarder;
+    private final long maxBodyBytes;
+
+    UrsaEventController(UrsaEventService eventService, ObjectMapper objectMapper, UrsaEventForwarder forwarder) {
+        this(eventService, objectMapper, forwarder, DEFAULT_MAX_BODY_BYTES);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public UrsaEventController(
+            UrsaEventService eventService,
+            ObjectMapper objectMapper,
+            UrsaEventForwarder forwarder,
+            @org.springframework.beans.factory.annotation.Value("${vance.events.max-body-bytes:1048576}")
+                    long maxBodyBytes) {
+        this.eventService = eventService;
+        this.objectMapper = objectMapper;
+        this.forwarder = forwarder;
+        this.maxBodyBytes = maxBodyBytes;
+    }
 
     @GetMapping("/brain/{tenant}/event/{project}/{event}")
     public EventTriggerResponse triggerGet(
@@ -119,9 +138,21 @@ public class UrsaEventController {
     }
 
     /** The request body as received — a provider's signature covers exactly these bytes. */
-    private static byte[] readRawBody(HttpServletRequest request) {
+    private byte[] readRawBody(HttpServletRequest request) {
+        // The endpoint has no JWT, so what a caller sends is read only up to a cap: a declared length over it is
+        // answered without reading a byte, and a body that turns out longer than it said stops being read at the
+        // cap. Without this an anonymous caller chooses how much memory a request holds.
+        if (maxBodyBytes > 0 && request.getContentLengthLong() > maxBodyBytes) {
+            throw new ResponseStatusException(HttpStatus.CONTENT_TOO_LARGE, "Event body is larger than the limit");
+        }
         try {
-            return request.getInputStream().readAllBytes();
+            byte[] raw = maxBodyBytes > 0
+                    ? request.getInputStream().readNBytes((int) Math.min(Integer.MAX_VALUE - 8, maxBodyBytes + 1))
+                    : request.getInputStream().readAllBytes();
+            if (maxBodyBytes > 0 && raw.length > maxBodyBytes) {
+                throw new ResponseStatusException(HttpStatus.CONTENT_TOO_LARGE, "Event body is larger than the limit");
+            }
+            return raw;
         } catch (IOException ex) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST, "Failed to read request body: " + ex.getMessage(), ex);

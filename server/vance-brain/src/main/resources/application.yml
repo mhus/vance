@@ -415,6 +415,9 @@ vance:
     # Calls per minute an event accepts when it states no rateLimit of its own (token bucket, per pod).
     # The endpoint carries no JWT; this bounds how fast a caller may start runs. 0 = no limit.
     rate-limit-per-minute: 120
+    # Largest request body an event reads. The endpoint carries no JWT, so how much it reads must not be up
+    # to the caller: a declared length over this is answered 413 without reading, a longer body stops at it.
+    max-body-bytes: 1048576
     # How long a delivery id is remembered for events that name an idempotencyHeader (per pod).
     idempotency-ttl: PT10M
   session:

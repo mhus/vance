@@ -38,7 +38,14 @@ import org.jspecify.annotations.Nullable;
  *     payloadSchema: { … }          # optional, JSON Schema of the delivered payload
  *   - name: new-message
  *     mode: poll
- *     poll: { tool: listMessages, schedule: "0 0/5 * * * *", params: { … } }
+ *     poll:
+ *       tool: slack_rest__conversations_history
+ *       schedule: "0 0/5 * * * *"
+ *       params: { channel: "C0123", oldest: "${cursor}" }
+ *       itemsFrom: json.messages    # list in the result (default json)
+ *       idFrom: ts                  # id of one entry (default id)
+ *       cursorFrom: json.messages.0.ts   # optional
+ *       initial: skip               # skip (default) | all
  * </pre>
  *
  * @param name        file name without {@code .yaml}
@@ -110,9 +117,31 @@ public record ServiceCatalogEntry(
             Map<String, Object> params,
             @Nullable String idFrom) {}
 
-    /** The call a polling trigger asks with, and how often. */
+    /**
+     * The call a polling trigger asks with, and how often.
+     *
+     * <p>In {@code params}, {@code ${cursor}} is the cursor the last poll left (empty at the first).
+     *
+     * @param tool       an operation of the service's pack, by its full tool name
+     * @param schedule   Quartz cron with a seconds field, as the scheduler reads it
+     * @param params     parameters with placeholders
+     * @param itemsFrom  dotted path to the list of entries in the result ({@code json} by default)
+     * @param idFrom     dotted path to the id inside one entry ({@code id} by default); an entry whose id was
+     *                   seen before is not delivered again
+     * @param cursorFrom dotted path to a value in the result that the next poll receives as {@code ${cursor}}, or
+     *                   {@code null}
+     * @param initial    what the very first poll does with the entries it finds: {@code skip} remembers them
+     *                   without delivering (default — a trigger must not replay a service's whole history),
+     *                   {@code all} delivers them
+     */
     public record Poll(
-            String tool, String schedule, @Nullable Map<String, Object> params) {}
+            String tool,
+            String schedule,
+            @Nullable Map<String, Object> params,
+            String itemsFrom,
+            String idFrom,
+            @Nullable String cursorFrom,
+            String initial) {}
 
     /** An operation worth pointing at. */
     public record Highlight(

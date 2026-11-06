@@ -20,11 +20,14 @@ public class CatalogTriggerCreateResponse {
     /** Name of the event. */
     private String name;
 
-    /** Document path of the event. */
+    /** Document path of the event, or of the scheduler for a polling trigger. */
     private String path;
 
-    /** Path of the URL the service has to call, below the brain's host. */
-    private String urlPath;
+    /** {@code webhook} (an event was made) or {@code poll} (a scheduler and its workflow). */
+    private String mode;
+
+    /** Path of the URL the service has to call, below the brain's host; {@code null} for a polling trigger. */
+    private @Nullable String urlPath;
 
     /**
      * The setting the secret of the event has to be stored under before the service calls (bearer token or

@@ -7,6 +7,7 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -132,10 +133,21 @@ public class ServiceCatalogLoader {
                     throw new IllegalStateException(
                             "trigger '" + triggerName + "' polls: 'poll' needs a 'tool' and a 'schedule'");
                 }
+                String initial = text(p.get("initial")) == null
+                        ? "skip"
+                        : text(p.get("initial")).toLowerCase(Locale.ROOT);
+                if (!initial.equals("skip") && !initial.equals("all")) {
+                    throw new IllegalStateException(
+                            "trigger '" + triggerName + "': 'poll.initial' is 'skip' or 'all', not '" + initial + "'");
+                }
                 poll = new ServiceCatalogEntry.Poll(
                         text(p.get("tool")),
                         text(p.get("schedule")),
-                        p.get("params") instanceof Map<?, ?> pp ? new LinkedHashMap<>((Map<String, Object>) pp) : null);
+                        p.get("params") instanceof Map<?, ?> pp ? new LinkedHashMap<>((Map<String, Object>) pp) : null,
+                        text(p.get("itemsFrom")) == null ? "json" : text(p.get("itemsFrom")),
+                        text(p.get("idFrom")) == null ? "id" : text(p.get("idFrom")),
+                        text(p.get("cursorFrom")),
+                        initial);
             } else {
                 if (t.get("poll") != null) {
                     throw new IllegalStateException(

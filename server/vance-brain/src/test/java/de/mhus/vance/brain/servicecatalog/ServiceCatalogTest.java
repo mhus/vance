@@ -140,6 +140,12 @@ class ServiceCatalogTest {
         assertThat(poll.poll().tool()).isEqualTo("listMessages");
         assertThat(poll.poll().schedule()).isEqualTo("0 0/5 * * * *");
         assertThat(poll.poll().params()).containsEntry("limit", 50);
+        // What is not said falls back: the list is the result's json, an entry is told by its id, and the first
+        // poll only remembers.
+        assertThat(poll.poll().itemsFrom()).isEqualTo("json");
+        assertThat(poll.poll().idFrom()).isEqualTo("id");
+        assertThat(poll.poll().cursorFrom()).isNull();
+        assertThat(poll.poll().initial()).isEqualTo("skip");
     }
 
     @Test

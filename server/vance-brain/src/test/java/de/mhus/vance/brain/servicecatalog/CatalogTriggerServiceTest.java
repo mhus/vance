@@ -55,13 +55,15 @@ class CatalogTriggerServiceTest {
     private final SecurityContext user = SecurityContext.user("mike", "acme", List.of());
     private final ToolDispatcher tools = mock(ToolDispatcher.class);
     private final SettingService settings = mock(SettingService.class);
+    private final CatalogPollService polls = mock(CatalogPollService.class);
     private CatalogTriggerService service;
 
     @BeforeEach
     void setUp() {
         when(catalog.list("acme", "p")).thenReturn(List.of(ServiceCatalogLoader.parse("github", GITHUB)));
         when(documents.findByPath(eq("acme"), eq("p"), anyString())).thenReturn(Optional.empty());
-        service = new CatalogTriggerService(catalog, documents, eventLoader, tools, settings, "https://vance.example/");
+        service = new CatalogTriggerService(
+                catalog, documents, eventLoader, tools, settings, polls, "https://vance.example/");
     }
 
     @Test
@@ -120,8 +122,6 @@ class CatalogTriggerServiceTest {
                 .hasMessageContaining("not in the catalog");
         assertThatThrownBy(() -> service.createEvent("acme", "p", user, "github", "nope", "w", null))
                 .hasMessageContaining("no trigger");
-        assertThatThrownBy(() -> service.createEvent("acme", "p", user, "github", "new-message", "w", null))
-                .hasMessageContaining("polls");
         assertThatThrownBy(() -> service.createEvent("acme", "p", user, "github", "push", " ", null))
                 .hasMessageContaining("workflow");
     }
@@ -204,7 +204,8 @@ class CatalogTriggerServiceTest {
         when(doc.getId()).thenReturn("doc-1");
         when(documents.findByPath("acme", "p", "_vance/events/github-hook.yaml"))
                 .thenReturn(Optional.of(doc));
-        var svc = new CatalogTriggerService(catalog, documents, loader, tools, settings, "https://vance.example");
+        var svc =
+                new CatalogTriggerService(catalog, documents, loader, tools, settings, polls, "https://vance.example");
         when(tools.invoke(eq("gh__delete_hook"), any(), any(ToolInvocationContext.class)))
                 .thenReturn(Map.of("ok", false, "status", 503, "body", "down"));
 
@@ -226,5 +227,74 @@ class CatalogTriggerServiceTest {
                 .isEqualTo(5);
         assertThat(CatalogTriggerService.valueAt(Map.of("json", "x"), "json.id"))
                 .isNull();
+    }
+
+    @Test
+    void aPollingTriggerMakesASchedulerAndTheWorkflowItStarts_bothValid() {
+        var created = service.createEvent("acme", "p", user, "github", "new-message", "on-message", "inbox");
+
+        assertThat(created.getMode()).isEqualTo("poll");
+        assertThat(created.getPath()).isEqualTo("_vance/scheduler/inbox.yaml");
+        assertThat(created.getUrlPath()).isNull();
+        ArgumentCaptor<String> paths = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> yamls = ArgumentCaptor.forClass(String.class);
+        verify(documents, org.mockito.Mockito.times(2))
+                .createText(any(), any(), paths.capture(), any(), any(), yamls.capture(), any(), any());
+        // The workflow first, so the scheduler never points at nothing.
+        assertThat(paths.getAllValues())
+                .containsExactly("_vance/workflows/catalog-poll-inbox.yaml", "_vance/scheduler/inbox.yaml");
+
+        var workflow = de.mhus.vance.shared.magrathea.MagratheaWorkflowLoader.parseYaml(
+                "catalog-poll-inbox", yamls.getAllValues().get(0));
+        assertThat(workflow.yaml())
+                .contains("catalog_poll")
+                .contains("catalog_poll_commit")
+                .contains("on-message");
+        var scheduler = de.mhus.vance.shared.ursascheduler.UrsaSchedulerLoader.parseValidated(
+                "inbox", yamls.getAllValues().get(1));
+        assertThat(scheduler.cron()).isEqualTo("0 0/5 * * * *");
+        assertThat(scheduler.workflow()).isEqualTo("catalog-poll-inbox");
+    }
+
+    @Test
+    void aPollingTriggerThatExistsIsNotMadeTwice() {
+        when(documents.findByPath("acme", "p", "_vance/scheduler/inbox.yaml"))
+                .thenReturn(Optional.of(mock(DocumentDocument.class)));
+
+        assertThatThrownBy(() -> service.createEvent("acme", "p", user, "github", "new-message", "w", "inbox"))
+                .hasMessageContaining("exists already");
+    }
+
+    @Test
+    void deletingAPollingTriggerRemovesSchedulerWorkflowAndState() {
+        UrsaEventLoader loader = mock(UrsaEventLoader.class);
+        when(loader.load("acme", "p", "inbox")).thenReturn(Optional.empty());
+        DocumentDocument scheduler = mock(DocumentDocument.class);
+        when(scheduler.getId()).thenReturn("s-1");
+        DocumentDocument workflow = mock(DocumentDocument.class);
+        when(workflow.getId()).thenReturn("w-1");
+        when(documents.findByPath("acme", "p", "_vance/scheduler/inbox.yaml")).thenReturn(Optional.of(scheduler));
+        when(documents.findByPath("acme", "p", "_vance/workflows/catalog-poll-inbox.yaml"))
+                .thenReturn(Optional.of(workflow));
+        var svc =
+                new CatalogTriggerService(catalog, documents, loader, tools, settings, polls, "https://vance.example");
+
+        svc.deleteEvent("acme", "p", user, "inbox", false);
+
+        var order = org.mockito.Mockito.inOrder(documents, polls);
+        order.verify(documents).delete(eq("s-1"), any());
+        order.verify(documents).delete(eq("w-1"), any());
+        order.verify(polls).forget("acme", "p", "inbox");
+    }
+
+    @Test
+    void deletingSomethingThatIsNeitherAnEventNorAPollingTriggerIsNotFound() {
+        UrsaEventLoader loader = mock(UrsaEventLoader.class);
+        when(loader.load("acme", "p", "nope")).thenReturn(Optional.empty());
+        var svc =
+                new CatalogTriggerService(catalog, documents, loader, tools, settings, polls, "https://vance.example");
+
+        assertThatThrownBy(() -> svc.deleteEvent("acme", "p", user, "nope", false))
+                .hasMessageContaining("not found");
     }
 }

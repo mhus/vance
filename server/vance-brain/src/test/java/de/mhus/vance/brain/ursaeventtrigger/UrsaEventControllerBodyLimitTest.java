@@ -83,4 +83,14 @@ class UrsaEventControllerBodyLimitTest {
                 .extracting(b -> ((de.mhus.vance.api.ursaevents.EventTriggerResponse) b).getWorkflowRunId())
                 .isEqualTo("run-1");
     }
+
+    @Test
+    void aFormBodyBecomesAMap_decodedAndWithRepeatedNamesAsLists() {
+        assertThat(UrsaEventController.parseForm("command=%2Fdeploy&text=hello+world&tag=a&tag=b&flag"))
+                .containsEntry("command", "/deploy")
+                .containsEntry("text", "hello world")
+                .containsEntry("tag", java.util.List.of("a", "b"))
+                .containsEntry("flag", "");
+        assertThat(UrsaEventController.parseForm("")).isEmpty();
+    }
 }

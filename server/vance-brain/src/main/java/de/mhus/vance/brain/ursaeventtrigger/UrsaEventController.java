@@ -4,6 +4,8 @@ import de.mhus.vance.api.ursaevents.EventTriggerResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpStatus;
@@ -183,9 +185,12 @@ public class UrsaEventController {
         if (raw.length == 0) {
             return null;
         }
+        if (contentType != null && contentType.toLowerCase().startsWith(MediaType.APPLICATION_FORM_URLENCODED_VALUE)) {
+            return parseForm(new String(raw, StandardCharsets.UTF_8));
+        }
         if (contentType == null || !contentType.toLowerCase().startsWith(MediaType.APPLICATION_JSON_VALUE)) {
             throw new ResponseStatusException(
-                    HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Event POST body must be application/json");
+                    HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Event POST body must be application/json or a form");
         }
         try {
             return objectMapper.readValue(new String(raw, StandardCharsets.UTF_8), Object.class);
@@ -193,6 +198,35 @@ public class UrsaEventController {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST, "Event POST body is not valid JSON: " + ex.getOriginalMessage(), ex);
         }
+    }
+
+    /**
+     * A form body ({@code a=1&b=two}) as a map, the way providers like Slack (slash commands) and Twilio send
+     * it. A repeated name becomes a list. The signature is checked against the raw bytes, so decoding here
+     * changes nothing about what was signed.
+     */
+    static Map<String, Object> parseForm(String body) {
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        for (String pair : body.split("&")) {
+            if (pair.isEmpty()) continue;
+            int eq = pair.indexOf('=');
+            String key = java.net.URLDecoder.decode(eq < 0 ? pair : pair.substring(0, eq), StandardCharsets.UTF_8);
+            String value = eq < 0 ? "" : java.net.URLDecoder.decode(pair.substring(eq + 1), StandardCharsets.UTF_8);
+            Object previous = out.get(key);
+            if (previous == null) {
+                out.put(key, value);
+            } else if (previous instanceof List<?> list) {
+                @SuppressWarnings("unchecked")
+                List<Object> grown = (List<Object>) list;
+                grown.add(value);
+            } else {
+                List<Object> list = new java.util.ArrayList<>();
+                list.add(previous);
+                list.add(value);
+                out.put(key, list);
+            }
+        }
+        return out;
     }
 
     /**

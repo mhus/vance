@@ -24,3 +24,21 @@ export function readStateFields(text: string, name: string): Record<string, unkn
     Object.entries(state as Record<string, unknown>).filter(([k]) => !SHOWN_ELSEWHERE.has(k)),
   );
 }
+
+/**
+ * The whole body of one state as written, or {@code null} when the text does
+ * not parse or has no such state. The form reads its values from here.
+ */
+export function readStateBody(text: string, name: string): Record<string, unknown> | null {
+  let root: Record<string, unknown>;
+  try {
+    root = parseYamlBody(text);
+  } catch {
+    return null;
+  }
+  const states = root.states;
+  if (typeof states !== 'object' || states === null || Array.isArray(states)) return null;
+  const state = (states as Record<string, unknown>)[name];
+  if (typeof state !== 'object' || state === null || Array.isArray(state)) return null;
+  return state as Record<string, unknown>;
+}

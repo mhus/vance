@@ -10,6 +10,7 @@ import {
   renameState,
   retarget,
   setStart,
+  setStateExtras,
   setStateField,
   WorkflowEditError,
 } from './workflowMutations';
@@ -198,6 +199,14 @@ describe('setStateField', () => {
     expect(setStateField(DOC, 'plan', ['recipe'], undefined)).not.toContain('recipe:');
   });
 
+  it('removes a map that the removal leaves empty, up to the state', () => {
+    const doc = 'start: a\nstates:\n  a:\n    type: agent_task\n    params:\n      prompt: hi\n';
+    const out = setStateField(doc, 'a', ['params', 'prompt'], undefined);
+    expect(out).not.toContain('params');
+    expect(out).toContain('type: agent_task');
+    expect(setStateField(out, 'a', ['type'], undefined)).toContain('a: {}');
+  });
+
   it('rejects an unknown state and an empty path', () => {
     fails(() => setStateField(DOC, 'nope', ['a'], 1), /no state 'nope'/);
     fails(() => setStateField(DOC, 'plan', [], 1), /path is needed/);
@@ -316,5 +325,37 @@ describe('disconnect / retarget / relabel', () => {
   it('refuses to relabel onto an outcome that exists', () => {
     const two = connect(DOC, { source: 'plan', kind: 'on', label: 'failure', target: 'done' });
     fails(() => relabel(two, ref('on'), 'failure'), /already leads/);
+  });
+});
+
+describe('setStateExtras', () => {
+  const OWNED = new Set(['type', 'description', 'on', 'catch', 'recipe', 'params']);
+  const WITH_EXTRAS = DOC.replace(
+    '    recipe: jeltz # who thinks\n',
+    '    recipe: jeltz # who thinks\n    retry:\n      maxAttempts: 2\n    storeAs: out\n',
+  );
+
+  it('removes the keys that are gone, adds new ones and leaves owned keys alone', () => {
+    const out = setStateExtras(WITH_EXTRAS, 'plan', { timeoutSeconds: 30, storeAs: 'out' }, OWNED);
+    expect(out).toContain('timeoutSeconds: 30');
+    expect(out).toContain('storeAs: out');
+    expect(out).not.toContain('retry');
+    expect(out).toContain('recipe: jeltz # who thinks');
+    expect(out).toContain('success: check');
+  });
+
+  it('does not touch a key whose value did not change', () => {
+    const same = setStateExtras(WITH_EXTRAS, 'plan', { retry: { maxAttempts: 2 }, storeAs: 'out' }, OWNED);
+    expect(same).toBe(WITH_EXTRAS);
+  });
+
+  it('replaces a changed value', () => {
+    const out = setStateExtras(WITH_EXTRAS, 'plan', { retry: { maxAttempts: 5 }, storeAs: 'out' }, OWNED);
+    expect(out).toContain('maxAttempts: 5');
+  });
+
+  it('refuses an owned key and an unknown state', () => {
+    fails(() => setStateExtras(DOC, 'plan', { recipe: 'x' }, OWNED), /own field/);
+    fails(() => setStateExtras(DOC, 'nope', {}, OWNED), /no state 'nope'/);
   });
 });

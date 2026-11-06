@@ -221,7 +221,7 @@ export function setStart(text: string, name: string): string {
 
 /**
  * Set a field of a state by path ({@code ['params', 'prompt']}); {@code undefined}
- * removes it. Intermediate maps are created.
+ * removes it, and a map it leaves empty. Intermediate maps are created.
  */
 export function setStateField(
   text: string,
@@ -233,8 +233,48 @@ export function setStateField(
   const doc = load(text);
   stateOf(doc, state);
   const full = ['states', state, ...path];
-  if (value === undefined) doc.deleteIn(full);
-  else doc.setIn(full, doc.createNode(value));
+  if (value === undefined) {
+    doc.deleteIn(full);
+    // A map that lost its last key goes too: no `params: {}` left behind.
+    for (let depth = full.length - 1; depth > 2; depth--) {
+      const parent = doc.getIn(full.slice(0, depth), true);
+      if (isMap(parent) && parent.items.length === 0) doc.deleteIn(full.slice(0, depth));
+      else break;
+    }
+  } else {
+    doc.setIn(full, doc.createNode(value));
+  }
+  return print(doc);
+}
+
+/**
+ * Replace the keys of a state that no form field owns with {@code extras}: keys
+ * missing from it are removed, new ones added, changed ones replaced; a key
+ * whose value did not change is not touched, so its formatting stays.
+ * {@code owned} are the keys the caller manages elsewhere — {@code extras} may
+ * not name them.
+ */
+export function setStateExtras(
+  text: string,
+  state: string,
+  extras: Record<string, unknown>,
+  owned: ReadonlySet<string>,
+): string {
+  const doc = load(text);
+  const body = stateOf(doc, state);
+  for (const key of Object.keys(extras)) {
+    if (owned.has(key)) throw new WorkflowEditError(`'${key}' has its own field and cannot be set here.`);
+  }
+  for (const pair of [...body.items]) {
+    const key = scalarText(pair.key);
+    if (key !== null && !owned.has(key) && !(key in extras)) body.items.splice(body.items.indexOf(pair), 1);
+  }
+  for (const [key, value] of Object.entries(extras)) {
+    const current = body.get(key, true);
+    const same = current !== undefined
+      && JSON.stringify((current as { toJSON?: () => unknown }).toJSON?.() ?? current) === JSON.stringify(value);
+    if (!same) body.set(key, doc.createNode(value));
+  }
   return print(doc);
 }
 

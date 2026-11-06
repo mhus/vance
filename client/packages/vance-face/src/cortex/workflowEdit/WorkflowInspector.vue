@@ -15,6 +15,8 @@ import { useI18n } from 'vue-i18n';
 import { stringify } from 'yaml';
 import { VAlert, VButton, VGroup, VGroupRow, VInput, useConfirm } from '@/components';
 import { parseWorkflowGraph } from '@/workflowGraph/workflowGraphCodec';
+import StateExtrasEditor from './StateExtrasEditor.vue';
+import StateFieldsForm from './StateFieldsForm.vue';
 import { useWorkflowChange } from './useWorkflowChange';
 import { removeState, renameState, setStart, setStateField } from './workflowMutations';
 import { readStateFields } from './workflowRead';
@@ -146,7 +148,21 @@ async function remove(): Promise<void> {
       </div>
     </VGroup>
 
-    <VGroup v-if="fieldsText" :label="t('documents.workflowView.inspector.fields')">
+    <template v-if="editable">
+      <StateFieldsForm
+        :doc="doc"
+        :state="state"
+        :type="node.type"
+        @update:doc="emit('update:doc', $event)"
+      />
+      <StateExtrasEditor
+        :doc="doc"
+        :state="state"
+        :type="node.type"
+        @update:doc="emit('update:doc', $event)"
+      />
+    </template>
+    <VGroup v-else-if="fieldsText" :label="t('documents.workflowView.inspector.fields')">
       <pre class="wf-inspector-fields">{{ fieldsText }}</pre>
     </VGroup>
 

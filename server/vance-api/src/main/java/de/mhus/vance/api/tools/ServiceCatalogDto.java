@@ -22,6 +22,9 @@ import org.jspecify.annotations.Nullable;
 @GenerateTypeScript("tools")
 public class ServiceCatalogDto {
 
+    /** The entry's name — what {@code POST workflow-triggers} takes as {@code service}. */
+    private String name;
+
     private String title;
 
     private String description;

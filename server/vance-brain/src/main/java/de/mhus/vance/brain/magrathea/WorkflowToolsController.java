@@ -107,6 +107,7 @@ public class WorkflowToolsController {
                                             .build()));
                         }
                         group.setCatalog(ServiceCatalogDto.builder()
+                                .name(entry.name())
                                 .title(ServiceCatalogEntry.localized(entry.title(), lang))
                                 .description(ServiceCatalogEntry.localized(entry.description(), lang))
                                 .icon(entry.icon())

@@ -7,6 +7,7 @@ import { ServiceCatalogHighlightDto } from './ServiceCatalogHighlightDto';
 import { ServiceCatalogTriggerDto } from './ServiceCatalogTriggerDto';
 
 export interface ServiceCatalogDto {
+  name: string;
   title: string;
   description: string;
   icon?: string;

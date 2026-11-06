@@ -103,6 +103,7 @@ class WorkflowToolsControllerTest {
                 .filter(g -> g.getService().equals("jira_rest"))
                 .findFirst()
                 .orElseThrow();
+        assertThat(jiraGroup.getCatalog().getName()).isEqualTo("jira");
         assertThat(jiraGroup.getCatalog().getTitle()).isEqualTo("Jira DE");
         assertThat(jiraGroup.getCatalog().getLoginProvider()).isEqualTo("atlassian");
         assertThat(jiraGroup.getCatalog().getConnected()).isTrue();

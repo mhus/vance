@@ -2,12 +2,12 @@
 /**
  * The canvas of the workflow editor: the same drawing as the read-only
  * {@code WorkflowGraph} (shared layout, node card and edge look), plus what
- * only an editor needs — a picked state, and in later steps connections and
- * drops. Lives under Cortex because it is editing code; the run view and the
- * plain drawing never import it.
+ * only an editor needs — a picked state or connection, handles that take a
+ * line, and a line dropped on empty canvas. Lives under Cortex because it is
+ * editing code; the run view and the plain drawing never import it.
  *
  * It changes nothing itself: the caller owns the text and the selection, this
- * component reports clicks.
+ * component reports what the person did.
  *
  * Plan: {@code planning/workflow-editor.md}.
  */
@@ -18,6 +18,7 @@ import '@vue-flow/core/dist/style.css';
 import '@vue-flow/core/dist/theme-default.css';
 import { VAlert, VButton, VDropdown, VIcon } from '@/components';
 import { toFlowEdges, toFlowNodes } from '@/workflowGraph/flowElements';
+import type { EdgeRef } from './workflowMutations';
 import { layoutPositions, type GraphDirection } from '@/workflowGraph/layout';
 import { useFitOnResize } from '@/workflowGraph/useFitOnResize';
 import { parseWorkflowGraph } from '@/workflowGraph/workflowGraphCodec';
@@ -32,13 +33,19 @@ interface Props {
   doc: string;
   /** The picked state; the caller owns it. */
   selected?: string | null;
+  /** The picked connection; the caller owns it. */
+  selectedEdge?: EdgeRef | null;
   height?: string;
 }
-const props = withDefaults(defineProps<Props>(), { selected: null, height: '65vh' });
+const props = withDefaults(defineProps<Props>(), { selected: null, selectedEdge: null, height: '65vh' });
 const emit = defineEmits<{
   (e: 'select', state: string | null): void;
   /** A new state of this task type is wanted. */
   (e: 'add', type: WorkflowTaskType): void;
+  /** A connection was picked; {@code null} when the pick is cleared. */
+  (e: 'select-edge', edge: EdgeRef | null): void;
+  /** A line was drawn from {@code source} to {@code target}, or dropped on empty canvas ({@code null}). */
+  (e: 'connect', source: string, target: string | null): void;
 }>();
 
 const { t } = useI18n();
@@ -55,16 +62,56 @@ const vfNodes = computed(() =>
     graph.value,
     positions.value,
     (state) => ({ selected: props.selected === state.name }),
-    { draggable: false, selectable: false, connectable: false },
+    { draggable: false, selectable: false, connectable: true },
   ),
 );
-const vfEdges = computed(() => toFlowEdges(graph.value.edges));
+const vfEdges = computed(() =>
+  toFlowEdges(graph.value.edges).map((edge, index) => {
+    const own = graph.value.edges[index];
+    const picked = props.selectedEdge !== null
+      && own.source === props.selectedEdge.source
+      && own.kind === props.selectedEdge.kind
+      && own.key === props.selectedEdge.key;
+    return picked ? { ...edge, style: { ...edge.style, strokeWidth: '3.5' }, selected: true } : edge;
+  }),
+);
 
 const hasStates = computed(() => graph.value.states.length > 0);
 
 function onNodeClick(event: { node: { id: string } }): void {
   const state = graph.value.states.find((s) => s.name === event.node.id);
   if (state && !state.missing) emit('select', state.name);
+}
+
+function onEdgeClick(event: { edge: { id: string } }): void {
+  const edge = graph.value.edges.find((e) => e.id === event.edge.id);
+  if (edge) emit('select-edge', { source: edge.source, kind: edge.kind, key: edge.key });
+}
+
+// A line drawn from a handle ends in one of two ways: on another node's handle
+// (`connect`), or anywhere else. Only a drop on the bare canvas asks for a new
+// state; vue-flow reports `connect` before `connect-end`, which is how the two
+// are told apart.
+let dragFrom: string | null = null;
+let dragConnected = false;
+
+function onConnectStart(event: { nodeId?: string; handleType?: string }): void {
+  dragFrom = event.handleType === 'source' && event.nodeId ? event.nodeId : null;
+  dragConnected = false;
+}
+
+function onConnect(connection: { source: string; target: string }): void {
+  dragConnected = true;
+  emit('connect', connection.source, connection.target);
+}
+
+function onConnectEnd(event?: MouseEvent | TouchEvent): void {
+  const from = dragFrom;
+  const connected = dragConnected;
+  dragFrom = null;
+  dragConnected = false;
+  const dropped = event?.target instanceof Element && event.target.closest('.vue-flow__pane') !== null;
+  if (from && !connected && dropped) emit('connect', from, null);
 }
 
 function toggleDirection(): void {
@@ -109,18 +156,23 @@ function toggleDirection(): void {
         :edges="vfEdges"
         :fit-view-on-init="true"
         :nodes-draggable="false"
-        :nodes-connectable="false"
+        :nodes-connectable="true"
         :elements-selectable="false"
         :zoom-on-double-click="false"
         @pane-ready="onPaneReady"
         @node-click="onNodeClick"
-        @pane-click="emit('select', null)"
+        @pane-click="emit('select', null); emit('select-edge', null)"
+        @edge-click="onEdgeClick"
+        @connect-start="onConnectStart"
+        @connect="onConnect"
+        @connect-end="onConnectEnd"
       >
         <template #node-state="{ data }">
           <WorkflowNodeCard
             :state="data.state"
             :direction="direction"
             :selected="data.selected"
+            connectable
             interactive
           />
         </template>

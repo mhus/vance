@@ -20,11 +20,16 @@
 import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { VAlert, VButton, VSegment } from '@/components';
+import ConnectDialog, {
+  type ConnectAnswer,
+  type ConnectRequest,
+} from '@/cortex/workflowEdit/ConnectDialog.vue';
+import WorkflowEdgeInspector from '@/cortex/workflowEdit/WorkflowEdgeInspector.vue';
 import WorkflowEditGraph from '@/cortex/workflowEdit/WorkflowEditGraph.vue';
 import WorkflowInspector from '@/cortex/workflowEdit/WorkflowInspector.vue';
 import { stateTemplate } from '@/cortex/workflowEdit/stateTemplates';
 import { useWorkflowChange } from '@/cortex/workflowEdit/useWorkflowChange';
-import { addState, freeStateName } from '@/cortex/workflowEdit/workflowMutations';
+import { addState, connect, freeStateName, type EdgeRef } from '@/cortex/workflowEdit/workflowMutations';
 import { useWorkflowServerCheck } from '@/cortex/workflowEdit/useWorkflowServerCheck';
 import WorkflowGraph from '@/workflowGraph/WorkflowGraph.vue';
 import { parseWorkflowGraph, type WorkflowTaskType } from '@/workflowGraph/workflowGraphCodec';
@@ -59,10 +64,30 @@ const graph = computed(() => parseWorkflowGraph(props.doc));
 
 /** The picked state; dropped when it no longer exists (renamed or removed). */
 const selected = ref<string | null>(null);
+/** The picked connection; a state and a connection are never both picked. */
+const selectedEdge = ref<EdgeRef | null>(null);
 watch(graph, (g) => {
   if (selected.value && !g.states.some((s) => s.name === selected.value && !s.missing)) {
     selected.value = null;
   }
+  const edge = selectedEdge.value;
+  if (edge && !g.edges.some((e) => e.source === edge.source && e.kind === edge.kind && e.key === edge.key)) {
+    selectedEdge.value = null;
+  }
+});
+
+function pickState(name: string | null): void {
+  selected.value = name;
+  if (name) selectedEdge.value = null;
+}
+
+function pickEdge(edge: EdgeRef | null): void {
+  selectedEdge.value = edge;
+  if (edge) selected.value = null;
+}
+
+watch(mode, (next) => {
+  if (next === 'view') selectedEdge.value = null;
 });
 
 /**
@@ -92,7 +117,53 @@ const change = useWorkflowChange(() => props.doc, (next) => emit('update:doc', n
 /** A new state at the end of the workflow, picked right away so it can be edited. */
 function onAdd(type: WorkflowTaskType): void {
   const name = freeStateName(props.doc, type);
-  if (change.apply(() => addState(props.doc, name, stateTemplate(type)))) selected.value = name;
+  if (change.apply(() => addState(props.doc, name, stateTemplate(type)))) pickState(name);
+}
+
+// ── connections ──────────────────────────────────────────────────
+
+const pending = ref<ConnectRequest | null>(null);
+
+/** A line was drawn: ask what it is before it becomes part of the workflow. */
+function onConnect(source: string, target: string | null): void {
+  const own = graph.value.edges.filter((e) => e.source === source);
+  pending.value = {
+    source,
+    sourceType: graph.value.states.find((s) => s.name === source)?.type ?? '',
+    target,
+    taken: {
+      on: own.filter((e) => e.kind === 'on').map((e) => e.key),
+      catch: own.filter((e) => e.kind === 'catch').map((e) => e.key),
+    },
+    hasElse: own.some((e) => e.kind === 'else'),
+  };
+}
+
+function confirmConnect(answer: ConnectAnswer): void {
+  const request = pending.value;
+  if (!request) return;
+  pending.value = null;
+  let target = request.target;
+  let text = props.doc;
+  const made = change.apply(() => {
+    if (target === null && answer.newType) {
+      target = freeStateName(text, answer.newType);
+      text = addState(text, target, stateTemplate(answer.newType));
+    }
+    text = connect(text, {
+      source: request.source,
+      kind: answer.kind,
+      label: answer.label,
+      target: target as string,
+    });
+    return text;
+  });
+  if (!made) return;
+  const edge = parseWorkflowGraph(text).edges.find(
+    (e) => e.source === request.source && e.kind === answer.kind
+      && e.target === target && (answer.kind === 'else' || e.label === answer.label || e.key === answer.label),
+  );
+  if (edge) pickEdge({ source: edge.source, kind: edge.kind, key: edge.key });
 }
 
 const check = useWorkflowServerCheck(() => props.projectId, () => props.docPath);
@@ -139,30 +210,44 @@ watch(() => props.docPath, () => check.clear());
       </ul>
     </VAlert>
 
-    <div class="body" :class="{ 'body--with-panel': selected }">
+    <div class="body" :class="{ 'body--with-panel': selected || selectedEdge }">
       <WorkflowEditGraph
         v-if="mode === 'edit'"
         :doc="doc"
         :selected="selected"
-        @select="selected = $event"
+        :selected-edge="selectedEdge"
+        @select="pickState"
+        @select-edge="pickEdge"
         @add="onAdd"
+        @connect="onConnect"
       />
       <WorkflowGraph
         v-else
         :doc="doc"
         :selected="selected"
         interactive
-        @node-click="selected = $event"
+        @node-click="pickState"
+      />
+      <WorkflowEdgeInspector
+        v-if="selectedEdge"
+        :doc="doc"
+        :edge="selectedEdge"
+        :editable="mode === 'edit' && !readOnly"
+        @update:doc="emit('update:doc', $event)"
+        @select-edge="pickEdge"
+        @select="pickState"
       />
       <WorkflowInspector
-        v-if="selected"
+        v-else-if="selected"
         :doc="doc"
         :state="selected"
         :editable="mode === 'edit' && !readOnly"
         @update:doc="emit('update:doc', $event)"
-        @select="selected = $event"
+        @select="pickState"
       />
     </div>
+
+    <ConnectDialog :request="pending" @confirm="confirmConnect" @cancel="pending = null" />
   </div>
 </template>
 

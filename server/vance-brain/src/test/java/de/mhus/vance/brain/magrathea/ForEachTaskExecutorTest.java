@@ -90,6 +90,59 @@ class ForEachTaskExecutorTest {
     }
 
     @Test
+    void a_body_closed_by_an_end_state_goes_on_to_the_next_element_when_the_end_sends_the_run_back() {
+        ResolvedMagratheaWorkflow closed = MagratheaWorkflowLoader.parseYaml("demo", """
+                start: loop
+                states:
+                  loop:
+                    type: for_each_task
+                    items: "${state.names}"
+                    as: name
+                    on: { each: greet, done: finish }
+                  greet:
+                    type: condition_task
+                    transitions:
+                      - else: next
+                  next:
+                    type: end
+                  finish:
+                    type: terminal
+                    outcome: success
+                """);
+        MagratheaStateSpec loop = closed.states().get("loop");
+        Map<String, Object> items = Map.of("items", List.of("Ann", "Bob"));
+        Map<String, Object> vars = new LinkedHashMap<>();
+        Map<String, Object> spec = new LinkedHashMap<>(loop.spec());
+        spec.putAll(items);
+        java.util.function.Function<String, TaskOutcome> enter = previous -> executor.execute(new MagratheaTaskContext(
+                        "t",
+                        "p",
+                        "run-1",
+                        "task-1",
+                        "someone",
+                        closed,
+                        loop.withSpec(spec),
+                        Map.of(),
+                        vars,
+                        null,
+                        null,
+                        previous))
+                .orElseThrow();
+
+        TaskOutcome first = enter.apply(null);
+        apply(first, vars);
+        // The end state sent the run back: the loop is entered from 'next', which is part of its body.
+        TaskOutcome second = enter.apply("next");
+        apply(second, vars);
+        TaskOutcome last = enter.apply("next");
+
+        assertThat(first.outcome()).isEqualTo("each");
+        assertThat(second.outcome()).isEqualTo("each");
+        assertThat(vars).containsEntry("name", "Bob");
+        assertThat(last.outcome()).isEqualTo("done");
+    }
+
+    @Test
     void the_variables_go_out_as_json_in_the_order_they_are_to_be_written() {
         TaskOutcome outcome = executor.execute(
                         ctx(Map.of("items", List.of(Map.of("id", 7))), new LinkedHashMap<>(), null))

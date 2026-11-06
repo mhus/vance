@@ -1,6 +1,7 @@
 package de.mhus.vance.shared.magrathea;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -127,5 +128,107 @@ class MagratheaLoopBodyTest {
     void an_unknown_state_or_a_state_that_is_no_loop_has_an_empty_body() {
         assertThat(MagratheaLoopBody.of(states(SIMPLE), "nope")).isEmpty();
         assertThat(MagratheaLoopBody.of(states(SIMPLE), "first")).isEmpty();
+    }
+
+    // ── the loop an end state ends ──────────────────────────────────
+
+    private static final String WITH_END = """
+            start: loop
+            states:
+              loop:
+                type: for_each_task
+                items: "${state.list}"
+                on: { each: work, done: report }
+              work:
+                type: condition_task
+                transitions:
+                  - else: next
+              next:
+                type: end
+              report:
+                type: terminal
+                outcome: success
+            """;
+
+    @Test
+    void an_end_state_belongs_to_the_body_it_closes_and_ends_that_loop() {
+        Map<String, MagratheaStateSpec> states = states(WITH_END);
+
+        assertThat(MagratheaLoopBody.of(states, "loop")).containsExactly("work", "next");
+        assertThat(MagratheaLoopBody.enclosingLoop(states, "next")).contains("loop");
+        assertThat(MagratheaLoopBody.enclosingLoop(states, "work")).contains("loop");
+    }
+
+    @Test
+    void a_state_outside_every_loop_body_has_no_enclosing_loop() {
+        Map<String, MagratheaStateSpec> states = states(WITH_END);
+
+        assertThat(MagratheaLoopBody.enclosingLoop(states, "report")).isEmpty();
+        assertThat(MagratheaLoopBody.enclosingLoop(states, "loop")).isEmpty();
+    }
+
+    private static final String NESTED_ENDS = """
+            start: outer
+            states:
+              outer:
+                type: for_each_task
+                items: "${state.rows}"
+                on: { each: inner, done: finish }
+              inner:
+                type: for_each_task
+                items: "${state.row}"
+                on: { each: cell, done: row_end }
+              cell:
+                type: condition_task
+                transitions:
+                  - else: cell_end
+              cell_end:
+                type: end
+              row_end:
+                type: end
+              finish:
+                type: terminal
+                outcome: success
+            """;
+
+    @Test
+    void in_nested_loops_an_end_ends_the_innermost_loop_whose_body_it_is_in() {
+        Map<String, MagratheaStateSpec> states = states(NESTED_ENDS);
+
+        // cell_end lies in the inner body, which is part of the outer one: the inner loop is meant.
+        assertThat(MagratheaLoopBody.enclosingLoop(states, "cell_end")).contains("inner");
+        // row_end is reached through the inner loop's done, so it is in the outer body only.
+        assertThat(MagratheaLoopBody.enclosingLoop(states, "row_end")).contains("outer");
+    }
+
+    @Test
+    void an_end_in_the_bodies_of_two_loops_that_do_not_lie_one_inside_the_other_is_refused_by_the_loader() {
+        assertThatThrownBy(() -> states("""
+                        start: a
+                        states:
+                          a:
+                            type: for_each_task
+                            items: "${state.x}"
+                            on: { each: a1, done: b }
+                          a1:
+                            type: condition_task
+                            transitions:
+                              - else: shared
+                          b:
+                            type: for_each_task
+                            items: "${state.y}"
+                            on: { each: b1, done: finish }
+                          b1:
+                            type: condition_task
+                            transitions:
+                              - else: shared
+                          shared:
+                            type: end
+                          finish:
+                            type: terminal
+                            outcome: success
+                        """))
+                .hasMessageContaining("state 'shared' is in the bodies of the loops")
+                .hasMessageContaining("do not lie one inside the other");
     }
 }

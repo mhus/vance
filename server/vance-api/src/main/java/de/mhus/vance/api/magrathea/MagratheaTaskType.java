@@ -35,6 +35,11 @@ public enum MagratheaTaskType {
      * leads back to the state, {@code done} leaves. No task is run for it; it only decides which way to go.
      */
     FOR_EACH_TASK,
+    /**
+     * The end of the enclosing block, the way {@link #TERMINAL} is the end of the run: today the end of one pass
+     * through a loop body, after which the loop goes on with the next element. It has no way on of its own.
+     */
+    END,
     /** Terminal end state. §4.8 */
     TERMINAL
 }

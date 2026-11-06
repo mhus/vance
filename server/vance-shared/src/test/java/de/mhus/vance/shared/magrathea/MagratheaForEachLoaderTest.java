@@ -97,4 +97,60 @@ class MagratheaForEachLoaderTest {
                         "demo", workflow("items: \"${state.x}\"\non: { each: nowhere, done: end }")))
                 .hasMessageContaining("unknown state 'nowhere'");
     }
+
+    @Test
+    void an_end_closes_a_loop_body_and_needs_no_way_on() {
+        ResolvedMagratheaWorkflow workflow = MagratheaWorkflowLoader.parseYaml("demo", """
+                start: loop
+                states:
+                  loop:
+                    type: for_each_task
+                    items: "${state.x}"
+                    on: { each: work, done: end }
+                  work:
+                    type: condition_task
+                    transitions:
+                      - else: next
+                  next:
+                    type: end
+                  end:
+                    type: terminal
+                    outcome: success
+                """);
+
+        assertThat(workflow.states().get("next").type()).isEqualTo(MagratheaTaskType.END);
+    }
+
+    @Test
+    void an_end_outside_a_loop_body_has_nothing_to_end() {
+        assertThatThrownBy(() -> MagratheaWorkflowLoader.parseYaml("demo", """
+                        start: stop
+                        states:
+                          stop:
+                            type: end
+                        """))
+                .hasMessageContaining("(end) is not in the body of a for_each_task")
+                .hasMessageContaining("terminal");
+    }
+
+    @Test
+    void an_end_takes_no_on_and_no_catch() {
+        for (String way : new String[] {"on: { success: end }", "catch: { technical_error: end }"}) {
+            assertThatThrownBy(() -> MagratheaWorkflowLoader.parseYaml("demo", """
+                            start: loop
+                            states:
+                              loop:
+                                type: for_each_task
+                                items: "${state.x}"
+                                on: { each: next, done: end }
+                              next:
+                                type: end
+                                %s
+                              end:
+                                type: terminal
+                                outcome: success
+                            """.formatted(way)))
+                    .hasMessageContaining("has no way on of its own");
+        }
+    }
 }

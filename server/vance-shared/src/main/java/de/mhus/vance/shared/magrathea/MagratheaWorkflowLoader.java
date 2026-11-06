@@ -370,6 +370,10 @@ public class MagratheaWorkflowLoader {
         if (type == MagratheaTaskType.FOR_EACH_TASK) {
             validateForEach(name, onOutcomes, spec);
         }
+        if (type == MagratheaTaskType.END && (!onOutcomes.isEmpty() || !catchKinds.isEmpty())) {
+            throw new IllegalStateException(
+                    "state '" + name + "' (end) has no way on of its own: it takes no 'on:' and no 'catch:'");
+        }
 
         return new MagratheaStateSpec(
                 name,
@@ -421,13 +425,23 @@ public class MagratheaWorkflowLoader {
         }
     }
 
-    /** The arrow {@code each} of a loop must lead somewhere else than back to the loop: that body would be empty. */
+    /**
+     * The arrow {@code each} of a loop must lead somewhere else than back to the loop: that body would be empty.
+     * An {@code end} has to sit in the body of a loop, or there is nothing for it to end — and in the bodies of
+     * loops that lie one inside the other, or it is unclear which it ends.
+     */
     private static void validateLoops(Map<String, MagratheaStateSpec> states) {
         for (MagratheaStateSpec state : states.values()) {
-            if (state.type() != MagratheaTaskType.FOR_EACH_TASK) continue;
-            if (state.name().equals(state.onOutcomes().get(MagratheaLoopBody.OUTCOME_EACH))) {
+            if (state.type() == MagratheaTaskType.FOR_EACH_TASK
+                    && state.name().equals(state.onOutcomes().get(MagratheaLoopBody.OUTCOME_EACH))) {
                 throw new IllegalStateException(
                         "state '" + state.name() + "' (for_each_task) leads 'each' back to itself; it has no body");
+            }
+            if (state.type() == MagratheaTaskType.END
+                    && MagratheaLoopBody.enclosingLoop(states, state.name()).isEmpty()) {
+                throw new IllegalStateException(
+                        "state '" + state.name() + "' (end) is not in the body of a for_each_task; there is nothing"
+                                + " for it to end — use a terminal to end the run");
             }
         }
     }

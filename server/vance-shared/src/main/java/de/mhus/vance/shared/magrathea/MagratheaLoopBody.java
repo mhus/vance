@@ -1,9 +1,14 @@
 package de.mhus.vance.shared.magrathea;
 
+import de.mhus.vance.api.magrathea.MagratheaTaskType;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.Deque;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
@@ -26,6 +31,35 @@ public final class MagratheaLoopBody {
     public static final String OUTCOME_DONE = "done";
 
     private MagratheaLoopBody() {}
+
+    /**
+     * The loop whose body the state {@code name} is part of — the one an {@code end} state ends. When the state is
+     * in the bodies of several loops (a loop inside a loop: the inner body is part of the outer one) it is the
+     * innermost: the one with the smallest body, which has to lie wholly inside every other.
+     *
+     * @return the loop state, or empty when the state is in no loop body
+     * @throws IllegalStateException when the state is in the bodies of loops that do not lie one inside the other
+     */
+    public static Optional<String> enclosingLoop(Map<String, MagratheaStateSpec> states, String name) {
+        List<Map.Entry<String, Set<String>>> holding = new ArrayList<>();
+        for (MagratheaStateSpec state : states.values()) {
+            if (state.type() != MagratheaTaskType.FOR_EACH_TASK) continue;
+            Set<String> body = of(states, state.name());
+            if (body.contains(name)) holding.add(Map.entry(state.name(), body));
+        }
+        if (holding.isEmpty()) return Optional.empty();
+        holding.sort(Comparator.comparingInt(e -> e.getValue().size()));
+        for (int i = 1; i < holding.size(); i++) {
+            Map.Entry<String, Set<String>> inner = holding.get(i - 1);
+            Map.Entry<String, Set<String>> outer = holding.get(i);
+            if (inner.getValue().size() >= outer.getValue().size()
+                    || !outer.getValue().containsAll(inner.getValue())) {
+                throw new IllegalStateException("state '" + name + "' is in the bodies of the loops '" + inner.getKey()
+                        + "' and '" + outer.getKey() + "', which do not lie one inside the other");
+            }
+        }
+        return Optional.of(holding.get(0).getKey());
+    }
 
     /**
      * The states of the body of {@code loopState}, in the order they are first reached; empty when the loop

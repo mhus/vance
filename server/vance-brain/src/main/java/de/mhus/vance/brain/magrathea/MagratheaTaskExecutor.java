@@ -438,6 +438,7 @@ public class MagratheaTaskExecutor {
         if (ownerProcessId == null || ownerProcessId.isBlank()) return;
         if (state.type() == MagratheaTaskType.CONDITION_TASK
                 || state.type() == MagratheaTaskType.FOR_EACH_TASK
+                || state.type() == MagratheaTaskType.END
                 || state.type() == MagratheaTaskType.TERMINAL) {
             return;
         }

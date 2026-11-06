@@ -266,7 +266,6 @@ public class MagratheaWorkflowLoader {
                 tags);
     }
 
-    @SuppressWarnings("unchecked")
     /**
      * Unmodifiable copy that keeps the order things were declared in.
      * {@code Map.copyOf} does not: its iteration order is unspecified, so a
@@ -277,6 +276,7 @@ public class MagratheaWorkflowLoader {
         return java.util.Collections.unmodifiableMap(new LinkedHashMap<>(source));
     }
 
+    @SuppressWarnings("unchecked")
     private static Map<String, MagratheaParameterSpec> parseParameters(@Nullable Object raw) {
         if (raw == null) return Map.of();
         if (!(raw instanceof Map<?, ?> pm)) {

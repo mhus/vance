@@ -280,6 +280,8 @@ public class ShellTaskExecutor implements MagratheaTypeExecutor {
             return new TaskOutcome(errorKindName(MagratheaErrorKind.UNAVAILABLE), null, ex.getMessage(), null);
         } finally {
             if (ownDir && dir != null) {
+                // An interrupted thread would fail the call at once; the RootDir is removed all the same.
+                boolean interrupted = Thread.interrupted();
                 try {
                     runner.call(ctx, "root.delete", Map.of("dirName", dir));
                 } catch (RuntimeException ex) {
@@ -288,6 +290,8 @@ public class ShellTaskExecutor implements MagratheaTypeExecutor {
                             state.name(),
                             dir,
                             ex.toString());
+                } finally {
+                    if (interrupted) Thread.currentThread().interrupt();
                 }
             }
         }

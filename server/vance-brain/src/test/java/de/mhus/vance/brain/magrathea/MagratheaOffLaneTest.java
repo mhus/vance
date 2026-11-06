@@ -166,6 +166,8 @@ class MagratheaOffLaneTest {
         // The interrupt ends the wait; the executor is also asked to end the program it started.
         assertThat(shell.interrupted.await(2, TimeUnit.SECONDS)).isTrue();
         assertThat(shell.cancelledRunning.get()).isEqualTo(1);
+        // Ended first: the waiting thread forgets the job when it unwinds, so it must not be interrupted before.
+        assertThat(shell.interruptedBeforeCancel).isFalse();
     }
 
     @Test
@@ -226,6 +228,7 @@ class MagratheaOffLaneTest {
         final AtomicInteger cancelledRunning = new AtomicInteger();
         final MagratheaTaskType type;
         volatile boolean fail;
+        volatile boolean interruptedBeforeCancel;
 
         BlockingCall(MagratheaTaskType type) {
             this.type = type;
@@ -238,6 +241,7 @@ class MagratheaOffLaneTest {
 
         @Override
         public void cancelRunning(MagratheaTaskContext context) {
+            if (interrupted.getCount() == 0) interruptedBeforeCancel = true;
             cancelledRunning.incrementAndGet();
         }
 

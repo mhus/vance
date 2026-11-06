@@ -93,4 +93,14 @@ class UrsaEventControllerBodyLimitTest {
                 .containsEntry("flag", "");
         assertThat(UrsaEventController.parseForm("")).isEmpty();
     }
+
+    @Test
+    void aMalformedPercentEscapeInAFormBodyIsABadRequest_notAServerError() {
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> UrsaEventController.parseForm("a=%zz"))
+                .isInstanceOfSatisfying(
+                        org.springframework.web.server.ResponseStatusException.class,
+                        ex -> assertThat(ex.getStatusCode().value()).isEqualTo(400));
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> UrsaEventController.parseForm("a=%4"))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
+    }
 }

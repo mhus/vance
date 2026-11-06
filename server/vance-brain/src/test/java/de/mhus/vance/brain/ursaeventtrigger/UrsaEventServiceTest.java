@@ -298,6 +298,60 @@ class UrsaEventServiceTest {
     }
 
     @Test
+    void the_rate_limit_is_one_bucket_whatever_the_case_of_the_url() {
+        when(eventLoader.load(eq(TENANT), eq(PROJECT), any())).thenReturn(Optional.of(event(b -> b.rateLimit(2))));
+        when(workflowService.start(any(), any(), any(), any(), any())).thenReturn("run-1");
+
+        service.trigger(TENANT, PROJECT, "deploy", "POST", null, null);
+        service.trigger(TENANT, PROJECT, "DEPLOY", "POST", null, null);
+
+        assertThatThrownBy(() -> service.trigger(TENANT, PROJECT, "Deploy", "POST", null, null))
+                .isInstanceOfSatisfying(
+                        ResponseStatusException.class,
+                        ex -> assertThat(ex.getStatusCode().value()).isEqualTo(429));
+    }
+
+    @Test
+    void a_flood_of_refused_calls_does_not_use_up_the_budget_of_the_genuine_ones() throws Exception {
+        when(eventLoader.load(TENANT, PROJECT, EVENT))
+                .thenReturn(Optional.of(event(b -> b.signature(githubStyle()).rateLimit(2))));
+        givenSecret();
+        when(workflowService.start(any(), any(), any(), any(), any())).thenReturn("run-1");
+        byte[] body = "{}".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        var junk = request(body, Map.of("X-Hub-Signature-256", "sha256=" + hmacHex("other", body)));
+
+        // Two are turned away as unauthorized, the rest as too many refused calls — never as a start.
+        for (int i = 0; i < 6; i++) {
+            int status = org.assertj.core.api.Assertions.catchThrowableOfType(
+                            ResponseStatusException.class, () -> fire(junk))
+                    .getStatusCode()
+                    .value();
+            assertThat(status).isEqualTo(i < 2 ? 401 : 429);
+        }
+
+        UrsaEventService.UrsaEventTriggerResult genuine =
+                fire(request(body, Map.of("X-Hub-Signature-256", "sha256=" + hmacHex(SECRET, body))));
+        assertThat(genuine.workflowRunId()).isEqualTo("run-1");
+    }
+
+    @Test
+    void a_delivery_sent_again_gets_the_same_redacted_answer_not_the_output() {
+        when(eventLoader.load(TENANT, PROJECT, EVENT))
+                .thenReturn(Optional.of(event(b -> b.script("_vance/scripts/x.js")
+                        .runAs("ci-bot")
+                        .outputToAgents(false)
+                        .idempotencyHeader("X-Delivery"))));
+        scriptReturns("secret");
+        var request = request(new byte[0], Map.of("X-Delivery", "d-1"));
+
+        UrsaEventService.UrsaEventTriggerResult first = fire(request);
+        UrsaEventService.UrsaEventTriggerResult again = fire(request);
+
+        assertThat(first.output()).isNull();
+        assertThat(again.output()).isNull();
+    }
+
+    @Test
     void the_owning_pod_limits_a_forwarded_call_too_so_the_limit_is_exact_for_the_project() {
         when(eventLoader.load(TENANT, PROJECT, EVENT)).thenReturn(Optional.of(event(b -> b.rateLimit(2))));
         when(workflowService.start(any(), any(), any(), any(), any())).thenReturn("run-1");

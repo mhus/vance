@@ -5,6 +5,7 @@ import de.mhus.vance.shared.llmusage.LlmUsageService.CostTotal;
 import de.mhus.vance.shared.magrathea.MagratheaJournalService;
 import de.mhus.vance.shared.magrathea.journal.ProcessSpawnedRecord;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -60,7 +61,16 @@ public class MagratheaRunCost {
     /** The cost of the run and of every run below it. */
     public Cost of(String tenantId, String projectId, String runId) {
         Set<String> processes = new LinkedHashSet<>();
-        collect(tenantId, projectId, runId, processes, new LinkedHashSet<>(), 0);
+        // The project's recent runs are read once and grouped by parent; the walk down the tree is then in memory.
+        Map<String, List<String>> childrenByParent = new HashMap<>();
+        for (MagratheaJournalService.RunStart candidate :
+                journalService.listRunStarts(tenantId, projectId, CHILD_SCAN_LIMIT)) {
+            String parent = candidate.start().getParentMagratheaProcessId();
+            if (parent != null) {
+                childrenByParent.computeIfAbsent(parent, k -> new ArrayList<>()).add(candidate.workflowRunId());
+            }
+        }
+        collect(tenantId, projectId, runId, childrenByParent, processes, new LinkedHashSet<>(), 0);
         if (processes.isEmpty()) return new Cost(List.of());
         // Several currencies stay several entries; none is converted into another.
         Map<String, long[]> byCurrency = new LinkedHashMap<>();
@@ -82,17 +92,20 @@ public class MagratheaRunCost {
     }
 
     private void collect(
-            String tenantId, String projectId, String runId, Set<String> processes, Set<String> visited, int depth) {
+            String tenantId,
+            String projectId,
+            String runId,
+            Map<String, List<String>> childrenByParent,
+            Set<String> processes,
+            Set<String> visited,
+            int depth) {
         if (depth > MAX_DEPTH || !visited.add(runId)) return;
         for (ProcessSpawnedRecord spawned :
                 journalService.readAll(tenantId, projectId, runId, ProcessSpawnedRecord.class)) {
             processes.add(spawned.getProcessId());
         }
-        for (MagratheaJournalService.RunStart candidate :
-                journalService.listRunStarts(tenantId, projectId, CHILD_SCAN_LIMIT)) {
-            if (runId.equals(candidate.start().getParentMagratheaProcessId())) {
-                collect(tenantId, projectId, candidate.workflowRunId(), processes, visited, depth + 1);
-            }
+        for (String child : childrenByParent.getOrDefault(runId, List.of())) {
+            collect(tenantId, projectId, child, childrenByParent, processes, visited, depth + 1);
         }
     }
 }

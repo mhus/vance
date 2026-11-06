@@ -210,8 +210,8 @@ public class UrsaEventController {
         for (String pair : body.split("&")) {
             if (pair.isEmpty()) continue;
             int eq = pair.indexOf('=');
-            String key = java.net.URLDecoder.decode(eq < 0 ? pair : pair.substring(0, eq), StandardCharsets.UTF_8);
-            String value = eq < 0 ? "" : java.net.URLDecoder.decode(pair.substring(eq + 1), StandardCharsets.UTF_8);
+            String key = decodeFormPart(eq < 0 ? pair : pair.substring(0, eq));
+            String value = eq < 0 ? "" : decodeFormPart(pair.substring(eq + 1));
             Object previous = out.get(key);
             if (previous == null) {
                 out.put(key, value);
@@ -227,6 +227,14 @@ public class UrsaEventController {
             }
         }
         return out;
+    }
+
+    private static String decodeFormPart(String part) {
+        try {
+            return java.net.URLDecoder.decode(part, StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException ex) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Event POST body is not valid form data", ex);
+        }
     }
 
     /**

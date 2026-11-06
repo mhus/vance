@@ -343,23 +343,6 @@ public class UrsaEventService {
                         HttpStatus.METHOD_NOT_ALLOWED, "Event '" + eventName + "' does not accept " + httpMethod);
             }
 
-            {
-                // Before the authentication, so a flood of wrong tokens or signatures is turned away too. Counted on
-                // the pod that received the request — which protects that pod and spares the forward — and again on
-                // the owning pod: a project has one owner, so there the limit is exact whatever number of pods the
-                // requests came in through.
-                int limit = event.rateLimitPerMinute() != null ? event.rateLimitPerMinute() : defaultRateLimitPerMinute;
-                java.util.Optional<Duration> wait =
-                        rateLimiter.refusal(tenantId + "/" + projectId + "/" + eventName, limit);
-                if (wait.isPresent()) {
-                    countOutcome(eventName, "rate_limited");
-                    outcome = "rate_limited";
-                    skipLog = true;
-                    errorMessage = "more than " + limit + " calls per minute";
-                    throw new RateLimitedException("Event '" + eventName + "' is called too often", wait.get());
-                }
-            }
-
             if (event.signature() != null && !alreadyForwarded) {
                 // The provider's signature is the authentication. A forwarded hop skips it: the pod that received
                 // the request checked it against the original bytes, and the hop is proven by the internal token.
@@ -375,6 +358,14 @@ public class UrsaEventService {
                         : WebhookSignatureVerifier.refusal(
                                 event.signature(), secret, webhook.body(), webhook.header(), Instant.now());
                 if (refusal.isPresent()) {
+                    RateLimitedException flood = refusedFlood(tenantId, projectId, event);
+                    if (flood != null) {
+                        countOutcome(eventName, "rate_limited");
+                        outcome = "rate_limited";
+                        skipLog = true;
+                        errorMessage = "too many refused calls";
+                        throw flood;
+                    }
                     countOutcome(eventName, "unauthorized");
                     outcome = "unauthorized";
                     errorMessage = "signature refused: " + refusal.get();
@@ -397,10 +388,35 @@ public class UrsaEventService {
                     throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Event auth is misconfigured");
                 }
                 if (!constantTimeEquals(expected, bearerToken)) {
+                    RateLimitedException flood = refusedFlood(tenantId, projectId, event);
+                    if (flood != null) {
+                        countOutcome(eventName, "rate_limited");
+                        outcome = "rate_limited";
+                        skipLog = true;
+                        errorMessage = "too many refused calls";
+                        throw flood;
+                    }
                     countOutcome(eventName, "unauthorized");
                     outcome = "unauthorized";
                     errorMessage = "bearer token mismatch";
                     throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid or missing bearer token");
+                }
+            }
+
+            {
+                // Charged only after the caller has proved who it is: the shared bucket is the provider's own
+                // budget, so a stranger's junk (which never gets this far) cannot use it up. Counted on the pod
+                // that received the request — which protects that pod and spares the forward — and again on the
+                // owning pod: a project has one owner, so there the limit is exact whatever number of pods the
+                // requests came in through. Keyed on the event's normalised name, not the URL's spelling.
+                int limit = event.rateLimitPerMinute() != null ? event.rateLimitPerMinute() : defaultRateLimitPerMinute;
+                java.util.Optional<Duration> wait = rateLimiter.refusal(eventKey(tenantId, projectId, event), limit);
+                if (wait.isPresent()) {
+                    countOutcome(eventName, "rate_limited");
+                    outcome = "rate_limited";
+                    skipLog = true;
+                    errorMessage = "more than " + limit + " calls per minute";
+                    throw new RateLimitedException("Event '" + eventName + "' is called too often", wait.get());
                 }
             }
 
@@ -418,7 +434,7 @@ public class UrsaEventService {
             }
             if (deliveryId != null && !deliveryId.isBlank()) {
                 forwardDeliveryId = deliveryId.trim();
-                String key = tenantId + "/" + projectId + "/" + eventName + "/" + forwardDeliveryId;
+                String key = eventKey(tenantId, projectId, event) + "/" + forwardDeliveryId;
                 UrsaEventDeliveryCache.Claim claim = deliveries.claim(key);
                 if (!claim.first()) {
                     if (claim.inFlight()) {
@@ -514,26 +530,24 @@ public class UrsaEventService {
             targetName = result.workflowName();
             spawnedId = result.workflowRunId();
             outputSummary = summariseOutput(result.output(), event.outputVisibleToAgents());
+            // Same rule as triggerAdmin, same reason: the caller did not authenticate. `auth.public: true` plus
+            // `runAs:` is exactly that combination on the webhook surface — withholding from the agent in the
+            // project while handing the privileged script's return value to an anonymous caller would have the
+            // control backwards. An authenticated webhook is unaffected, as specification/public/events.md §8b
+            // states. Redacted before it is remembered, so a repeated delivery gets the same answer, not more.
+            UrsaEventTriggerResult answer = !event.authenticated() && !event.outputVisibleToAgents()
+                    ? new UrsaEventTriggerResult(
+                            result.workflowName(),
+                            result.workflowRunId(),
+                            /*output*/ null,
+                            result.correlationId(),
+                            result.firedAt())
+                    : result;
             if (deliveryClaim != null) {
-                deliveries.complete(deliveryClaim, result);
+                deliveries.complete(deliveryClaim, answer);
                 delivered = true;
             }
-            if (!event.authenticated() && !event.outputVisibleToAgents()) {
-                // Same rule as triggerAdmin, same reason: the caller did not
-                // authenticate. `auth.public: true` plus `runAs:` is exactly
-                // that combination on the webhook surface — withholding from
-                // the agent in the project while handing the privileged
-                // script's return value to an anonymous caller would have the
-                // control backwards. An authenticated webhook is unaffected,
-                // as specification/public/events.md §8b states.
-                return new UrsaEventTriggerResult(
-                        result.workflowName(),
-                        result.workflowRunId(),
-                        /*output*/ null,
-                        result.correlationId(),
-                        result.firedAt());
-            }
-            return result;
+            return answer;
         } finally {
             if (claimedDelivery != null && !delivered) {
                 deliveries.release(claimedDelivery);
@@ -1020,6 +1034,24 @@ public class UrsaEventService {
      * source tag — distinguishes external webhook calls from admin
      * triggers in the same counter family.
      */
+    private static String eventKey(String tenantId, String projectId, ResolvedUrsaEvent event) {
+        return tenantId + "/" + projectId + "/" + event.name();
+    }
+
+    /**
+     * A refused call (wrong token or signature) draws on its own bucket, so a flood of them is turned away with
+     * {@code 429} without ever touching the bucket the provider's genuine deliveries use.
+     *
+     * @return the exception to throw when the flood limit is reached, otherwise {@code null}
+     */
+    private @Nullable RateLimitedException refusedFlood(String tenantId, String projectId, ResolvedUrsaEvent event) {
+        int limit = event.rateLimitPerMinute() != null ? event.rateLimitPerMinute() : defaultRateLimitPerMinute;
+        java.util.Optional<Duration> wait =
+                rateLimiter.refusal(eventKey(tenantId, projectId, event) + "/refused", limit);
+        return wait.map(w -> new RateLimitedException("Event '" + event.name() + "' is called too often", w))
+                .orElse(null);
+    }
+
     private void countOutcome(String eventName, String outcome) {
         metricService
                 .counter(METRIC_TRIGGERS, "event", eventName, "source", "public", "outcome", outcome)

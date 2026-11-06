@@ -40,6 +40,11 @@ import org.yaml.snakeyaml.Yaml;
 public class CatalogTriggerService {
 
     private static final String EVENTS_PREFIX = "_vance/events/";
+
+    /** What an event name may be: it becomes a document path, a setting key and a URL segment. */
+    private static final java.util.regex.Pattern EVENT_NAME =
+            java.util.regex.Pattern.compile("[a-z0-9][a-z0-9._-]{0,63}");
+
     private static final String SCHEDULER_PREFIX = "_vance/scheduler/";
     private static final String WORKFLOW_PREFIX = "_vance/workflows/";
 
@@ -100,6 +105,11 @@ public class CatalogTriggerService {
         String eventName = (name == null || name.isBlank() ? entry.name() + "-" + t.name() : name)
                 .trim()
                 .toLowerCase(Locale.ROOT);
+        if (!EVENT_NAME.matcher(eventName).matches()) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "An event name is lowercase letters, digits, '-', '_' or '.', and starts with a letter or digit");
+        }
         if (t.mode() == ServiceCatalogEntry.TriggerMode.POLL) {
             return createPoll(tenantId, projectId, subject, entry, t, workflow.trim(), eventName, given);
         }
@@ -137,15 +147,6 @@ public class CatalogTriggerService {
                         "The service has to be told where to call, but vance.web.public-base-url is not set");
             }
             secret = HexFormat.of().formatHex(randomBytes(32));
-            settings.setAs(
-                    tenantId,
-                    SettingService.SCOPE_PROJECT,
-                    projectId,
-                    secretSetting,
-                    secret,
-                    SettingType.PASSWORD,
-                    "Secret of the event '" + eventName + "'",
-                    subject.subjectId());
         }
 
         DumperOptions options = new DumperOptions();
@@ -164,6 +165,16 @@ public class CatalogTriggerService {
             values.put("event", eventName);
             subscription = register(tenantId, projectId, subject.subjectId(), entry, t.subscribe(), values);
             if (subscription != null) doc.put("subscription", subscription);
+            // Stored only now that the service has accepted the registration, so a refused attempt leaves nothing.
+            settings.setAs(
+                    tenantId,
+                    SettingService.SCOPE_PROJECT,
+                    projectId,
+                    secretSetting,
+                    secret,
+                    SettingType.PASSWORD,
+                    "Secret of the event '" + eventName + "'",
+                    subject.subjectId());
         }
         try {
             documents.createText(
@@ -177,6 +188,17 @@ public class CatalogTriggerService {
                     WriteActor.user(subject));
         } catch (RuntimeException e) {
             // The registration at the service has no event to point at now: take it back, or it keeps calling.
+            if (t.subscribe() != null) {
+                try {
+                    settings.delete(tenantId, SettingService.SCOPE_PROJECT, projectId, secretSetting);
+                } catch (RuntimeException undo) {
+                    log.warn(
+                            "Could not remove the secret '{}' of '{}': {}",
+                            secretSetting,
+                            eventName,
+                            undo.getMessage());
+                }
+            }
             if (t.subscribe() != null && t.unsubscribe() != null) {
                 try {
                     call(

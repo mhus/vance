@@ -367,9 +367,9 @@ public class MagratheaTaskExecutor {
         InFlight flight = inFlight.get(taskId);
         if (flight == null) return false;
         flight.cancelled.set(true);
-        java.util.concurrent.Future<?> future = flight.future;
-        if (future != null) future.cancel(true);
-        // What the call started outside its thread — a shell command on the host — is not ended by an interrupt.
+        // What the call started outside its thread — a shell command on the host — is not ended by an interrupt,
+        // and it is ended first: the thread that waits for it forgets the job when it unwinds, so interrupting
+        // it before this would leave nothing to find and the command running.
         MagratheaTypeExecutor executor = flight.executor;
         MagratheaTaskContext context = flight.context;
         if (executor != null && context != null) {
@@ -379,6 +379,8 @@ public class MagratheaTaskExecutor {
                 log.warn("Magrathea task {}: could not end what the call started: {}", taskId, ex.toString());
             }
         }
+        java.util.concurrent.Future<?> future = flight.future;
+        if (future != null) future.cancel(true);
         return true;
     }
 
@@ -404,19 +406,6 @@ public class MagratheaTaskExecutor {
     }
 
     /**
-     * Show the owning process what its run is doing now, so a person
-     * watching a conversation sees a plan move instead of a silent wait.
-     *
-     * <p>Only for steps that can take time. {@code condition_task} and
-     * {@code terminal} are control flow — one is over in microseconds, the
-     * other is the end, which the owner learns from
-     * {@link MagratheaOwnerNotifier} anyway. Announcing them would turn a
-     * twenty-state plan into twenty lines of noise, and the rule "does this
-     * step do work" is one that does not drift as types are added.
-     *
-     * <p>Headless runs emit nothing: there is nobody to tell.
-     */
-    /**
      * The spec keys whose placeholders keep their type. A tool and a sub-workflow take
      * structured input (arguments, parameters, the items of a for-each), so a value that is
      * one placeholder stays a list or an object there; every other state reads text.
@@ -429,6 +418,19 @@ public class MagratheaTaskExecutor {
         };
     }
 
+    /**
+     * Show the owning process what its run is doing now, so a person
+     * watching a conversation sees a plan move instead of a silent wait.
+     *
+     * <p>Only for steps that can take time. {@code condition_task} and
+     * {@code terminal} are control flow — one is over in microseconds, the
+     * other is the end, which the owner learns from
+     * {@link MagratheaOwnerNotifier} anyway. Announcing them would turn a
+     * twenty-state plan into twenty lines of noise, and the rule "does this
+     * step do work" is one that does not drift as types are added.
+     *
+     * <p>Headless runs emit nothing: there is nobody to tell.
+     */
     private void emitProgress(@org.jspecify.annotations.Nullable String ownerProcessId, MagratheaStateSpec state) {
         if (ownerProcessId == null || ownerProcessId.isBlank()) return;
         if (state.type() == MagratheaTaskType.CONDITION_TASK || state.type() == MagratheaTaskType.TERMINAL) {

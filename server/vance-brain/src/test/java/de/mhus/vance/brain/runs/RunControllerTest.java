@@ -53,10 +53,10 @@ class RunControllerTest {
         // The sources report a foreign run as absent, so the controller
         // cannot distinguish it from a nonexistent one — which is the
         // point: a 403 here would confirm that the run exists.
-        when(registry.get(any(), eq("acme"), eq("proj"), eq("workflow:elsewhere"))).thenReturn(Optional.empty());
+        when(registry.get(any(), eq("acme"), eq("proj"), eq("workflow:elsewhere")))
+                .thenReturn(Optional.empty());
 
-        assertThatThrownBy(() ->
-                controller.get("acme", "workflow:elsewhere", "proj", request))
+        assertThatThrownBy(() -> controller.get("acme", "workflow:elsewhere", "proj", request))
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(e -> ((ResponseStatusException) e).getStatusCode())
                 .isEqualTo(HttpStatus.NOT_FOUND);
@@ -77,12 +77,33 @@ class RunControllerTest {
     void detailComesBackWhenTheRegistryHasIt() {
         RunDetailDto detail = RunDetailDto.builder()
                 .summary(RunSummaryDto.builder()
-                        .runId("workflow:r1").source("workflow").name("demo")
-                        .status(RunStatus.DONE).projectId("proj").build())
+                        .runId("workflow:r1")
+                        .source("workflow")
+                        .name("demo")
+                        .status(RunStatus.DONE)
+                        .projectId("proj")
+                        .build())
                 .build();
         when(registry.get(any(), eq("acme"), eq("proj"), eq("workflow:r1"))).thenReturn(Optional.of(detail));
 
-        assertThat(controller.get("acme", "workflow:r1", "proj", request))
-                .isSameAs(detail);
+        assertThat(controller.get("acme", "workflow:r1", "proj", request)).isSameAs(detail);
+    }
+
+    @Test
+    void aBadRestartRequestIs400_andAnUnknownRunIs404_whateverTheMessageSays() {
+        var body = new de.mhus.vance.api.runs.RunRestartRequest();
+        when(registry.restart(
+                        any(), any(), any(), any(), any(), any(), org.mockito.ArgumentMatchers.anyBoolean(), any()))
+                .thenThrow(new BadRunRequestException("Run is fine, the ask is not"))
+                .thenThrow(new IllegalArgumentException("Cannot restart: no such run"));
+
+        assertThatThrownBy(() -> controller.restart("acme", "workflow:r1", "proj", body, request))
+                .isInstanceOfSatisfying(
+                        ResponseStatusException.class,
+                        e -> assertThat(e.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST));
+        assertThatThrownBy(() -> controller.restart("acme", "workflow:r1", "proj", body, request))
+                .isInstanceOfSatisfying(
+                        ResponseStatusException.class,
+                        e -> assertThat(e.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND));
     }
 }

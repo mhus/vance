@@ -487,20 +487,6 @@ public class MagratheaWorkflowService {
     }
 
     /**
-     * Refuse a plan that contains a state this run could never execute.
-     *
-     * <p>Checked over <em>all</em> states, not the reachable ones: which
-     * branch a run takes is not knowable at start, and a plan that works or
-     * dies depending on the path is worse than one that is refused outright.
-     * The cost of being conservative is a plan that has to declare its
-     * intent; the cost of being permissive is a failure days later, on a
-     * branch nobody was watching.
-     *
-     * <p>A state that catches {@code capability_missing} is exempt: it has
-     * said what to do when the thing is impossible, so it is allowed to run
-     * and find out.
-     */
-    /**
      * Refuse a plan that calls a tool for a user who has not connected the account it needs.
      *
      * <p>Like {@link #requireCapabilities}, checked over all states, and a state that declares
@@ -523,6 +509,20 @@ public class MagratheaWorkflowService {
         }
     }
 
+    /**
+     * Refuse a plan that contains a state this run could never execute.
+     *
+     * <p>Checked over <em>all</em> states, not the reachable ones: which
+     * branch a run takes is not knowable at start, and a plan that works or
+     * dies depending on the path is worse than one that is refused outright.
+     * The cost of being conservative is a plan that has to declare its
+     * intent; the cost of being permissive is a failure days later, on a
+     * branch nobody was watching.
+     *
+     * <p>A state that catches {@code capability_missing} is exempt: it has
+     * said what to do when the thing is impossible, so it is allowed to run
+     * and find out.
+     */
     private void requireCapabilities(ResolvedMagratheaWorkflow workflow, MagratheaRunBinding binding) {
         List<String> problems = new ArrayList<>();
         for (Map.Entry<String, MagratheaStateSpec> entry : workflow.states().entrySet()) {
@@ -831,7 +831,8 @@ public class MagratheaWorkflowService {
                 .orElseThrow(() -> new IllegalStateException("Run " + workflowRunId + " still goes — stop it first"));
         String from = fromState == null || fromState.isBlank() ? null : fromState.trim();
         if (from != null && !restartable.contains(from)) {
-            throw new IllegalArgumentException("Cannot restart from '" + from + "': the run entered " + restartable);
+            throw new de.mhus.vance.brain.runs.BadRunRequestException(
+                    "Cannot restart from '" + from + "': the run entered " + restartable);
         }
         ResolvedMagratheaWorkflow workflow =
                 workflowLoader.validateYaml(old.getWorkflowName(), old.getDefinitionYaml());
@@ -986,9 +987,10 @@ public class MagratheaWorkflowService {
         if (offered.isEmpty()) return false;
         String wanted = outcome == null ? "" : outcome.trim();
         if (!offered.get().outcomes().contains(wanted)) {
-            throw new IllegalArgumentException("Outcome '" + wanted + "' leads nowhere in state '"
-                    + offered.get().state() + "'; choose one of "
-                    + offered.get().outcomes());
+            throw new de.mhus.vance.brain.runs.BadRunRequestException(
+                    "Outcome '" + wanted + "' leads nowhere in state '"
+                            + offered.get().state() + "'; choose one of "
+                            + offered.get().outcomes());
         }
         boolean[] given = {false};
         onLane(projectId, () -> {
@@ -1059,7 +1061,7 @@ public class MagratheaWorkflowService {
     private static void requireKnownStates(ResolvedMagratheaWorkflow workflow, Set<String> names) {
         for (String name : names) {
             if (!workflow.states().containsKey(name)) {
-                throw new IllegalArgumentException(
+                throw new de.mhus.vance.brain.runs.BadRunRequestException(
                         "Unknown state '" + name + "' in breakpoints of workflow '" + workflow.name() + "'");
             }
         }

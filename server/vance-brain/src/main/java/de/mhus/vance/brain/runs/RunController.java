@@ -142,11 +142,10 @@ public class RunController {
                     projectId,
                     runId,
                     body.getBreakpoints() == null ? List.of() : body.getBreakpoints());
+        } catch (BadRunRequestException ex) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage(), ex);
         } catch (IllegalArgumentException ex) {
-            // Unknown run and unknown state are told apart by the message the source gives.
-            boolean unknownState = ex.getMessage() != null && ex.getMessage().startsWith("Unknown state");
-            throw new ResponseStatusException(
-                    unknownState ? HttpStatus.BAD_REQUEST : HttpStatus.NOT_FOUND, ex.getMessage(), ex);
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, ex.getMessage(), ex);
         } catch (UnsupportedOperationException ex) {
             throw new ResponseStatusException(HttpStatus.NOT_IMPLEMENTED, ex.getMessage(), ex);
         }
@@ -179,10 +178,10 @@ public class RunController {
                     body.getOutcome(),
                     body.getOutput(),
                     body.getErrorMessage());
+        } catch (BadRunRequestException ex) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage(), ex);
         } catch (IllegalArgumentException ex) {
-            boolean badOutcome = ex.getMessage() != null && ex.getMessage().startsWith("Outcome ");
-            throw new ResponseStatusException(
-                    badOutcome ? HttpStatus.BAD_REQUEST : HttpStatus.NOT_FOUND, ex.getMessage(), ex);
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, ex.getMessage(), ex);
         } catch (UnsupportedOperationException ex) {
             throw new ResponseStatusException(HttpStatus.NOT_IMPLEMENTED, ex.getMessage(), ex);
         }
@@ -218,12 +217,10 @@ public class RunController {
             return RunRestartResponse.builder().runId(created).build();
         } catch (IllegalStateException ex) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, ex.getMessage(), ex);
+        } catch (BadRunRequestException ex) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage(), ex);
         } catch (IllegalArgumentException ex) {
-            boolean badRequest = ex.getMessage() != null
-                    && (ex.getMessage().startsWith("Cannot restart")
-                            || ex.getMessage().startsWith("Unknown state"));
-            throw new ResponseStatusException(
-                    badRequest ? HttpStatus.BAD_REQUEST : HttpStatus.NOT_FOUND, ex.getMessage(), ex);
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, ex.getMessage(), ex);
         } catch (UnsupportedOperationException ex) {
             throw new ResponseStatusException(HttpStatus.NOT_IMPLEMENTED, ex.getMessage(), ex);
         }

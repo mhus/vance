@@ -8,6 +8,8 @@ import org.jspecify.annotations.Nullable;
 /** Reads an HTTP {@code Retry-After} header: a number of seconds or an HTTP date. */
 public final class HttpRetryAfter {
 
+    private static final long MAX_SECONDS = 365L * 24 * 3600;
+
     private HttpRetryAfter() {}
 
     /**
@@ -24,7 +26,9 @@ public final class HttpRetryAfter {
         if (header == null || header.isBlank()) return null;
         String trimmed = header.trim();
         try {
-            return now.plusSeconds(Long.parseLong(trimmed));
+            long seconds = Long.parseLong(trimmed);
+            // A number beyond what an Instant can hold is no instruction anyone can follow; capped at a year.
+            return now.plusSeconds(Math.max(-MAX_SECONDS, Math.min(MAX_SECONDS, seconds)));
         } catch (NumberFormatException notSeconds) {
             try {
                 return ZonedDateTime.parse(trimmed, DateTimeFormatter.RFC_1123_DATE_TIME)

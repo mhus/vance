@@ -198,6 +198,29 @@ class CatalogTriggerServiceTest {
     }
 
     @Test
+    void aNameThatIsNoSlugIsRefusedBeforeAnythingIsWritten() {
+        for (String bad : List.of("a/b", "../x", "x y", "-lead")) {
+            assertThatThrownBy(() -> service.createEvent("acme", "p", user, "github", "hook", "w", bad, Map.of()))
+                    .isInstanceOfSatisfying(
+                            ResponseStatusException.class,
+                            e -> assertThat(e.getStatusCode().value()).isEqualTo(400));
+        }
+        verify(settings, never()).setAs(any(), any(), any(), any(), any(), any(), any(), any());
+        verify(documents, never()).createText(any(), any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void aRefusedRegistrationLeavesNoSecretBehind() {
+        when(tools.invoke(eq("gh__create_hook"), any(), any(ToolInvocationContext.class)))
+                .thenReturn(Map.of("ok", false, "status", 401, "body", "bad credentials"));
+
+        assertThatThrownBy(() -> service.createEvent("acme", "p", user, "github", "hook", "w", null, Map.of()))
+                .isInstanceOf(ResponseStatusException.class);
+
+        verify(settings, never()).setAs(any(), any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
     void aRegistrationWithoutAnEventToPointAtIsTakenBack() {
         when(tools.invoke(eq("gh__create_hook"), any(), any(ToolInvocationContext.class)))
                 .thenReturn(Map.of("ok", true, "status", 201, "json", Map.of("id", 9)));

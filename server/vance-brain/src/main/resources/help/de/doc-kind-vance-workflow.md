@@ -122,6 +122,7 @@ Workflow, wo er im Diagramm auftaucht und gegen `bounds` zählt.
 | `timer_task` | Wartet eine Dauer ab (`7d`, `4h`, `30m`) |
 | `condition_task` | Verzweigt über einen Ausdruck, ohne Seiteneffekt |
 | `workflow_task` | Startet einen anderen Workflow und wartet auf ihn — mit `items:` einmal pro Listenelement |
+| `for_each_task` | Schleife über eine Liste in diesem Workflow: `each` führt in den Körper, `done` verlässt sie |
 | `terminal` | Beendet den Lauf mit `success` oder `failure` |
 
 ## Daten weiterreichen
@@ -132,7 +133,40 @@ einem Tool-Parameter, im Gate-Titel, überall wo ein String steht.
 Aufruf-Argumente aus `parameters:` liest du als `${params.<key>}`.
 Ein fehlender Key wird zum leeren String, nicht zum Fehler.
 
-## Für jedes Element
+## Für jedes Element, in diesem Workflow
+
+Ein `for_each_task` läuft über eine Liste, ohne das Dokument zu verlassen:
+
+```yaml
+handle_all:
+  type: for_each_task
+  items: "${state.messages}"
+  as: message                  # Standard: item
+  collect: "${state.reply}"    # optional: ein Wert je Element
+  storeAs: replies
+  on:
+    each: handle               # erster State des Körpers
+    done: report               # nach dem letzten Element
+handle:
+  type: agent_task
+  recipe: ford
+  params: { prompt: "Beantworte: ${state.message.text}" }
+  storeAs: reply
+  on:
+    success: handle_all        # zurück zur Schleife = nächstes Element
+```
+
+Der Körper sind alle States, die von `each` aus erreichbar sind, bevor
+der Pfeil zurückführt. Jeder Durchlauf setzt das Element
+(`${state.message}`), `${state.index}` und `${state.count}`. Eine
+Fehleroption je Element gibt es nicht: Fehler im Körper fängst du mit
+`catch:` — ein Pfeil zurück zur Schleife überspringt zum nächsten
+Element, ein Pfeil woandershin verlässt die Schleife. Eine leere Liste
+geht sofort nach `done`; die Liste darf höchstens `maxItems:` Elemente
+haben (Standard 100, höchstens 1000). Jeder Durchlauf zählt gegen
+`bounds.maxTaskSpawns`.
+
+## Für jedes Element, in einem anderen Workflow
 
 Gib einem `workflow_task` eine `items:`-Liste, und er startet den anderen
 Workflow einmal pro Element, nacheinander. Das Element kommt als Parameter

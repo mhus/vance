@@ -106,7 +106,8 @@ gate title/body, or terminal result — e.g. `agent_task` with
 
 A value that is **exactly one placeholder** (`"${state.list}"`) keeps
 its type — list, object, number, boolean — in the `params:` of a
-`tool_task` or `workflow_task` and in a `workflow_task`'s `items:`;
+`tool_task` or `workflow_task`, in the `items:` of a `workflow_task` or
+`for_each_task`, and in a `for_each_task`'s `collect:`;
 everywhere else (prompts, titles, bodies) it becomes text. Lists can be
 indexed with fixed indexes: `${state.rows[0].id}`.
 
@@ -125,6 +126,7 @@ This is **distinct** from `condition_task` branching, which uses SpEL
 | `timer_task` | no | `duration:` (`7d`/`4h`/`30m`/ISO-8601) | fired |
 | `condition_task` | yes | `transitions: [{if:<SpEL>, to}, …, {else}]` | (sets next state directly) |
 | `workflow_task` | no | `workflow:`, `params:`, optional `items:` (for-each) | success / failure |
+| `for_each_task` | yes | `items:`, `as:?`, `maxItems:?`, `collect:?`; `on: {each, done}` | each / done (/ failure) |
 | `terminal` | yes | `outcome: success\|failure`, `result?` | (ends the run) |
 
 Notes:
@@ -137,15 +139,30 @@ Notes:
   `ford`.
 - `workflow_task.workflow` names another workflow; it blocks until
   that sub-run reaches a terminal state.
-- **For-each:** `workflow_task` with `items: "${params.list}"` starts
+- **Loop over a list in the same workflow:** `for_each_task` with
+  `items: "${state.list}"`. Its `on:` has two outcomes: `each` leads to
+  the first state of the loop body, `done` leaves the loop. The body is
+  ordinary states; the last of them points back at the loop state
+  (`on: { success: <loop> }`) — that is "next element". Each pass sets
+  `${state.<as>}` (default `item`), `${state.index}` and
+  `${state.count}`. `collect: "${state.reply}"` gathers one value per
+  pass into a list that `storeAs:` receives when the loop is done. An
+  empty list goes to `done` at once; a non-list `items:` fails the loop
+  state. There is no `onItemError`: catch errors in the body with
+  `catch:` — an arrow from a body state back to the loop means "skip to
+  the next element", an arrow anywhere else leaves the loop. Entering
+  the loop from outside the body always starts a new loop. Every pass
+  counts against `bounds.maxTaskSpawns` (body states + the loop state).
+  Use this for "do X for each Y"; do not build counter loops by hand.
+- **For-each with a sub-workflow:** `workflow_task` with `items: "${params.list}"` starts
   one sub-run per element, sequentially. Keys: `as:` (param name of the
   element, default `item`), `onItemError: fail|continue` (default
   `fail`), `maxItems:` (default 100, hard limit 1000). The sub-workflow
   reads the element as `${params.<as>...}` plus `index` and `count`;
   `storeAs:` receives the **list** of sub-run results in element order.
   An empty list succeeds at once with `[]`; a non-list `items:` fails
-  the state. Prefer this over hand-built counter loops for "do X for
-  each Y".
+  the state. Use it only when the per-element work is a separate,
+  reusable workflow; otherwise prefer `for_each_task`.
 
 ## Rules of thumb
 

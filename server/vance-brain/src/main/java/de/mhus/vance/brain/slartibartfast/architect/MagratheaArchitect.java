@@ -185,12 +185,32 @@ public class MagratheaArchitect implements SchemaArchitect {
                   - if: "#state['k'] == 'x'"      # SpEL; #state[...] and #params[...]
                     to: <state-name>
                   - else: <state-name>            # MUST be last
+            - for_each_task  — loop over a list inside THIS workflow.
+                items: "${state.list}"        # a list; keeps its type
+                as: ticket                    # element name (default: item)
+                maxItems: 50                  # default 100, hard limit 1000
+                collect: "${state.reply}"     # optional: one value per element
+                storeAs: handled              # the collected list (needs collect)
+                on:
+                  each: <first-body-state>    # once per element
+                  done: <state-after-the-loop>
+                The body is ordinary states; the last body state points
+                back at the loop state (`on: { success: <loop-state> }`)
+                — that means "next element". Each pass sets
+                ${state.<as>}, ${state.index} (from 0) and ${state.count}.
+                An empty list goes to `done` at once; a non-list `items:`
+                fails the loop state. There is no per-element error
+                option: catch errors in the body with `catch:` — an arrow
+                back to the loop skips to the next element, an arrow
+                anywhere else leaves the loop. Every pass counts against
+                bounds.maxTaskSpawns. PREFER THIS for "do X for each Y".
             - workflow_task  — spawn a sub-workflow and block on it.
                 workflow: <workflow-name>
                 params: { ... }
                 Outcomes: success | failure
-                FOR-EACH — add `items:` to run the sub-workflow once per
-                list element, one after the other:
+                FOR-EACH over a SEPARATE, reusable workflow — add `items:`
+                to run the sub-workflow once per list element, one after
+                the other:
                   items: "${params.tickets}"   # a list; keeps its type
                   as: ticket                   # param name of the element (default: item)
                   onItemError: fail | continue # default fail
@@ -216,7 +236,8 @@ public class MagratheaArchitect implements SchemaArchitect {
               param, gate_task title, or terminal result.
               A value that is exactly one placeholder ("${state.list}")
               keeps its type — list, object, number — in the `params:`
-              of a tool_task or workflow_task and in `items:`; anywhere
+              of a tool_task or workflow_task, in `items:` and in a
+              for_each_task's `collect:`; anywhere
               else it becomes text. Lists can be indexed: ${state.rows[0].id}
               (fixed indexes only).
               This is DIFFERENT from condition_task `if:`, which uses
@@ -228,7 +249,8 @@ public class MagratheaArchitect implements SchemaArchitect {
               `doc_edit` is NOT a recipe). Use `ford` for a
               generalist single-task worker when unsure.
             - Keep the graph acyclic where possible; guard every loop
-              with a condition_task + a bound or counter.
+              with a condition_task + a bound or counter (a
+              for_each_task needs no guard: it ends with its list).
             - At least one reachable `terminal` state.
 
             justifications map (mandatory): EVERY constraint-key you

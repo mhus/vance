@@ -118,6 +118,7 @@ the workflow, where it shows up in the diagram and counts against
 | `timer_task` | Waits for a duration (`7d`, `4h`, `30m`) |
 | `condition_task` | Branches on an expression, no side effects |
 | `workflow_task` | Runs another workflow and waits for it — with `items:` once per list element |
+| `for_each_task` | Loops over a list inside this workflow: `each` leads into the body, `done` leaves |
 | `terminal` | Ends the run with `success` or `failure` |
 
 ## Passing data along
@@ -128,7 +129,38 @@ parameter, a gate title, anywhere a string appears. Caller arguments
 declared under `parameters:` read as `${params.<key>}`. A missing key
 becomes an empty string rather than an error.
 
-## For each element
+## For each element, in this workflow
+
+A `for_each_task` loops over a list without leaving the document:
+
+```yaml
+handle_all:
+  type: for_each_task
+  items: "${state.messages}"
+  as: message                  # default: item
+  collect: "${state.reply}"    # optional: one value per element
+  storeAs: replies
+  on:
+    each: handle               # first state of the body
+    done: report               # after the last element
+handle:
+  type: agent_task
+  recipe: ford
+  params: { prompt: "Answer: ${state.message.text}" }
+  storeAs: reply
+  on:
+    success: handle_all        # back to the loop = next element
+```
+
+The body is every state reachable from `each` before the arrow back.
+Each pass sets the element (`${state.message}`), `${state.index}` and
+`${state.count}`. There is no per-element error option: catch errors in
+the body with `catch:` — an arrow back to the loop skips to the next
+element, an arrow elsewhere leaves the loop. An empty list goes to
+`done` at once; the list may hold at most `maxItems:` elements (default
+100, at most 1000). Every pass counts against `bounds.maxTaskSpawns`.
+
+## For each element, in another workflow
 
 Give a `workflow_task` an `items:` list and it runs the other workflow
 once per element, one after the other. The element arrives as the

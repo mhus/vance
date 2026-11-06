@@ -28,6 +28,8 @@ import WorkflowEdgeInspector from '@/cortex/workflowEdit/WorkflowEdgeInspector.v
 import WorkflowEditGraph from '@/cortex/workflowEdit/WorkflowEditGraph.vue';
 import WorkflowInspector from '@/cortex/workflowEdit/WorkflowInspector.vue';
 import WorkflowPalette from '@/cortex/workflowEdit/WorkflowPalette.vue';
+import WorkflowSources from '@/cortex/workflowEdit/WorkflowSources.vue';
+import { workflowNameOf } from '@/cortex/workflowEdit/workflowSources';
 import { toolLabel, type PaletteTool } from '@/cortex/workflowEdit/paletteModel';
 import { stateTemplate, toolStateTemplate } from '@/cortex/workflowEdit/stateTemplates';
 import { useWorkflowChange } from '@/cortex/workflowEdit/useWorkflowChange';
@@ -209,6 +211,13 @@ watch(() => props.docPath, () => check.clear());
       >{{ t('documents.workflowView.check') }}</VButton>
       <span v-if="blockedReason" class="run-note">{{ t('documents.workflowView.runBlocked') }}</span>
     </div>
+
+    <WorkflowSources
+      :project-id="projectId"
+      :workflow="workflowNameOf(docPath)"
+      :editable="mode === 'edit' && !readOnly"
+      :tools="workflowTools"
+    />
 
     <VAlert v-if="change.error.value" variant="error">{{ change.error.value }}</VAlert>
     <VAlert v-if="check.error.value" variant="error">{{ check.error.value }}</VAlert>

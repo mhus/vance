@@ -90,7 +90,12 @@ public record ResolvedUrsaEvent(
          * {@code reply:} — a fixed answer for the caller instead of the standard body, or {@code null}. Only for
          * recipe and workflow events: a script answers with its own output.
          */
-        @Nullable WebhookReplySpec reply) {
+        @Nullable WebhookReplySpec reply,
+        /**
+         * {@code from:} — {@code <service>/<trigger>} of the catalog trigger this event was made from. Information
+         * only: nothing at run time reads it; the editor uses it to offer an update when the template changed.
+         */
+        @Nullable String from) {
 
     /** {@code true} when bearer authentication is required. */
     public boolean requiresAuth() {

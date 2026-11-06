@@ -89,4 +89,27 @@ class UrsaEventControllerForwardMarkerTest {
         verify(service).trigger(eq(TENANT), eq(PROJECT), eq(EVENT), eq("GET"), any(), any(), flag.capture(), any());
         return flag.getValue();
     }
+
+    @Test
+    void anEventWithAReplyAnswersWithIt_andStillRunsTheAction() {
+        when(service.replyOf(TENANT, PROJECT, EVENT))
+                .thenReturn(java.util.Optional.of(
+                        new de.mhus.vance.shared.ursaevents.WebhookReplySpec(202, "text/plain", "Working on it")));
+
+        var answer = controller.triggerGet(TENANT, PROJECT, EVENT, request);
+
+        assertThat(answer.getStatusCode().value()).isEqualTo(202);
+        assertThat(answer.getBody()).isEqualTo("Working on it");
+        assertThat(answer.getHeaders().getContentType().toString()).startsWith("text/plain");
+        verify(service).trigger(any(), any(), any(), any(), any(), any(), anyBoolean(), any());
+    }
+
+    @Test
+    void anEventWithoutAReplyAnswersWithTheStandardBody() {
+        var answer = controller.triggerGet(TENANT, PROJECT, EVENT, request);
+
+        assertThat(answer.getStatusCode().value()).isEqualTo(200);
+        assertThat(((de.mhus.vance.api.ursaevents.EventTriggerResponse) answer.getBody()).getWorkflowRunId())
+                .isEqualTo("run-1");
+    }
 }

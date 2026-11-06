@@ -455,4 +455,60 @@ class UrsaEventLoaderTest {
 
         assertThat(e.outputVisibleToAgents()).isFalse();
     }
+
+    @Test
+    void parses_a_fixed_reply_for_the_caller() {
+        ResolvedUrsaEvent e = loader.validateYaml("slash", """
+                workflow: on-slash
+                auth: { public: true }
+                reply:
+                  status: 202
+                  body: "Working on it"
+                """);
+
+        assertThat(e.reply().status()).isEqualTo(202);
+        assertThat(e.reply().contentType()).isEqualTo("text/plain");
+        assertThat(e.reply().body()).isEqualTo("Working on it");
+    }
+
+    @Test
+    void a_structured_reply_is_json_and_the_status_defaults_to_200() {
+        ResolvedUrsaEvent e = loader.validateYaml("slash", """
+                workflow: on-slash
+                auth: { public: true }
+                reply:
+                  body: { response_type: ephemeral, text: "ok" }
+                """);
+
+        assertThat(e.reply().status()).isEqualTo(200);
+        assertThat(e.reply().contentType()).isEqualTo("application/json");
+        assertThat(e.reply().body()).isInstanceOf(java.util.Map.class);
+    }
+
+    @Test
+    void an_event_without_a_reply_has_none() {
+        assertThat(loader.validateYaml("p", "workflow: w\nauth: { public: true }\n")
+                        .reply())
+                .isNull();
+    }
+
+    @Test
+    void a_reply_is_a_success_status_and_not_for_a_script() {
+        // An error answer would tell the provider to deliver the same call again.
+        assertThatThrownBy(() -> loader.validateYaml("p", """
+                workflow: w
+                auth: { public: true }
+                reply: { status: 500 }
+                """)).hasMessageContaining("200 to 299");
+        assertThatThrownBy(() -> loader.validateYaml("p", """
+                script: { source: "return 1;" }
+                auth: { public: true }
+                reply: { body: x }
+                """)).hasMessageContaining("script");
+        assertThatThrownBy(() -> loader.validateYaml("p", """
+                workflow: w
+                auth: { public: true }
+                reply: text
+                """)).hasMessageContaining("map");
+    }
 }

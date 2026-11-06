@@ -85,7 +85,12 @@ public record ResolvedUrsaEvent(
          * {@code idempotencyHeader} — header holding the provider's delivery id; a delivery seen again is
          * answered with the first answer instead of running again. {@code null} when not asked for.
          */
-        @Nullable String idempotencyHeader) {
+        @Nullable String idempotencyHeader,
+        /**
+         * {@code reply:} — a fixed answer for the caller instead of the standard body, or {@code null}. Only for
+         * recipe and workflow events: a script answers with its own output.
+         */
+        @Nullable WebhookReplySpec reply) {
 
     /** {@code true} when bearer authentication is required. */
     public boolean requiresAuth() {

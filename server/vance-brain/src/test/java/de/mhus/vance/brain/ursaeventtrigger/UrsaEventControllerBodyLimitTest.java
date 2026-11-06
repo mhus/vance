@@ -53,7 +53,8 @@ class UrsaEventControllerBodyLimitTest {
     void aBodyWithinTheCapGoesThrough() {
         assertThat(controller
                         .triggerPost("acme", "p", "e", post("{\"a\":1}", true))
-                        .getWorkflowRunId())
+                        .getBody())
+                .extracting(b -> ((de.mhus.vance.api.ursaevents.EventTriggerResponse) b).getWorkflowRunId())
                 .isEqualTo("run-1");
     }
 
@@ -78,7 +79,8 @@ class UrsaEventControllerBodyLimitTest {
 
         assertThat(controller
                         .triggerPost("acme", "p", "e", post(exactly, false))
-                        .getWorkflowRunId())
+                        .getBody())
+                .extracting(b -> ((de.mhus.vance.api.ursaevents.EventTriggerResponse) b).getWorkflowRunId())
                 .isEqualTo("run-1");
     }
 }

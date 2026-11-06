@@ -238,6 +238,7 @@ public class UrsaEventLoader implements RunAsReader {
                     + "workflow spawn is open-ended; poll its id instead");
         }
         Boolean outputToAgents = booleanOrNull(spec.get("outputToAgents"), "outputToAgents");
+        WebhookReplySpec reply = parseReply(spec.get("reply"), script != null);
 
         Map<String, Object> params = new LinkedHashMap<>();
         Object rawParams = spec.get("params");
@@ -283,7 +284,37 @@ public class UrsaEventLoader implements RunAsReader {
                 tags,
                 signature,
                 rateLimitPerMinute,
-                idempotencyHeader);
+                idempotencyHeader,
+                reply);
+    }
+
+    /** Parses {@code reply:}; {@code null} when absent. */
+    private static @Nullable WebhookReplySpec parseReply(@Nullable Object raw, boolean scriptEvent) {
+        if (raw == null) return null;
+        if (scriptEvent) {
+            throw new IllegalStateException(
+                    "'reply' is not supported for 'script:' events — a script answers with " + "its own return value");
+        }
+        if (!(raw instanceof Map<?, ?> map)) {
+            throw new IllegalStateException("'reply' must be a map with 'status', 'body' and 'contentType'");
+        }
+        int status = 200;
+        if (map.get("status") != null) {
+            if (!(map.get("status") instanceof Number n) || n.intValue() < 200 || n.intValue() > 299) {
+                throw new IllegalStateException("'reply.status' must be a status from 200 to 299 — an error answer "
+                        + "would tell the provider to deliver again");
+            }
+            status = n.intValue();
+        }
+        Object body = map.get("body");
+        if (body != null && !(body instanceof String) && !(body instanceof Map<?, ?>) && !(body instanceof List<?>)) {
+            body = String.valueOf(body);
+        }
+        String contentType = stringOrNull(map.get("contentType"));
+        if (contentType == null) {
+            contentType = body instanceof Map<?, ?> || body instanceof List<?> ? "application/json" : "text/plain";
+        }
+        return new WebhookReplySpec(status, contentType, body);
     }
 
     /** Parses the {@code script:} block when present; returns {@code null} when absent. */

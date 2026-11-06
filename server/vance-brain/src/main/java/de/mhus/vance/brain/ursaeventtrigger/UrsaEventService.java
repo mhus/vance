@@ -677,6 +677,17 @@ public class UrsaEventService {
         return new UrsaEventTriggerResult(targetName, result.spawnedId(), result.output(), correlationId, firedAt);
     }
 
+    /**
+     * The fixed answer the event declares for its caller ({@code reply:}), if any. Read on the pod that took the
+     * request, not on the owning pod: it is static configuration that every pod sees, and answering here keeps
+     * a forwarded request and a replayed delivery on the same footing. Call it only after {@code trigger}
+     * succeeded — an unknown event has been refused by then.
+     */
+    public java.util.Optional<de.mhus.vance.shared.ursaevents.WebhookReplySpec> replyOf(
+            String tenantId, String projectId, String eventName) {
+        return eventLoader.load(tenantId, projectId, eventName).map(ResolvedUrsaEvent::reply);
+    }
+
     private static String targetNameOf(TriggerAction action, String eventName) {
         if (action instanceof TriggerAction.Recipe r) return r.recipe();
         if (action instanceof TriggerAction.Workflow w) return w.workflow();

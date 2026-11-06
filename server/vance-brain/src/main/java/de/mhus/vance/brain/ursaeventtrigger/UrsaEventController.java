@@ -8,6 +8,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -71,7 +72,7 @@ public class UrsaEventController {
     }
 
     @GetMapping("/brain/{tenant}/event/{project}/{event}")
-    public EventTriggerResponse triggerGet(
+    public ResponseEntity<?> triggerGet(
             @PathVariable("tenant") String tenant,
             @PathVariable("project") String project,
             @PathVariable("event") String event,
@@ -86,11 +87,11 @@ public class UrsaEventController {
                 null,
                 isForwarded(request),
                 new UrsaEventService.WebhookRequest(new byte[0], request::getHeader));
-        return new EventTriggerResponse(event, result.workflowName(), result.workflowRunId(), result.output());
+        return answer(tenant, project, event, result);
     }
 
     @PostMapping("/brain/{tenant}/event/{project}/{event}")
-    public EventTriggerResponse triggerPost(
+    public ResponseEntity<?> triggerPost(
             @PathVariable("tenant") String tenant,
             @PathVariable("project") String project,
             @PathVariable("event") String event,
@@ -107,7 +108,21 @@ public class UrsaEventController {
                 payload,
                 isForwarded(request),
                 new UrsaEventService.WebhookRequest(raw, request::getHeader));
-        return new EventTriggerResponse(event, result.workflowName(), result.workflowRunId(), result.output());
+        return answer(tenant, project, event, result);
+    }
+
+    /** The standard body, or the event's own {@code reply:} when it declares one. */
+    private ResponseEntity<?> answer(
+            String tenant, String project, String event, UrsaEventService.UrsaEventTriggerResult result) {
+        var reply = eventService.replyOf(tenant, project, event);
+        if (reply.isPresent()) {
+            var r = reply.get();
+            ResponseEntity.BodyBuilder builder =
+                    ResponseEntity.status(r.status()).contentType(MediaType.parseMediaType(r.contentType()));
+            return r.body() == null ? builder.build() : builder.body(r.body());
+        }
+        return ResponseEntity.ok(
+                new EventTriggerResponse(event, result.workflowName(), result.workflowRunId(), result.output()));
     }
 
     /**

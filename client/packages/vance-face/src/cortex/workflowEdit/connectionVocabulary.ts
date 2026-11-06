@@ -42,11 +42,11 @@ export function outcomeSuggestions(type: string): readonly string[] {
 }
 
 /**
- * The kinds of connection a state of {@code type} can have. A terminal state
- * has none; only a {@code condition_task} branches ({@code transitions:}).
+ * The kinds of connection a state of {@code type} can have. A terminal or an
+ * end state has none; only a {@code condition_task} branches ({@code transitions:}).
  */
 export function connectionKinds(type: string): WorkflowEdgeKind[] {
-  if (type === 'terminal') return [];
+  if (type === 'terminal' || type === 'end') return [];
   if (type === 'condition_task') return ['condition', 'else', 'catch'];
   return ['on', 'catch'];
 }

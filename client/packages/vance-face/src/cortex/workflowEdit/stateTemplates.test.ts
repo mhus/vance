@@ -25,10 +25,12 @@ describe('stateTemplate', () => {
     for (const type of WORKFLOW_TASK_TYPES) {
       const g = parseWorkflowGraph(addState('', 'first', stateTemplate(type)));
       expect(g.states[0].knownType, type).toBe(true);
-      // A loop is only complete with its two arrows; nothing else is missing from a new state.
+      // A loop is only complete with its two arrows, an end only inside a loop body; nothing else is missing.
       const expected = type === 'for_each_task'
         ? ["state 'first' (for_each_task) needs 'on: each: <state>'", "state 'first' (for_each_task) needs 'on: done: <state>'"]
-        : [];
+        : type === 'end'
+          ? ["state 'first' (end) is not in the body of a for_each_task"]
+          : [];
       expect(g.problems, type).toEqual(expected);
     }
   });

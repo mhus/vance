@@ -243,6 +243,8 @@ describe('connect', () => {
 
   it('refuses to leave a terminal state or to branch from a state that is no condition_task', () => {
     fails(() => connect(DOC, { source: 'done', kind: 'on', label: 'x', target: 'plan' }), /terminal/);
+    const withEnd = addState(DOC, 'stop', { type: 'end' });
+    fails(() => connect(withEnd, { source: 'stop', kind: 'on', label: 'x', target: 'plan' }), /end state/);
     fails(
       () => connect(DOC, { source: 'plan', kind: 'else', target: 'done' }),
       /Only a condition_task/,

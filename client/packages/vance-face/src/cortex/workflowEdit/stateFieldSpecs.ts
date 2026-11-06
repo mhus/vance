@@ -104,6 +104,8 @@ const SPECS: Record<string, FieldSpec[]> = {
     ENTER_COUNTER,
     RESET_COUNTERS,
   ],
+  // Nothing to say: an end only closes the body it sits in.
+  end: [],
   terminal: [{ key: 'outcome', path: ['outcome'], kind: 'select', options: ['success', 'failure'] }],
 };
 

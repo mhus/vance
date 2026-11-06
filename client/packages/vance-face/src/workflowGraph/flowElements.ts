@@ -42,6 +42,7 @@ export function typeColor(state: WorkflowStateNode): string {
     case 'condition_task': return 'color-mix(in oklab, var(--color-base-content) 62%, transparent)';
     case 'workflow_task': return 'var(--color-accent)';
     case 'for_each_task': return 'var(--color-accent)';
+    case 'end': return 'var(--color-accent)';
     case 'terminal':
       return state.terminalOutcome === 'failure'
         ? 'var(--color-error)'

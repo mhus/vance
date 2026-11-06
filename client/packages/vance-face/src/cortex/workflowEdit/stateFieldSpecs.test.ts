@@ -4,7 +4,10 @@ import { fieldSpecsFor, fromDraft, ownedKeys, toDraft, valueAt } from './stateFi
 
 describe('fieldSpecsFor', () => {
   it('has fields for every known type and none for an unknown one', () => {
-    for (const type of WORKFLOW_TASK_TYPES) expect(fieldSpecsFor(type).length, type).toBeGreaterThan(0);
+    for (const type of WORKFLOW_TASK_TYPES) {
+      // An end has nothing to fill in.
+      if (type !== 'end') expect(fieldSpecsFor(type).length, type).toBeGreaterThan(0);
+    }
     expect(fieldSpecsFor('nonsense')).toEqual([]);
   });
 

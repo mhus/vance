@@ -16,8 +16,9 @@
 // Spec: `specification/public/workflows.md` §2 + §3.
 
 import { parseYamlBody } from '@vance/shared';
+import { enclosingLoop } from './loopBody';
 
-/** The ten task types a state's `type:` may name (spec §3). */
+/** The eleven task types a state's `type:` may name (spec §3). */
 export const WORKFLOW_TASK_TYPES = [
   'agent_task',
   'shell_task',
@@ -28,6 +29,7 @@ export const WORKFLOW_TASK_TYPES = [
   'condition_task',
   'workflow_task',
   'for_each_task',
+  'end',
   'terminal',
 ] as const;
 
@@ -47,7 +49,7 @@ export interface WorkflowStateNode {
   storeAs?: string;
   hasRetry: boolean;
   isStart: boolean;
-  /** `type: terminal` — ends the run. */
+  /** `type: terminal` or `type: end` — a state with no way on of its own (the run ends, or a loop pass does). */
   isTerminal: boolean;
   /** `outcome:` of a terminal state (`success` / `failure`). */
   terminalOutcome?: string;
@@ -189,7 +191,7 @@ export function parseWorkflowGraph(body: string): WorkflowGraph {
       storeAs: optionalString(raw.storeAs),
       hasRetry: isRecord(raw.retry),
       isStart: name === start,
-      isTerminal: type === 'terminal',
+      isTerminal: type === 'terminal' || type === 'end',
       terminalOutcome: type === 'terminal' ? optionalString(raw.outcome) : undefined,
       missing: false,
     });
@@ -235,6 +237,8 @@ export function parseWorkflowGraph(body: string): WorkflowGraph {
     }
   }
 
+  annotateEnds(states, edges, problems);
+
   return {
     start,
     description: optionalString(root.description),
@@ -244,6 +248,31 @@ export function parseWorkflowGraph(body: string): WorkflowGraph {
     edges,
     problems,
   };
+}
+
+/**
+ * An {@code end} state ends the loop whose body it is part of: the node says which, and a problem is listed when
+ * there is none, or when it is unclear which — the server would refuse the workflow for the same reason.
+ */
+function annotateEnds(
+  states: WorkflowStateNode[],
+  edges: readonly WorkflowEdge[],
+  problems: string[],
+): void {
+  for (const state of states) {
+    if (state.type !== 'end') continue;
+    const found = enclosingLoop(states, edges, state.name);
+    if (found.kind === 'loop') {
+      state.detail = `↺ ${found.loop}`;
+    } else if (found.kind === 'none') {
+      problems.push(`state '${state.name}' (end) is not in the body of a for_each_task`);
+    } else {
+      problems.push(
+        `state '${state.name}' (end) is in the bodies of the loops '${found.inner}' and '${found.outer}', `
+          + 'which do not lie one inside the other',
+      );
+    }
+  }
 }
 
 /**

@@ -363,6 +363,9 @@ export function connect(
   if (sourceType === 'terminal') {
     throw new WorkflowEditError(`'${edge.source}' is a terminal state; it ends the run and leads nowhere.`);
   }
+  if (sourceType === 'end') {
+    throw new WorkflowEditError(`'${edge.source}' is an end state; it ends a loop pass and leads nowhere.`);
+  }
   if ((edge.kind === 'condition' || edge.kind === 'else') && sourceType !== 'condition_task') {
     throw new WorkflowEditError(
       `Only a condition_task has branches; '${edge.source}' is ${sourceType ?? 'untyped'}.`,

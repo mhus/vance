@@ -18,6 +18,7 @@ const TEMPLATES: Record<WorkflowTaskType, Record<string, unknown>> = {
   condition_task: { type: 'condition_task' },
   workflow_task: { type: 'workflow_task', workflow: 'other-workflow' },
   for_each_task: { type: 'for_each_task', items: '${state.list}' },
+  end: { type: 'end' },
   terminal: { type: 'terminal', outcome: 'success' },
 };
 

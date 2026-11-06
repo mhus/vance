@@ -9,6 +9,7 @@ import {
 describe('connectionKinds', () => {
   it('gives a terminal state nothing, a condition_task its branches, the rest on and catch', () => {
     expect(connectionKinds('terminal')).toEqual([]);
+    expect(connectionKinds('end')).toEqual([]);
     expect(connectionKinds('condition_task')).toEqual(['condition', 'else', 'catch']);
     expect(connectionKinds('shell_task')).toEqual(['on', 'catch']);
   });

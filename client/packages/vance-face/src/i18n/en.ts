@@ -1616,6 +1616,7 @@ export default {
           condition_task: 'Chooses the next state by conditions.',
           workflow_task: 'Runs another workflow, once or for each item.',
           for_each_task: 'Loops over a list in this workflow: each element goes through the body.',
+          end: 'Ends a pass through a loop body; the loop goes on with the next element.',
           terminal: 'Ends the run, with success or failure.',
         },
       },

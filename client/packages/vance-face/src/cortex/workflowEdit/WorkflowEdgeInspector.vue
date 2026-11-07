@@ -47,6 +47,13 @@ const targetOptions = computed(() =>
 );
 
 const named = computed(() => props.edge.kind === 'on' || props.edge.kind === 'catch');
+/** What the connection's name is called: an outcome, an error kind, or a condition. */
+const nameLabel = computed(() => {
+  if (!named.value) return t('documents.workflowView.connect.condition');
+  return props.edge.kind === 'catch'
+    ? t('documents.workflowView.connect.errorKind')
+    : t('documents.workflowView.connect.outcome');
+});
 const labelOptions = computed(() => {
   const pool: readonly string[] = props.edge.kind === 'catch'
     ? ERROR_KINDS
@@ -86,49 +93,65 @@ async function remove(): Promise<void> {
   <aside v-if="found" class="wf-edge-inspector">
     <VAlert v-if="error" variant="error">{{ error }}</VAlert>
 
-    <VGroup :label="t('documents.workflowView.edge.title')">
+    <!-- One group: where the connection starts and what kind it is, its name, where it goes, and the way to remove
+         it. The fields carry their own small labels, so no group needs a title. -->
+    <VGroup>
       <VGroupRow
         :label="edge.source"
-        :meta="t('documents.workflowView.edge.from')"
+        :meta="t(`documents.workflowView.connect.kind.${edge.kind}`)"
         navigates
         @click="emit('select', edge.source)"
       />
-      <VGroupRow
-        :label="t(`documents.workflowView.connect.kind.${edge.kind}`)"
-        :meta="t('documents.workflowView.edge.kind')"
-      />
-    </VGroup>
 
-    <VGroup v-if="edge.kind !== 'else'" :label="named ? (edge.kind === 'catch' ? t('documents.workflowView.connect.errorKind') : t('documents.workflowView.connect.outcome')) : t('documents.workflowView.connect.condition')">
-      <div v-if="editable" class="wf-edge-pad wf-edge-rename">
-        <div class="wf-edge-grow">
-          <VCombobox v-if="named" :model-value="draft" :options="labelOptions" @update:model-value="draft = $event ?? ''" />
-          <VInput v-else v-model="draft" />
+      <template v-if="edge.kind !== 'else'">
+        <div v-if="editable" class="wf-edge-pad wf-edge-rename">
+          <div class="wf-edge-grow">
+            <VCombobox
+              v-if="named"
+              :model-value="draft"
+              :options="labelOptions"
+              :label="nameLabel"
+              @update:model-value="draft = $event ?? ''"
+            />
+            <VInput v-else v-model="draft" size="sm" :label="nameLabel" />
+          </div>
+          <VButton size="sm" variant="secondary" :disabled="!canRelabel" @click="rename">
+            {{ t('documents.workflowView.edge.apply') }}
+          </VButton>
         </div>
-        <VButton size="sm" variant="secondary" :disabled="!canRelabel" @click="rename">
-          {{ t('documents.workflowView.edge.apply') }}
-        </VButton>
-      </div>
-      <p v-else class="wf-edge-pad wf-edge-text">{{ savedLabel }}</p>
-    </VGroup>
+        <VGroupRow v-else :label="savedLabel" :meta="nameLabel" />
+      </template>
 
-    <VGroup :label="t('documents.workflowView.edge.to')">
       <div v-if="editable" class="wf-edge-pad">
-        <VSelect :model-value="found.target" :options="targetOptions" @update:model-value="onTarget" />
+        <VSelect
+          :model-value="found.target"
+          :options="targetOptions"
+          :label="t('documents.workflowView.edge.to')"
+          @update:model-value="onTarget"
+        />
       </div>
-      <VGroupRow v-else :label="found.target" navigates @click="emit('select', found.target)" />
-    </VGroup>
+      <VGroupRow
+        v-else
+        :label="found.target"
+        :meta="t('documents.workflowView.edge.to')"
+        navigates
+        @click="emit('select', found.target)"
+      />
 
-    <VGroup v-if="editable">
-      <VGroupRow :label="t('documents.workflowView.edge.deleteRow')" danger navigates @click="remove" />
+      <VGroupRow
+        v-if="editable"
+        :label="t('documents.workflowView.edge.deleteRow')"
+        danger
+        navigates
+        @click="remove"
+      />
     </VGroup>
   </aside>
 </template>
 
 <style scoped>
-.wf-edge-inspector { display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; }
-.wf-edge-pad { padding: 0.5rem 0.75rem; }
-.wf-edge-rename { display: flex; align-items: center; gap: 0.5rem; }
+.wf-edge-inspector { display: flex; flex-direction: column; gap: 0.3rem; min-width: 0; }
+.wf-edge-pad { padding: 0.35rem 0.75rem; }
+.wf-edge-rename { display: flex; align-items: flex-end; gap: 0.5rem; }
 .wf-edge-grow { flex: 1; min-width: 0; }
-.wf-edge-text { margin: 0; font-size: 0.85rem; font-family: ui-monospace, monospace; }
 </style>

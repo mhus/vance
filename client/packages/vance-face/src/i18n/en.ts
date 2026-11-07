@@ -1644,10 +1644,7 @@ export default {
         confirm: 'Connect',
       },
       edge: {
-        title: 'Connection',
-        from: 'from',
         to: 'Leads to',
-        kind: 'kind',
         apply: 'Apply',
         deleteRow: 'Delete connection…',
         deleteTitle: 'Delete this connection?',

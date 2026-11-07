@@ -12,7 +12,6 @@ import {
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import {
   bracketMatching,
-  defaultHighlightStyle,
   foldGutter,
   foldKeymap,
   indentOnInput,
@@ -32,6 +31,7 @@ import { java } from '@codemirror/lang-java';
 import { shell } from '@codemirror/legacy-modes/mode/shell';
 import { r } from '@codemirror/legacy-modes/mode/r';
 import { stex } from '@codemirror/legacy-modes/mode/stex';
+import { vanceHighlightStyle } from './codeHighlightStyle';
 import {
   dismissFollowUp,
   followUpExtension,
@@ -257,7 +257,7 @@ onMounted(() => {
     indentOnInput(),
     bracketMatching(),
     highlightActiveLine(),
-    syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+    syntaxHighlighting(vanceHighlightStyle),
     keymap.of([...defaultKeymap, ...historyKeymap, ...foldKeymap]),
     EditorView.lineWrapping,
     EditorView.updateListener.of((u) => {

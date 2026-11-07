@@ -121,4 +121,17 @@ class SvgSanitizerTest {
 
         assertThat(out).doesNotContain("secret").doesNotContain("php").contains("<path");
     }
+
+    @Test
+    void aCssEscapeThatSpellsUrlDoesNotGetPast() {
+        String out = clean("<svg " + NS + "><rect width=\"1\" height=\"1\" style=\"fill:\\75rl(https://evil/x)\"/>"
+                        + "<circle r=\"2\" fill=\"\\75rl(https://evil/x)\"/></svg>")
+                .orElseThrow();
+
+        assertThat(out)
+                .doesNotContain("evil")
+                .doesNotContain("style")
+                .contains("<rect")
+                .contains("<circle");
+    }
 }

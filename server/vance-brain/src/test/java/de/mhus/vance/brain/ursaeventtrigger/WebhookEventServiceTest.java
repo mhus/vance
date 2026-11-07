@@ -120,7 +120,7 @@ class WebhookEventServiceTest {
     }
 
     @Test
-    void takes_the_token_back_when_the_document_cannot_be_written() {
+    void touches_no_token_when_the_document_cannot_be_written() {
         doThrow(new IllegalStateException("denied"))
                 .when(documents)
                 .createText(any(), any(), any(), any(), any(), any(), any(), any(WriteActor.class));
@@ -128,7 +128,24 @@ class WebhookEventServiceTest {
         assertThatThrownBy(() -> service.create("acme", "p", user, "w", "hook", null))
                 .isInstanceOf(IllegalStateException.class);
 
-        verify(settings).delete("acme", SettingService.SCOPE_PROJECT, "p", "events.hook.token");
+        verify(settings, never()).setAs(any(), any(), any(), any(), any(), any(), any(), any());
+        verify(settings, never()).delete(any(), any(), any(), any());
+    }
+
+    @Test
+    void takes_the_document_back_when_the_token_cannot_be_kept() {
+        DocumentDocument created = mock(DocumentDocument.class);
+        when(created.getId()).thenReturn("id-hook");
+        when(documents.createText(any(), any(), any(), any(), any(), any(), any(), any(WriteActor.class)))
+                .thenReturn(created);
+        doThrow(new IllegalStateException("no vault"))
+                .when(settings)
+                .setAs(any(), any(), any(), any(), any(), any(), any(), any());
+
+        assertThatThrownBy(() -> service.create("acme", "p", user, "w", "hook", null))
+                .isInstanceOf(IllegalStateException.class);
+
+        verify(documents).delete(eq("id-hook"), any(WriteActor.class));
     }
 
     // ── delete ──────────────────────────────────────────────────

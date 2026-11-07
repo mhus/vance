@@ -175,6 +175,8 @@ final class SvgSanitizer {
 
     /** Whether a value holds a {@code url(...)} that points anywhere but at an id in the same document. */
     private static boolean referencesOutside(String value) {
+        // A CSS escape ({@code u\72l(}) spells "url(" past the search below; no icon needs one.
+        if (value.indexOf('\\') >= 0) return true;
         String lower = value.toLowerCase(Locale.ROOT).replace(" ", "");
         int from = 0;
         while (true) {

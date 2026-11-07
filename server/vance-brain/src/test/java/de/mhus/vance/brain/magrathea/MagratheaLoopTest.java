@@ -22,7 +22,7 @@ class MagratheaLoopTest {
 
     /** Apply a step the way the dispatcher does and keep the run's variables. */
     private static MagratheaLoop.Step run(Map<String, Object> vars, Map<String, Object> spec, String previous) {
-        MagratheaLoop.Step step = MagratheaLoop.step("loop", spec, vars, previous, BODY);
+        MagratheaLoop.Step step = MagratheaLoop.step("loop", spec, vars, previous, BODY, null);
         vars.putAll(step.vars());
         return step;
     }
@@ -130,9 +130,9 @@ class MagratheaLoopTest {
     @Test
     void two_loops_keep_their_places_apart() {
         Map<String, Object> vars = new LinkedHashMap<>();
-        vars.putAll(MagratheaLoop.step("a", spec("items", List.of(1, 2)), vars, null, Set.of("x"))
+        vars.putAll(MagratheaLoop.step("a", spec("items", List.of(1, 2)), vars, null, Set.of("x"), null)
                 .vars());
-        vars.putAll(MagratheaLoop.step("b", spec("items", List.of(9)), vars, null, Set.of("y"))
+        vars.putAll(MagratheaLoop.step("b", spec("items", List.of(9)), vars, null, Set.of("y"), null)
                 .vars());
 
         assertThat(vars).containsKeys("_loop_a_items", "_loop_b_items");
@@ -141,8 +141,9 @@ class MagratheaLoopTest {
 
     @Test
     void something_that_is_no_list_fails_the_state() {
-        MagratheaLoop.Step none = MagratheaLoop.step("loop", spec(), new LinkedHashMap<>(), null, BODY);
-        MagratheaLoop.Step text = MagratheaLoop.step("loop", spec("items", "a,b"), new LinkedHashMap<>(), null, BODY);
+        MagratheaLoop.Step none = MagratheaLoop.step("loop", spec(), new LinkedHashMap<>(), null, BODY, null);
+        MagratheaLoop.Step text =
+                MagratheaLoop.step("loop", spec("items", "a,b"), new LinkedHashMap<>(), null, BODY, null);
 
         assertThat(none.outcome()).isEqualTo("failure");
         assertThat(none.failure()).contains("not a list").contains("nothing");
@@ -154,16 +155,62 @@ class MagratheaLoopTest {
         List<Integer> many = java.util.stream.IntStream.range(0, 101).boxed().toList();
 
         MagratheaLoop.Step defaulted =
-                MagratheaLoop.step("loop", spec("items", many), new LinkedHashMap<>(), null, BODY);
-        MagratheaLoop.Step raised =
-                MagratheaLoop.step("loop", spec("items", many, "maxItems", 200), new LinkedHashMap<>(), null, BODY);
+                MagratheaLoop.step("loop", spec("items", many), new LinkedHashMap<>(), null, BODY, null);
+        MagratheaLoop.Step raised = MagratheaLoop.step(
+                "loop", spec("items", many, "maxItems", 200), new LinkedHashMap<>(), null, BODY, null);
         List<Integer> huge = java.util.stream.IntStream.range(0, 1001).boxed().toList();
-        MagratheaLoop.Step capped =
-                MagratheaLoop.step("loop", spec("items", huge, "maxItems", 5000), new LinkedHashMap<>(), null, BODY);
+        MagratheaLoop.Step capped = MagratheaLoop.step(
+                "loop", spec("items", huge, "maxItems", 5000), new LinkedHashMap<>(), null, BODY, null);
 
         assertThat(defaulted.failure()).contains("101 items").contains("100");
         assertThat(defaulted.vars()).isEmpty();
         assertThat(raised.outcome()).isEqualTo("each");
         assertThat(capped.failure()).contains("1000");
+    }
+
+    @Test
+    void an_inner_loop_gives_index_and_count_back_to_the_enclosing_loop_when_it_ends() {
+        Map<String, Object> vars = new LinkedHashMap<>();
+        vars.putAll(MagratheaLoop.step("outer", spec("items", List.of("o1", "o2")), vars, null, Set.of("inner"), null)
+                .vars());
+        vars.putAll(MagratheaLoop.step(
+                        "inner", spec("items", List.of("i1", "i2", "i3")), vars, "outer", Set.of("work"), "outer")
+                .vars());
+        assertThat(vars).containsEntry("index", 0).containsEntry("count", 3);
+
+        MagratheaLoop.Step step = null;
+        for (int i = 0; i < 3; i++) {
+            step = MagratheaLoop.step(
+                    "inner", spec("items", List.of("i1", "i2", "i3")), vars, "work", Set.of("work"), "outer");
+            vars.putAll(step.vars());
+        }
+
+        assertThat(step.outcome()).isEqualTo("done");
+        assertThat(vars).containsEntry("index", 0).containsEntry("count", 2);
+    }
+
+    @Test
+    void an_empty_inner_loop_leaves_the_enclosing_loops_place_alone() {
+        Map<String, Object> vars = new LinkedHashMap<>();
+        vars.putAll(MagratheaLoop.step("outer", spec("items", List.of("o1", "o2")), vars, null, Set.of("inner"), null)
+                .vars());
+
+        vars.putAll(MagratheaLoop.step("inner", spec("items", List.of()), vars, "outer", Set.of("work"), "outer")
+                .vars());
+
+        assertThat(vars).containsEntry("index", 0).containsEntry("count", 2);
+    }
+
+    @Test
+    void a_collect_that_resolves_to_nothing_is_kept_as_a_null_result_per_element() {
+        Map<String, Object> vars = new LinkedHashMap<>();
+        Map<String, Object> spec = spec("items", List.of("a", "b"), "collect", null);
+
+        run(vars, spec, "prepare");
+        run(vars, spec, "check");
+        MagratheaLoop.Step last = run(vars, spec, "check");
+
+        assertThat(last.outcome()).isEqualTo("done");
+        assertThat(last.output()).isEqualTo(java.util.Arrays.asList(null, null));
     }
 }

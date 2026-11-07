@@ -39,7 +39,9 @@ public class ForEachTaskExecutor implements MagratheaTypeExecutor {
                 context.state().spec(),
                 context.vars(),
                 context.previousState(),
-                MagratheaLoopBody.of(context.workflow().states(), name));
+                MagratheaLoopBody.of(context.workflow().states(), name),
+                MagratheaLoopBody.enclosingLoop(context.workflow().states(), name)
+                        .orElse(null));
         if (step.failure() != null) {
             return Optional.of(TaskOutcome.failure(step.failure()));
         }

@@ -71,6 +71,9 @@ public class WebhookEventService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Event '" + eventName + "' exists already");
         }
 
+        byte[] bytes = new byte[32];
+        RANDOM.nextBytes(bytes);
+        String token = HexFormat.of().formatHex(bytes);
         String tokenSetting = tokenSettingOf(eventName);
         Map<String, Object> doc = new LinkedHashMap<>();
         doc.put("description", description == null || description.isBlank() ? "Starts " + target : description.trim());
@@ -87,34 +90,32 @@ public class WebhookEventService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Not a valid event: " + e.getMessage(), e);
         }
 
-        byte[] bytes = new byte[32];
-        RANDOM.nextBytes(bytes);
-        String token = HexFormat.of().formatHex(bytes);
-        // The token first: an event whose setting is missing would answer every call with 401.
-        settings.setAs(
+        // The document first: a second caller with the same name fails here, before it has touched a token that
+        // belongs to the event that won. Until the token is set the event answers 401, which is the safe side.
+        DocumentDocument created = documents.createText(
                 tenantId,
-                SettingService.SCOPE_PROJECT,
                 projectId,
-                tokenSetting,
-                token,
-                SettingType.PASSWORD,
-                "Token of the event '" + eventName + "'",
-                subject.subjectId());
+                path,
+                eventName,
+                List.of("event"),
+                yaml,
+                subject.subjectId(),
+                WriteActor.user(subject));
         try {
-            documents.createText(
+            settings.setAs(
                     tenantId,
+                    SettingService.SCOPE_PROJECT,
                     projectId,
-                    path,
-                    eventName,
-                    List.of("event"),
-                    yaml,
-                    subject.subjectId(),
-                    WriteActor.user(subject));
+                    tokenSetting,
+                    token,
+                    SettingType.PASSWORD,
+                    "Token of the event '" + eventName + "'",
+                    subject.subjectId());
         } catch (RuntimeException e) {
             try {
-                settings.delete(tenantId, SettingService.SCOPE_PROJECT, projectId, tokenSetting);
+                documents.delete(created.getId(), WriteActor.user(subject));
             } catch (RuntimeException undo) {
-                log.warn("Could not remove the token '{}' of '{}': {}", tokenSetting, eventName, undo.getMessage());
+                log.warn("Could not remove the event '{}' left without a token: {}", eventName, undo.getMessage());
             }
             throw e;
         }
@@ -150,9 +151,14 @@ public class WebhookEventService {
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "Event '" + name + "' is not a document of this project"));
         documents.delete(document.getId(), WriteActor.user(subject));
-        // Only the token this service would have made: a setting shared with other events stays.
+        // Only the token this service would have made: a setting shared with other events stays. The event is gone
+        // already, so a token that cannot be removed is logged, not a reason to fail the delete.
         if (tokenSettingOf(name).equals(event.tokenSettingKey())) {
-            settings.delete(tenantId, SettingService.SCOPE_PROJECT, projectId, tokenSettingOf(name));
+            try {
+                settings.delete(tenantId, SettingService.SCOPE_PROJECT, projectId, tokenSettingOf(name));
+            } catch (RuntimeException e) {
+                log.warn("Event '{}' removed, its token '{}' is left: {}", name, tokenSettingOf(name), e.getMessage());
+            }
         }
     }
 }

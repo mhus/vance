@@ -59,13 +59,17 @@ final class MagratheaLoop {
      * @param vars          the run's variables
      * @param previousState the state before the loop state, or {@code null} at the start of the run
      * @param body          the loop's body, from {@link MagratheaLoopBody#of}
+     * @param enclosing     the loop this one sits in the body of, from {@link MagratheaLoopBody#enclosingLoop}, or
+     *                      {@code null}; when this loop ends, {@code index} and {@code count} are set back to that
+     *                      loop's element
      */
     static Step step(
             String loopState,
             Map<String, Object> spec,
             Map<String, Object> vars,
             @Nullable String previousState,
-            Set<String> body) {
+            Set<String> body,
+            @Nullable String enclosing) {
         Object items = vars.get(key(loopState, "items"));
         Object index = vars.get(key(loopState, "index"));
         boolean running = items instanceof List<?>
@@ -73,11 +77,12 @@ final class MagratheaLoop {
                 && !Boolean.TRUE.equals(vars.get(key(loopState, "done")));
         boolean next = running && previousState != null && body.contains(previousState);
         return next
-                ? advance(loopState, spec, vars, (List<?>) items, ((Number) index).intValue())
-                : start(loopState, spec);
+                ? advance(loopState, spec, vars, (List<?>) items, ((Number) index).intValue(), enclosing)
+                : start(loopState, spec, vars, enclosing);
     }
 
-    private static Step start(String loopState, Map<String, Object> spec) {
+    private static Step start(
+            String loopState, Map<String, Object> spec, Map<String, Object> vars, @Nullable String enclosing) {
         Object raw = spec.get("items");
         if (!(raw instanceof List<?> list)) {
             return failed("for_each_task '" + loopState + "': 'items' is not a list ("
@@ -93,6 +98,7 @@ final class MagratheaLoop {
         out.put(key(loopState, "done"), false);
         if (list.isEmpty()) {
             out.put(key(loopState, "done"), true);
+            restoreEnclosing(vars, enclosing, out);
             return new Step(MagratheaLoopBody.OUTCOME_DONE, spec.containsKey("collect") ? List.of() : null, out, null);
         }
         element(spec, list, 0, out);
@@ -100,7 +106,12 @@ final class MagratheaLoop {
     }
 
     private static Step advance(
-            String loopState, Map<String, Object> spec, Map<String, Object> vars, List<?> items, int index) {
+            String loopState,
+            Map<String, Object> spec,
+            Map<String, Object> vars,
+            List<?> items,
+            int index,
+            @Nullable String enclosing) {
         Map<String, Object> out = new LinkedHashMap<>();
         boolean collecting = spec.containsKey("collect");
         if (collecting) {
@@ -113,6 +124,7 @@ final class MagratheaLoop {
             return new Step(MagratheaLoopBody.OUTCOME_EACH, null, out, null);
         }
         out.put(key(loopState, "done"), true);
+        restoreEnclosing(vars, enclosing, out);
         Object results = null;
         if (collecting) {
             List<Object> all = new ArrayList<>(items.size());
@@ -131,6 +143,21 @@ final class MagratheaLoop {
         out.put(as instanceof String s && !s.isBlank() ? s : DEFAULT_ELEMENT, items.get(index));
         out.put("index", index);
         out.put("count", items.size());
+    }
+
+    /**
+     * A loop inside the body of another overwrote {@code index} and {@code count} with its own; when it ends they
+     * are the enclosing loop's again, so the rest of that body sees its own element's place.
+     */
+    private static void restoreEnclosing(
+            Map<String, Object> vars, @Nullable String enclosing, Map<String, Object> out) {
+        if (enclosing == null) return;
+        Object index = vars.get(key(enclosing, "index"));
+        Object items = vars.get(key(enclosing, "items"));
+        if (index instanceof Number && items instanceof List<?> list) {
+            out.put("index", index);
+            out.put("count", list.size());
+        }
     }
 
     private static int maxItems(@Nullable Object raw) {

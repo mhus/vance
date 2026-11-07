@@ -26,6 +26,7 @@ import { VueFlow } from '@vue-flow/core';
 import '@vue-flow/core/dist/style.css';
 import '@vue-flow/core/dist/theme-default.css';
 import { VAlert, VButton } from '@/components';
+import type { NodeIcon } from './nodeIcon';
 import { toFlowEdges, toFlowNodes, toFrameNodes } from './flowElements';
 import { useFitOnResize } from './useFitOnResize';
 import { layoutGraph, type GraphDirection } from './layout';
@@ -47,6 +48,8 @@ interface Props {
   showProblems?: boolean;
   /** States marked with a breakpoint. The drawing only shows them; setting them is the caller's. */
   breakpoints?: string[];
+  /** State name → the icon to show instead of its task icon (a tool's service logo). */
+  icons?: Record<string, NodeIcon>;
   /** Nodes answer a click (event `node-click`) and look clickable. */
   interactive?: boolean;
   /** The state to mark as picked; the caller owns the selection. */
@@ -57,6 +60,7 @@ const props = withDefaults(defineProps<Props>(), {
   height: '65vh',
   showProblems: true,
   breakpoints: () => [],
+  icons: () => ({}),
   interactive: false,
   selected: null,
 });
@@ -81,6 +85,7 @@ const vfNodes = computed(() => [
     (state) => ({
       run: props.overlay?.[state.name],
       breakpoint: props.breakpoints.includes(state.name),
+      icon: props.icons[state.name] ?? null,
       selected: props.selected === state.name,
     }),
     { draggable: false, selectable: false, connectable: false },
@@ -152,6 +157,7 @@ function toggleDirection(): void {
             :state="data.state"
             :run="data.run"
             :breakpoint="data.breakpoint"
+            :icon="data.icon"
             :direction="direction"
             :interactive="interactive"
             :selected="data.selected"

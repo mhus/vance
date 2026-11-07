@@ -470,3 +470,16 @@ export function tenantLogoUrl(): string {
   if (!tenant) return '';
   return `${brainBaseUrl()}/brain/${encodeURIComponent(tenant)}/ui/logo`;
 }
+
+/**
+ * Build the URL of a web UI asset — a file of {@code _vance/webui/} such as a service logo
+ * (`GET /brain/{tenant}/projects/{project}/webui/{path}`, `specification/public/webui-assets.md`). The project is part
+ * of the address because the cascade begins in the project. Same `<img src>` contract as {@link documentContentUrl}.
+ * An empty string means there is no session yet, or no project to ask.
+ */
+export function webuiAssetUrl(projectId: string | undefined, path: string): string {
+  const tenant = getTenantId();
+  if (!tenant || !projectId) return '';
+  const segments = path.split('/').map(encodeURIComponent).join('/');
+  return `${brainBaseUrl()}/brain/${encodeURIComponent(tenant)}/projects/${encodeURIComponent(projectId)}/webui/${segments}`;
+}

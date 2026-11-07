@@ -4,7 +4,8 @@ title: { en: "Jira", de: "Jira" }
 description:
   en: "Create and change issues, add comments, search with JQL. Uses the Atlassian login of the user the workflow runs as."
   de: "Tickets anlegen und ändern, kommentieren, mit JQL suchen. Nutzt die Atlassian-Anmeldung des Benutzers, als der der Workflow läuft."
-icon: ticket
+# A path under _vance/webui/ (a logo the server serves) or the name of an icon of the web UI.
+icon: icons/jira.svg
 # The pack names this entry describes: a pack called "jira" or "jira_rest" matches.
 match: [jira]
 login:

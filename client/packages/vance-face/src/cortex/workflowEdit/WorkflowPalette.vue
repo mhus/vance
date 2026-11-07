@@ -9,8 +9,11 @@
  */
 import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { VAlert, VBadge, VButton, VGroup, VGroupRow, VInput, VModal } from '@/components';
+import { webuiAssetUrl } from '@vance/shared';
+import { VAlert, VBadge, VButton, VGroup, VGroupRow, VIcon, VInput, VModal } from '@/components';
+import type { IconName } from '@vance/components';
 import type { WorkflowTaskType } from '@/workflowGraph/workflowGraphCodec';
+import { resolveNodeIcon, type NodeIcon } from '@/workflowGraph/nodeIcon';
 import { taskIcon } from '@/workflowGraph/taskIcon';
 import { paletteGroups, type PaletteTool } from './paletteModel';
 import { TEMPLATE_TYPES } from './stateTemplates';
@@ -22,6 +25,8 @@ const props = defineProps<{
   modelValue: boolean;
   /** The tool list, shared with whatever else needs it. */
   tools: WorkflowTools;
+  /** The project the logos are looked up in (the asset cascade begins there). */
+  projectId?: string;
 }>();
 const emit = defineEmits<{
   (e: 'update:modelValue', open: boolean): void;
@@ -55,6 +60,11 @@ const groups = computed(() => paletteGroups(tools.services.value, query.value));
 const nothing = computed(
   () => tools.loaded.value && taskTypes.value.length === 0 && groups.value.length === 0,
 );
+
+/** The icon of a service, from its catalog entry. */
+function serviceIcon(icon: string | undefined): NodeIcon | null {
+  return resolveNodeIcon(icon, (path) => webuiAssetUrl(props.projectId, path));
+}
 
 function close(): void {
   emit('update:modelValue', false);
@@ -109,6 +119,18 @@ function pickTool(tool: PaletteTool): void {
       </p>
 
       <VGroup v-for="group in groups" :key="group.service" :label="group.title">
+        <template v-if="serviceIcon(group.icon)" #label>
+          <span class="wf-palette-service">
+            <img
+              v-if="serviceIcon(group.icon)?.kind === 'image'"
+              class="wf-palette-logo"
+              :src="(serviceIcon(group.icon) as { src: string }).src"
+              alt=""
+            />
+            <VIcon v-else :name="(serviceIcon(group.icon) as { name: IconName }).name" />
+            {{ group.title }}
+          </span>
+        </template>
         <template v-if="group.needsLogin || group.total > group.tools.length" #note>
           <span v-if="group.needsLogin">{{ t('documents.workflowView.palette.needsLogin') }} </span>
           <span v-if="group.total > group.tools.length">
@@ -135,5 +157,7 @@ function pickTool(tool: PaletteTool): void {
 
 <style scoped>
 .wf-palette { display: flex; flex-direction: column; gap: 0.75rem; }
+.wf-palette-service { display: inline-flex; align-items: center; gap: 0.4rem; }
+.wf-palette-logo { width: 14px; height: 14px; object-fit: contain; }
 .wf-palette-note { margin: 0; font-size: 0.85rem; opacity: 0.7; }
 </style>

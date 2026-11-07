@@ -17,6 +17,8 @@ export interface PaletteGroup {
   description: string;
   /** The service wants a login the caller has not made. */
   needsLogin: boolean;
+  /** What the catalog entry names as the service's icon: a UI icon name or a logo path; absent without one. */
+  icon?: string;
   tools: PaletteTool[];
   /** How many tools of the service the query matched (more than {@link tools} when cut). */
   total: number;
@@ -81,6 +83,7 @@ export function paletteGroups(services: ToolServiceDto[], query: string): Palett
       title,
       description,
       needsLogin: svc.catalog?.loginProvider != null && svc.catalog.connected === false,
+      icon: svc.catalog?.icon ?? undefined,
       tools,
       total,
     });

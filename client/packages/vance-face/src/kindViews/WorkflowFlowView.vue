@@ -19,6 +19,7 @@
  */
 import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
+import { webuiAssetUrl } from '@vance/shared';
 import { VAlert, VButton, VSegment } from '@/components';
 import ConnectDialog, {
   type ConnectAnswer,
@@ -46,6 +47,7 @@ import {
 import { useWorkflowServerCheck } from '@/cortex/workflowEdit/useWorkflowServerCheck';
 import { useWorkflowTools } from '@/cortex/workflowEdit/useWorkflowTools';
 import { isManualLayout, layoutGraph } from '@/workflowGraph/layout';
+import { toolNodeIcon, type NodeIcon } from '@/workflowGraph/nodeIcon';
 import WorkflowGraph from '@/workflowGraph/WorkflowGraph.vue';
 import { parseWorkflowGraph, type WorkflowTaskType } from '@/workflowGraph/workflowGraphCodec';
 
@@ -68,6 +70,25 @@ const { t, locale } = useI18n();
 /** The tools a tool_task can call: one list for the palette and the parameter forms. */
 const workflowTools = useWorkflowTools(() => props.projectId, () => locale.value);
 
+const graph = computed(() => parseWorkflowGraph(props.doc));
+
+// A state that calls a tool shows the logo of the tool's service. Which service owns a tool is in the tool list, so
+// the list is fetched as soon as a drawing has such a state.
+watch(
+  () => graph.value.states.some((s) => s.type === 'tool_task'),
+  (has) => { if (has) void workflowTools.ensureLoaded(); },
+  { immediate: true },
+);
+const stateIcons = computed<Record<string, NodeIcon>>(() => {
+  const out: Record<string, NodeIcon> = {};
+  for (const state of graph.value.states) {
+    if (state.type !== 'tool_task') continue;
+    const icon = toolNodeIcon(state.detail, workflowTools.services.value, (path) => webuiAssetUrl(props.projectId, path));
+    if (icon) out[state.name] = icon;
+  }
+  return out;
+});
+
 type Mode = 'view' | 'edit';
 const mode = ref<Mode>('view');
 const modeOptions = computed(() => [
@@ -78,7 +99,6 @@ const modeOptions = computed(() => [
 // A document that turns read-only (locked, permission) cannot stay in edit.
 watch(() => props.readOnly, (ro) => { if (ro) mode.value = 'view'; });
 
-const graph = computed(() => parseWorkflowGraph(props.doc));
 
 /** The picked state; dropped when it no longer exists (renamed or removed). */
 const selected = ref<string | null>(null);
@@ -315,6 +335,7 @@ watch(() => props.docPath, () => check.clear());
         :doc="doc"
         :selected="selected"
         :selected-edge="selectedEdge"
+        :icons="stateIcons"
         @select="pickState"
         @select-edge="pickEdge"
         @add="paletteOpen = true"
@@ -326,6 +347,7 @@ watch(() => props.docPath, () => check.clear());
         v-else
         :doc="doc"
         :selected="selected"
+        :icons="stateIcons"
         interactive
         @node-click="pickState"
       />
@@ -352,6 +374,7 @@ watch(() => props.docPath, () => check.clear());
     <WorkflowPalette
       v-model="paletteOpen"
       :tools="workflowTools"
+      :project-id="projectId"
       @pick-task="onPickTask"
       @pick-tool="onPickTool"
     />

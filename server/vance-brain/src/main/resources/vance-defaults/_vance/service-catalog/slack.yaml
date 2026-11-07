@@ -4,7 +4,8 @@ title: { en: "Slack", de: "Slack" }
 description:
   en: "Post messages, read channel history, look people up, search. The REST tools take the token as a parameter — pass the user's login with {{secret:user:oauth.slack.access_token}}."
   de: "Nachrichten senden, Kanalverlauf lesen, Personen nachschlagen, suchen. Die REST-Tools nehmen das Token als Parameter — die Anmeldung des Benutzers mit {{secret:user:oauth.slack.access_token}} übergeben."
-icon: message-square
+# A path under _vance/webui/ (a logo the server serves) or the name of an icon of the web UI.
+icon: icons/slack.svg
 match: [slack]
 login:
   provider: slack

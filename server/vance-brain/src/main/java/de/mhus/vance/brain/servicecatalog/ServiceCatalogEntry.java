@@ -53,7 +53,8 @@ import org.jspecify.annotations.Nullable;
  * @param name        file name without {@code .yaml}
  * @param title       per language
  * @param description per language
- * @param icon        an icon name of the web UI, or {@code null}
+ * @param icon        an icon name of the web UI, or the path of a web UI asset ({@code icons/jira.svg}, served from
+ *                    {@code _vance/webui/}, see {@code webui-assets.md}), or {@code null}
  * @param match       pack names (the {@code service} of a tool) the entry describes
  * @param provider    OAuth provider id, or {@code null} when the tools need no user login
  * @param manual      manual name, or {@code null}

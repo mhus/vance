@@ -29,7 +29,7 @@ public class ServiceCatalogDto {
 
     private String description;
 
-    /** An icon name of the web UI. */
+    /** An icon name of the web UI, or the path of a web UI asset under {@code _vance/webui/} (a logo). */
     private @Nullable String icon;
 
     /** The OAuth provider whose login of the calling user the tools need; {@code null} when none. */

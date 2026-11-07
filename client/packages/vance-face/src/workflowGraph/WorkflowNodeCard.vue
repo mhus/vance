@@ -8,12 +8,15 @@
  * the caller hands in what to show and, for an editor, whether the handles
  * accept connections.
  */
+import { ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { Handle, Position } from '@vue-flow/core';
 import { VIcon } from '@/components';
+import type { IconName } from '@vance/components';
 import { formatDuration } from '@/util/formatDuration';
 import { typeColor } from './flowElements';
 import type { GraphDirection } from './layout';
+import type { NodeIcon } from './nodeIcon';
 import { nodeClasses } from './nodeClasses';
 import { taskIcon } from './taskIcon';
 import type { GraphStateRun } from './overlay';
@@ -33,8 +36,11 @@ interface Props {
   connectable?: boolean;
   /** The card is the one picked in an inspector. */
   selected?: boolean;
+  /** What stands before the type instead of its task icon — a service's logo. */
+  icon?: NodeIcon | null;
 }
-withDefaults(defineProps<Props>(), {
+const props = withDefaults(defineProps<Props>(), {
+  icon: null,
   run: undefined,
   breakpoint: false,
   interactive: false,
@@ -43,6 +49,15 @@ withDefaults(defineProps<Props>(), {
 });
 
 const { t } = useI18n();
+
+// A logo that fails to load gives way to the task icon.
+const brokenSrc = ref<string | null>(null);
+watch(() => props.icon, () => { brokenSrc.value = null; });
+function shownIcon(): NodeIcon | null {
+  const icon = props.icon;
+  if (!icon) return null;
+  return icon.kind === 'image' && brokenSrc.value === icon.src ? null : icon;
+}
 
 function typeLabel(state: WorkflowStateNode): string {
   if (state.missing) return t('documents.workflowView.undeclared');
@@ -87,7 +102,17 @@ function runLine(run: GraphStateRun): string {
       ><VIcon name="refresh" /></span>
     </div>
     <div class="wf-node-type" :style="{ color: typeColor(state) }">
-      <VIcon v-if="!state.missing && taskIcon(state.type)" :name="taskIcon(state.type)!" />
+      <template v-if="!state.missing">
+        <img
+          v-if="shownIcon()?.kind === 'image'"
+          class="wf-node-logo"
+          :src="(shownIcon() as { src: string }).src"
+          alt=""
+          @error="brokenSrc = (icon as { src: string }).src"
+        />
+        <VIcon v-else-if="shownIcon()?.kind === 'ui'" :name="(shownIcon() as { name: IconName }).name" />
+        <VIcon v-else-if="taskIcon(state.type)" :name="taskIcon(state.type)!" />
+      </template>
       {{ typeLabel(state) }}
     </div>
     <div v-if="state.detail" class="wf-node-detail" :title="state.detail">
@@ -158,6 +183,12 @@ function runLine(run: GraphStateRun): string {
 .wf-node-type :deep(.v-icon) {
   width: 12px;
   height: 12px;
+}
+.wf-node-logo {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  object-fit: contain;
 }
 .wf-node-detail {
   font-family: ui-monospace, monospace;

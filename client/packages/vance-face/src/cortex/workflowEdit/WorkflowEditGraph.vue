@@ -17,6 +17,7 @@ import { VueFlow } from '@vue-flow/core';
 import '@vue-flow/core/dist/style.css';
 import '@vue-flow/core/dist/theme-default.css';
 import { VAlert, VButton } from '@/components';
+import type { NodeIcon } from '@/workflowGraph/nodeIcon';
 import { toFlowEdges, toFlowNodes, toFrameNodes } from '@/workflowGraph/flowElements';
 import type { EdgeRef } from './workflowMutations';
 import { isManualLayout, layoutGraph, type GraphDirection } from '@/workflowGraph/layout';
@@ -35,9 +36,11 @@ interface Props {
   selected?: string | null;
   /** The picked connection; the caller owns it. */
   selectedEdge?: EdgeRef | null;
+  /** State name → the icon to show instead of its task icon (a tool's service logo). */
+  icons?: Record<string, NodeIcon>;
   height?: string;
 }
-const props = withDefaults(defineProps<Props>(), { selected: null, selectedEdge: null, height: '65vh' });
+const props = withDefaults(defineProps<Props>(), { selected: null, selectedEdge: null, icons: () => ({}), height: '65vh' });
 const emit = defineEmits<{
   (e: 'select', state: string | null): void;
   /** The person wants to add a state; the caller shows what can be added. */
@@ -67,7 +70,7 @@ const vfNodes = computed(() => [
   ...toFlowNodes(
     graph.value,
     positions.value,
-    (state) => ({ selected: props.selected === state.name }),
+    (state) => ({ selected: props.selected === state.name, icon: props.icons[state.name] ?? null }),
     { draggable: true, selectable: false, connectable: true },
   ),
 ]);
@@ -214,6 +217,7 @@ function toggleDirection(): void {
             :state="data.state"
             :direction="direction"
             :selected="data.selected"
+            :icon="data.icon"
             connectable
             interactive
           />

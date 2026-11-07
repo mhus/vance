@@ -1726,10 +1726,6 @@ export default {
       },
       inspector: {
         settings: 'Settings',
-        type: 'Type',
-        start: 'Start',
-        yes: 'yes',
-        no: 'no',
         makeStart: 'Make start',
         description: 'Description',
         fields: 'Fields',

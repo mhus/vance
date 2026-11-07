@@ -303,15 +303,14 @@ watch(() => props.docPath, () => check.clear());
         :title="t('documents.workflowView.checkHint')"
         @click="check.run()"
       >{{ t('documents.workflowView.check') }}</VButton>
+      <WorkflowSources
+        :project-id="projectId"
+        :workflow="workflowNameOf(docPath)"
+        :editable="mode === 'edit' && !readOnly"
+        :tools="workflowTools"
+      />
       <span v-if="blockedReason" class="run-note">{{ t('documents.workflowView.runBlocked') }}</span>
     </div>
-
-    <WorkflowSources
-      :project-id="projectId"
-      :workflow="workflowNameOf(docPath)"
-      :editable="mode === 'edit' && !readOnly"
-      :tools="workflowTools"
-    />
 
     <VAlert v-if="change.error.value" variant="error">{{ change.error.value }}</VAlert>
     <VAlert v-if="check.error.value" variant="error">{{ check.error.value }}</VAlert>
@@ -351,24 +350,28 @@ watch(() => props.docPath, () => check.clear());
         interactive
         @node-click="pickState"
       />
-      <WorkflowEdgeInspector
-        v-if="selectedEdge"
-        :doc="doc"
-        :edge="selectedEdge"
-        :editable="mode === 'edit' && !readOnly"
-        @update:doc="emit('update:doc', $event)"
-        @select-edge="pickEdge"
-        @select="pickState"
-      />
-      <WorkflowInspector
-        v-else-if="selected"
-        :doc="doc"
-        :state="selected"
-        :editable="mode === 'edit' && !readOnly"
-        :tools="workflowTools"
-        @update:doc="emit('update:doc', $event)"
-        @select="pickState"
-      />
+      <div v-if="selectedEdge || selected" class="wf-panel">
+        <div class="wf-panel-scroll">
+          <WorkflowEdgeInspector
+            v-if="selectedEdge"
+            :doc="doc"
+            :edge="selectedEdge"
+            :editable="mode === 'edit' && !readOnly"
+            @update:doc="emit('update:doc', $event)"
+            @select-edge="pickEdge"
+            @select="pickState"
+          />
+          <WorkflowInspector
+            v-else-if="selected"
+            :doc="doc"
+            :state="selected"
+            :editable="mode === 'edit' && !readOnly"
+            :tools="workflowTools"
+            @update:doc="emit('update:doc', $event)"
+            @select="pickState"
+          />
+        </div>
+      </div>
     </div>
 
     <WorkflowPalette
@@ -390,4 +393,9 @@ watch(() => props.docPath, () => check.clear());
 .check-list { margin: 0; padding-left: 1.1rem; }
 .body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.75rem; align-items: start; }
 .body--with-panel { grid-template-columns: minmax(0, 1fr) 20rem; }
+/* The panel is as tall as the drawing next to it and scrolls on its own: a long form never drags the page (and the
+   drawing with it). Its content sits in an absolutely placed scroller so that it adds nothing to the row's height —
+   the drawing sets that. */
+.wf-panel { position: relative; min-width: 0; min-height: 20rem; align-self: stretch; }
+.wf-panel-scroll { position: absolute; inset: 0; overflow-y: auto; overscroll-behavior: contain; }
 </style>

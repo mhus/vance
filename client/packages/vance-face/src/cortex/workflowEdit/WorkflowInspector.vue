@@ -13,7 +13,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { stringify } from 'yaml';
-import { VAlert, VButton, VGroup, VGroupRow, VInput, useConfirm } from '@/components';
+import { VAlert, VBadge, VButton, VGroup, VGroupRow, VInput, useConfirm } from '@/components';
 import { parseWorkflowGraph } from '@/workflowGraph/workflowGraphCodec';
 import StateExtrasEditor from './StateExtrasEditor.vue';
 import StateFieldsForm from './StateFieldsForm.vue';
@@ -113,42 +113,38 @@ async function remove(): Promise<void> {
   <aside v-if="node" class="wf-inspector">
     <VAlert v-if="error" variant="error">{{ error }}</VAlert>
 
-    <VGroup :label="node.name">
-      <VGroupRow :label="t('documents.workflowView.inspector.type')" :value="node.type || t('documents.workflowView.noType')" />
-      <VGroupRow
-        :label="t('documents.workflowView.inspector.start')"
-        :value="node.isStart ? t('documents.workflowView.inspector.yes') : t('documents.workflowView.inspector.no')"
-      >
+    <!-- One row for what the state is: its type, and whether it starts the run. The name stands in the field below
+         when it can be edited, as the group's label when it cannot. -->
+    <VGroup :label="editable ? undefined : node.name">
+      <VGroupRow :label="node.type || t('documents.workflowView.noType')">
+        <VBadge v-if="node.isStart" variant="neutral">{{ t('documents.workflowView.startBadge') }}</VBadge>
         <VButton
-          v-if="editable && !node.isStart"
+          v-else-if="editable"
           size="sm"
           variant="secondary"
           @click="makeStart"
         >{{ t('documents.workflowView.inspector.makeStart') }}</VButton>
       </VGroupRow>
-    </VGroup>
-
-    <VGroup v-if="editable" :label="t('documents.workflowView.inspector.name')">
-      <div class="wf-inspector-pad wf-inspector-rename">
-        <div class="wf-inspector-grow">
-          <VInput v-model="nameDraft" />
+      <template v-if="editable">
+        <div class="wf-inspector-pad wf-inspector-rename">
+          <div class="wf-inspector-grow">
+            <VInput v-model="nameDraft" size="sm" :placeholder="t('documents.workflowView.inspector.name')" />
+          </div>
+          <VButton size="sm" variant="secondary" :disabled="!canRename" @click="rename">
+            {{ t('documents.workflowView.inspector.rename') }}
+          </VButton>
         </div>
-        <VButton size="sm" variant="secondary" :disabled="!canRename" @click="rename">
-          {{ t('documents.workflowView.inspector.rename') }}
-        </VButton>
-      </div>
-    </VGroup>
-
-    <VGroup :label="t('documents.workflowView.inspector.description')">
-      <div class="wf-inspector-pad">
-        <VInput
-          v-if="editable"
-          :model-value="draft"
-          @update:model-value="onDescription"
-        />
-        <p v-else class="wf-inspector-text">
-          {{ node.description || t('documents.workflowView.inspector.none') }}
-        </p>
+        <div class="wf-inspector-pad">
+          <VInput
+            :model-value="draft"
+            size="sm"
+            :placeholder="t('documents.workflowView.inspector.description')"
+            @update:model-value="onDescription"
+          />
+        </div>
+      </template>
+      <div v-else class="wf-inspector-pad">
+        <p class="wf-inspector-text">{{ node.description || t('documents.workflowView.inspector.none') }}</p>
       </div>
     </VGroup>
 
@@ -220,8 +216,8 @@ async function remove(): Promise<void> {
 </template>
 
 <style scoped>
-.wf-inspector { display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; }
-.wf-inspector-pad { padding: 0.5rem 0.75rem; }
+.wf-inspector { display: flex; flex-direction: column; gap: 0.3rem; min-width: 0; }
+.wf-inspector-pad { padding: 0.35rem 0.75rem; }
 .wf-inspector-rename { display: flex; align-items: center; gap: 0.5rem; }
 .wf-inspector-grow { flex: 1; min-width: 0; }
 .wf-inspector-text { margin: 0; font-size: 0.85rem; }

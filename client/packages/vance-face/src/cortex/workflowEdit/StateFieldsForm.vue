@@ -116,6 +116,7 @@ function options(spec: FieldSpec): { value: string; label: string }[] {
         />
         <VInput
           v-else
+          size="sm"
           :model-value="drafts[spec.key] ?? ''"
           :label="label(spec)"
           :help="help(spec)"
@@ -128,5 +129,5 @@ function options(spec: FieldSpec): { value: string; label: string }[] {
 </template>
 
 <style scoped>
-.wf-form { display: flex; flex-direction: column; gap: 0.6rem; padding: 0.6rem 0.75rem; }
+.wf-form { display: flex; flex-direction: column; gap: 0.4rem; padding: 0.3rem 0.75rem; }
 </style>

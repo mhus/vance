@@ -62,20 +62,28 @@ function applyFragment(): void {
 </script>
 
 <template>
-  <VGroup :label="t('documents.workflowView.extras.title')" :note="t('documents.workflowView.extras.note')">
-    <div class="wf-extras">
-      <VAlert v-if="error || parseError" variant="error">{{ parseError ?? error }}</VAlert>
-      <VTextarea v-model="draft" :rows="6" />
-      <div class="wf-extras-actions">
-        <VButton size="sm" variant="secondary" :disabled="!changed" @click="applyFragment">
-          {{ t('documents.workflowView.extras.apply') }}
-        </VButton>
+  <!-- Rarely needed, so folded; it opens by itself when the state carries such fields or something is being edited. -->
+  <VGroup>
+    <details class="wf-extras" :open="stored !== '' || changed || !!error || !!parseError">
+      <summary>{{ t('documents.workflowView.extras.title') }}</summary>
+      <div class="wf-extras-body">
+        <p class="wf-extras-note">{{ t('documents.workflowView.extras.note') }}</p>
+        <VAlert v-if="error || parseError" variant="error">{{ parseError ?? error }}</VAlert>
+        <VTextarea v-model="draft" :rows="6" />
+        <div class="wf-extras-actions">
+          <VButton size="sm" variant="secondary" :disabled="!changed" @click="applyFragment">
+            {{ t('documents.workflowView.extras.apply') }}
+          </VButton>
+        </div>
       </div>
-    </div>
+    </details>
   </VGroup>
 </template>
 
 <style scoped>
-.wf-extras { display: flex; flex-direction: column; gap: 0.5rem; padding: 0.6rem 0.75rem; }
+.wf-extras { padding: 0.3rem 0.75rem; }
+.wf-extras summary { cursor: pointer; font-size: 0.82rem; opacity: 0.8; }
+.wf-extras-body { display: flex; flex-direction: column; gap: 0.4rem; margin-top: 0.4rem; }
+.wf-extras-note { margin: 0; font-size: 0.8rem; opacity: 0.7; }
 .wf-extras-actions { display: flex; justify-content: flex-end; }
 </style>

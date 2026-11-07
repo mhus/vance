@@ -36,6 +36,7 @@ defineEmits<{ (e: 'update:modelValue', text: string): void }>();
   />
   <VInput
     v-else
+    size="sm"
     :model-value="modelValue"
     :label="label"
     :help="hint"

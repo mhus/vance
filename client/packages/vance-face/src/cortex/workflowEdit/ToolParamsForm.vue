@@ -185,27 +185,33 @@ const unknownTool = computed(() => props.tools.loaded.value && toolName.value !=
 
       <ToolResultInfo v-if="spec" :schema="spec.outputSchema" :store-as="storeAs" />
 
-      <div class="wf-tool-extras">
-        <p class="wf-tool-note">
+      <!-- What the tool does not describe: rarely needed, so folded — open when there is something in it, when
+           it is being edited, or when it is the only place for the parameters. -->
+      <details
+        class="wf-tool-fold"
+        :open="fields.length === 0 || storedExtras !== '' || extrasChanged || !!extrasError"
+      >
+        <summary>
           {{ fields.length > 0 ? t('documents.workflowView.toolParams.otherParams') : t('documents.workflowView.toolParams.allParams') }}
-        </p>
-        <VAlert v-if="extrasError" variant="error">{{ extrasError }}</VAlert>
-        <VTextarea v-model="extrasDraft" :rows="4" />
-        <div class="wf-tool-actions">
-          <VButton size="sm" variant="secondary" :disabled="!extrasChanged" @click="applyExtras">
-            {{ t('documents.workflowView.extras.apply') }}
-          </VButton>
+        </summary>
+        <div class="wf-tool-fold-body">
+          <VAlert v-if="extrasError" variant="error">{{ extrasError }}</VAlert>
+          <VTextarea v-model="extrasDraft" :rows="4" />
+          <div class="wf-tool-actions">
+            <VButton size="sm" variant="secondary" :disabled="!extrasChanged" @click="applyExtras">
+              {{ t('documents.workflowView.extras.apply') }}
+            </VButton>
+          </div>
         </div>
-      </div>
+      </details>
     </div>
   </VGroup>
 </template>
 
 <style scoped>
-.wf-tool { display: flex; flex-direction: column; gap: 0.6rem; padding: 0.6rem 0.75rem; }
+.wf-tool { display: flex; flex-direction: column; gap: 0.4rem; padding: 0.3rem 0.75rem; }
 .wf-tool-note { margin: 0; font-size: 0.8rem; opacity: 0.7; }
 .wf-tool-fold summary { cursor: pointer; font-size: 0.82rem; opacity: 0.8; }
-.wf-tool-fold-body { display: flex; flex-direction: column; gap: 0.6rem; margin-top: 0.6rem; }
-.wf-tool-extras { display: flex; flex-direction: column; gap: 0.4rem; }
+.wf-tool-fold-body { display: flex; flex-direction: column; gap: 0.4rem; margin-top: 0.4rem; }
 .wf-tool-actions { display: flex; justify-content: flex-end; }
 </style>

@@ -132,7 +132,7 @@ function pickTool(tool: PaletteTool): void {
           </span>
         </template>
         <template v-if="group.needsLogin || group.total > group.tools.length" #note>
-          <span v-if="group.needsLogin">{{ t('documents.workflowView.palette.needsLogin') }} </span>
+          <span v-if="group.needsLogin">{{ t('documents.workflowView.palette.needsLogin') }}{{ ' ' }}</span>
           <span v-if="group.total > group.tools.length">
             {{ t('documents.workflowView.palette.more', { shown: group.tools.length, total: group.total }) }}
           </span>

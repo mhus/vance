@@ -1,0 +1,46 @@
+# Catalog entry for the Google Drive REST pack (drive_rest). The tools themselves come from the pack; this
+# only describes the service and points at the operations people reach for first.
+title: { en: "Google Drive", de: "Google Drive" }
+description:
+  en: "Find, read and create files and folders, manage sharing. The REST tools take the token as a parameter — pass the user's Google login with {{secret:user:oauth.google.access_token}}."
+  de: "Dateien und Ordner finden, lesen und anlegen, Freigaben verwalten. Die REST-Tools nehmen das Token als Parameter — die Google-Anmeldung des Benutzers mit {{secret:user:oauth.google.access_token}} übergeben."
+# A path under _vance/webui/ (a logo the server serves) or the name of an icon of the web UI.
+icon: icons/google-drive.svg
+# The pack names this entry describes: a pack called "drive" or "drive_rest" matches.
+match: [drive]
+login:
+  provider: google
+  manual: oauth-tools
+highlights:
+  - tool: drive_files_list
+    description:
+      en: "List or search files; q takes the Drive query syntax."
+      de: "Listet Dateien oder durchsucht sie; q nimmt die Drive-Abfragesyntax."
+    params:
+      oauth_token: "{{secret:user:oauth.google.access_token}}"
+      q: "name contains 'report' and trashed = false"
+      pageSize: 20
+  - tool: drive_files_get
+    description:
+      en: "Read a file's metadata (or content) by id."
+      de: "Liest die Metadaten (oder den Inhalt) einer Datei anhand der ID."
+    params:
+      oauth_token: "{{secret:user:oauth.google.access_token}}"
+      fileId: "1AbCdEfGhIjKlMnOpQrStUvWxYz"
+  - tool: drive_files_create
+    description:
+      en: "Create a file or folder."
+      de: "Legt eine Datei oder einen Ordner an."
+    params:
+      oauth_token: "{{secret:user:oauth.google.access_token}}"
+      body:
+        name: "New folder"
+        mimeType: "application/vnd.google-apps.folder"
+  - tool: drive_permissions_create
+    description:
+      en: "Share a file with a person."
+      de: "Gibt eine Datei für eine Person frei."
+  - tool: drive_permissions_list
+    description:
+      en: "Show who a file is shared with."
+      de: "Zeigt, für wen eine Datei freigegeben ist."

@@ -1,0 +1,47 @@
+# Catalog entry for the Google Calendar REST pack (calendar_rest). The tools themselves come from the pack; this
+# only describes the service and points at the operations people reach for first.
+title: { en: "Google Calendar", de: "Google Kalender" }
+description:
+  en: "List calendars, read and create events. The REST tools take the token as a parameter — pass the user's Google login with {{secret:user:oauth.google.access_token}}."
+  de: "Kalender auflisten, Termine lesen und anlegen. Die REST-Tools nehmen das Token als Parameter — die Google-Anmeldung des Benutzers mit {{secret:user:oauth.google.access_token}} übergeben."
+# A path under _vance/webui/ (a logo the server serves) or the name of an icon of the web UI.
+icon: icons/google-calendar.svg
+# The pack names this entry describes: a pack called "calendar" or "calendar_rest" matches.
+match: [calendar]
+login:
+  provider: google
+  manual: oauth-tools
+highlights:
+  - tool: calendar_calendarList_list
+    description:
+      en: "List the calendars of the user."
+      de: "Listet die Kalender des Benutzers."
+    params:
+      oauth_token: "{{secret:user:oauth.google.access_token}}"
+  - tool: calendar_events_list
+    description:
+      en: "List the events of a calendar; primary is the user's own."
+      de: "Listet die Termine eines Kalenders; primary ist der eigene."
+    params:
+      oauth_token: "{{secret:user:oauth.google.access_token}}"
+      calendarId: "primary"
+      maxResults: 20
+  - tool: calendar_events_get
+    description:
+      en: "Read one event by id."
+      de: "Liest einen Termin anhand der ID."
+    params:
+      oauth_token: "{{secret:user:oauth.google.access_token}}"
+      calendarId: "primary"
+      eventId: "abc123"
+  - tool: calendar_events_insert
+    description:
+      en: "Create an event."
+      de: "Legt einen Termin an."
+    params:
+      oauth_token: "{{secret:user:oauth.google.access_token}}"
+      calendarId: "primary"
+      body:
+        summary: "Planning"
+        start: { dateTime: "2026-12-01T10:00:00+01:00" }
+        end: { dateTime: "2026-12-01T10:30:00+01:00" }

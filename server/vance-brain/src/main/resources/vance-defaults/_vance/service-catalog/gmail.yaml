@@ -1,0 +1,49 @@
+# Catalog entry for the Gmail REST pack (gmail_rest). The tools themselves come from the pack; this
+# only describes the service and points at the operations people reach for first.
+title: { en: "Gmail", de: "Gmail" }
+description:
+  en: "Read, search and send mail, manage drafts and labels. The REST tools take the token as a parameter — pass the user's Google login with {{secret:user:oauth.google.access_token}}."
+  de: "E-Mails lesen, suchen und senden, Entwürfe und Labels verwalten. Die REST-Tools nehmen das Token als Parameter — die Google-Anmeldung des Benutzers mit {{secret:user:oauth.google.access_token}} übergeben."
+# A path under _vance/webui/ (a logo the server serves) or the name of an icon of the web UI.
+icon: icons/gmail.svg
+# The pack names this entry describes: a pack called "gmail" or "gmail_rest" matches.
+match: [gmail]
+login:
+  provider: google
+  manual: oauth-tools
+highlights:
+  - tool: gmail_users_messages_list
+    description:
+      en: "List or search messages; q takes Gmail search syntax."
+      de: "Listet Nachrichten oder durchsucht sie; q nimmt die Gmail-Suchsyntax."
+    params:
+      access_token: "{{secret:user:oauth.google.access_token}}"
+      userId: "me"
+      q: "is:unread newer_than:1d"
+      maxResults: 20
+  - tool: gmail_users_messages_get
+    description:
+      en: "Read one message by id."
+      de: "Liest eine Nachricht anhand der ID."
+    params:
+      access_token: "{{secret:user:oauth.google.access_token}}"
+      userId: "me"
+      id: "18c0ffee00000000"
+  - tool: gmail_users_messages_send
+    description:
+      en: "Send a message; the body carries it as base64url in raw."
+      de: "Sendet eine Nachricht; der Body trägt sie als base64url in raw."
+    params:
+      access_token: "{{secret:user:oauth.google.access_token}}"
+      userId: "me"
+  - tool: gmail_users_drafts_create
+    description:
+      en: "Create a draft."
+      de: "Legt einen Entwurf an."
+  - tool: gmail_users_labels_list
+    description:
+      en: "List the labels of the mailbox."
+      de: "Listet die Labels des Postfachs."
+    params:
+      access_token: "{{secret:user:oauth.google.access_token}}"
+      userId: "me"

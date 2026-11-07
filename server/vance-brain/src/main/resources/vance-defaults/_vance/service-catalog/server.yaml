@@ -1,0 +1,34 @@
+# Catalog entry for the tools of Vancetope itself (the "server" tools): documents, processes, settings,
+# accounts and the rest of what the system does on its own. No login — they run as the user the workflow runs as.
+title: { en: "Vancetope", de: "Vancetope" }
+description:
+  en: "The tools of Vancetope itself: documents, processes, settings, accounts, workflows."
+  de: "Die Werkzeuge von Vancetope selbst: Dokumente, Prozesse, Einstellungen, Konten, Workflows."
+# A path under _vance/webui/ (a logo the server serves) or the name of an icon of the web UI.
+icon: icons/vancetope.svg
+match: [server]
+highlights:
+  - tool: doc_read
+    description:
+      en: "Read a document of the project by path."
+      de: "Liest ein Dokument des Projekts anhand des Pfads."
+    params:
+      path: "notes/todo.md"
+  - tool: doc_find
+    description:
+      en: "Find documents by a word in the path, name or title."
+      de: "Findet Dokumente über ein Wort in Pfad, Name oder Titel."
+    params:
+      query: "report"
+  - tool: doc_list
+    description:
+      en: "List the documents of the project."
+      de: "Listet die Dokumente des Projekts."
+  - tool: inbox_post
+    description:
+      en: "Post an item to a person's inbox: an analysis, a question, a decision."
+      de: "Stellt einer Person etwas in den Posteingang: eine Analyse, eine Frage, eine Entscheidung."
+  - tool: workflow_start
+    description:
+      en: "Start another workflow run, unattended."
+      de: "Startet einen weiteren Workflow-Lauf, unbeaufsichtigt."

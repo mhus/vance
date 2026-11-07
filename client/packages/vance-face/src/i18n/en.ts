@@ -1697,6 +1697,17 @@ export default {
         optional: 'Optional parameters ({n})',
         default: '(default: {value})',
         otherParams: 'Other parameters the tool does not describe (YAML)',
+        result: {
+          title: 'What the tool returns ({n})',
+          none: 'This tool does not describe its result.',
+          read: "Read a field in a later state with the variable '{name}' and its path, as shown.",
+          keepFirst: "Set 'Keep the result as' above to read these fields in a later state.",
+          copy: 'Copy the placeholder',
+          filter: 'Filter the fields',
+          more: 'Showing {shown} of {total}; filter to narrow down.',
+          noMatch: 'No field matches.',
+          truncated: 'The schema is larger than this list: only the first {n} fields are kept.',
+        },
         allParams: 'Parameters (YAML)',
         invalid: {
           integer: 'A whole number, or a placeholder like the state or params reference.',

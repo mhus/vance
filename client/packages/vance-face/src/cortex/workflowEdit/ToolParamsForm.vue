@@ -13,6 +13,7 @@ import { useI18n } from 'vue-i18n';
 import { parse, stringify } from 'yaml';
 import { VAlert, VButton, VGroup, VTextarea } from '@/components';
 import ParamControl from './ParamControl.vue';
+import ToolResultInfo from './ToolResultInfo.vue';
 import {
   findTool,
   fromParamDraft,
@@ -53,6 +54,8 @@ const stored = computed<Record<string, unknown>>(() => {
 });
 
 const spec = computed(() => findTool(props.tools.services.value, toolName.value));
+/** The variable the state keeps its result in, or empty. */
+const storeAs = computed(() => (typeof body.value.storeAs === 'string' ? body.value.storeAs : ''));
 const fields = computed(() => paramFields(spec.value?.paramsSchema));
 const described = computed(() => new Set(fields.value.map((f) => f.name)));
 
@@ -179,6 +182,8 @@ const unknownTool = computed(() => props.tools.loaded.value && toolName.value !=
           />
         </div>
       </details>
+
+      <ToolResultInfo v-if="spec" :schema="spec.outputSchema" :store-as="storeAs" />
 
       <div class="wf-tool-extras">
         <p class="wf-tool-note">

@@ -159,6 +159,39 @@ Common failure modes:
 | `IMAP operation failed: BYE` | Server rate-limit or session-timeout; reduce poll frequency |
 | Empty `body` field | Multipart with attachment but no text part — current v1 limitation |
 
+## In a workflow
+
+A workflow calls the tools of a pack with a `tool_task`; the pack shows up in the editor's palette under its
+own name, with the mail icon. Because the pack is called what you called it, a call is
+`<pack>__<operation>`.
+
+**Read new mail on a schedule.** The simplest way is the catalog trigger: in the workflow editor choose
+*Add source*, pick *Mailbox (IMAP) → new-mail* and give the name of the pack. That makes a workflow and a
+scheduler (every five minutes): the workflow asks the pack for unread mail (`list_messages`, default
+folder), loops over the new ones and remembers their `messageId`, so a mail is handed over once even if it
+stays unread. The first look only notes what is there. The body of the loop is the state `handle` — edit it.
+
+**Mark a mail read** inside that loop with a further state:
+
+```yaml
+mark:
+  type: tool_task
+  tool: sales__set_seen          # only exists when the pack is set up with readonly: false
+  params:
+    messageRef: "${state.item.messageId}"
+    seen: true
+  on: { success: next }
+```
+
+**Read a mail's text** with `preview_message` (HTML stripped, short) rather than `get_message`.
+
+**Send mail** from the same workflow with an SMTP pack: `noreply__send_message` with `to` (a list), `subject`
+and `body` — see `manual_read('smtp-tools')`.
+
+Without the trigger, build the same by hand: a scheduler that starts a workflow whose first state is a
+`tool_task` on `<pack>__list_messages` (`unread_only: true`), then a `for_each_task` over
+`${state.mails.messages}`.
+
 ## Recipe: scheduled polling
 
 A scheduler-job that runs every 10 min on a project, calling

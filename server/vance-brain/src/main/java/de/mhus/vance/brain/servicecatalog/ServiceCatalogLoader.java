@@ -82,8 +82,9 @@ public class ServiceCatalogLoader {
         }
         Map<String, Object> m = (Map<String, Object>) map;
         List<String> match = strings(m.get("match"));
-        if (match.isEmpty()) {
-            throw new IllegalStateException("'match' must name at least one pack");
+        String packType = text(m.get("type"));
+        if (match.isEmpty() && packType == null) {
+            throw new IllegalStateException("'match' must name at least one pack, or 'type' a type of server tool");
         }
         String provider = null;
         String manual = null;
@@ -110,6 +111,7 @@ public class ServiceCatalogLoader {
                 texts(m.get("description")),
                 text(m.get("icon")),
                 match,
+                packType,
                 provider,
                 manual,
                 List.copyOf(highlights),

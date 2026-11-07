@@ -1,0 +1,62 @@
+# Catalog entry for IMAP mailbox packs (server tools of type imap_mailbox). A mailbox is called what its
+# operator called it (sales, support, ...), so the entry goes by the type, not by a name.
+title: { en: "Mailbox (IMAP)", de: "Postfach (IMAP)" }
+description:
+  en: "Read mail from an IMAP mailbox: list and search messages, read them as plain text, and — when the pack is set up with readonly: false — mark, flag, move or delete them. The login lives in the pack's settings."
+  de: "E-Mails aus einem IMAP-Postfach lesen: Nachrichten auflisten und suchen, als Klartext lesen und — wenn das Pack mit readonly: false angelegt ist — markieren, kennzeichnen, verschieben oder löschen. Die Anmeldung steht in den Einstellungen des Packs."
+# A path under _vance/webui/ (a logo the server serves) or the name of an icon of the web UI.
+icon: mail
+type: imap_mailbox
+highlights:
+  - tool: list_messages
+    description:
+      en: "List messages; unread_only and since narrow it down."
+      de: "Listet Nachrichten; unread_only und since schränken ein."
+    params:
+      unread_only: true
+      limit: 20
+  - tool: preview_message
+    description:
+      en: "Read one message as plain text, short enough for a model (messageRef is messageNumber or messageId from the list)."
+      de: "Liest eine Nachricht als Klartext, kurz genug für ein Modell (messageRef ist messageNumber oder messageId aus der Liste)."
+    params:
+      messageRef: "42"
+  - tool: get_message
+    description:
+      en: "Read one message with its original markup."
+      de: "Liest eine Nachricht mit ihrem ursprünglichen Markup."
+    params:
+      messageRef: "42"
+  - tool: set_seen
+    description:
+      en: "Mark a message read or unread. Only offered when the pack is set up with readonly: false."
+      de: "Markiert eine Nachricht als gelesen oder ungelesen. Nur wenn das Pack mit readonly: false angelegt ist."
+    params:
+      messageRef: "42"
+      seen: true
+  - tool: move_message
+    description:
+      en: "Move a message to another folder. Only offered when the pack is set up with readonly: false."
+      de: "Verschiebt eine Nachricht in einen anderen Ordner. Nur wenn das Pack mit readonly: false angelegt ist."
+    params:
+      messageRef: "42"
+      targetFolder: "Archive"
+triggers:
+  - name: new-mail
+    description:
+      en: "A new unread mail in the mailbox's default folder. Checked every five minutes; the first look only notes what is there. A mail is handed over once, even when it stays unread."
+      de: "Eine neue ungelesene Mail im Standardordner des Postfachs. Wird alle fünf Minuten geprüft; der erste Blick merkt sich nur, was schon da ist. Eine Mail wird einmal übergeben, auch wenn sie ungelesen bleibt."
+    mode: poll
+    inputs:
+      - name: pack
+        description:
+          en: "Name of the mailbox pack, as it is called in the tool list (the name of its server tool)"
+          de: "Name des Postfach-Packs, wie es in der Werkzeugliste heißt (der Name seines Server-Tools)"
+    poll:
+      tool: "${input.pack}__list_messages"
+      schedule: "0 */5 * * * *"
+      params:
+        unread_only: true
+        limit: 50
+      itemsFrom: messages
+      idFrom: messageId

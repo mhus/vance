@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.servicecatalog;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -13,6 +14,7 @@ import org.jspecify.annotations.Nullable;
  * description: { en: "…", de: "…" }
  * icon: ticket
  * match: [jira]                     # pack names this entry describes — "jira" and "jira_rest" both match
+ * type: imap_mailbox                # or: the kind of server tool a pack is made from, whatever its name
  * login:
  *   provider: atlassian             # the OAuth provider whose login of the calling user the tools need
  *   manual: oauth-tools             # the manual that says how to connect it
@@ -55,7 +57,10 @@ import org.jspecify.annotations.Nullable;
  * @param description per language
  * @param icon        an icon name of the web UI, or the path of a web UI asset ({@code icons/jira.svg}, served from
  *                    {@code _vance/webui/}, see {@code webui-assets.md}), or {@code null}
- * @param match       pack names (the {@code service} of a tool) the entry describes
+ * @param match       pack names (the {@code service} of a tool) the entry describes; may be empty when {@code packType}
+ *                    names them instead
+ * @param packType    the type of server tool ({@code imap_mailbox}, {@code smtp_sender}) whose packs the entry
+ *                    describes, whatever the operator named them; {@code null} for an entry that goes by name only
  * @param provider    OAuth provider id, or {@code null} when the tools need no user login
  * @param manual      manual name, or {@code null}
  * @param highlights  the operations people reach for first
@@ -67,6 +72,7 @@ public record ServiceCatalogEntry(
         Map<String, String> description,
         @Nullable String icon,
         List<String> match,
+        @Nullable String packType,
         @Nullable String provider,
         @Nullable String manual,
         List<Highlight> highlights,
@@ -173,6 +179,24 @@ public record ServiceCatalogEntry(
         for (String m : match) {
             String mm = m.toLowerCase(Locale.ROOT);
             if (lower.equals(mm) || lower.startsWith(mm + "_")) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Whether this entry describes a pack with this {@code service} name and these tool {@code labels}: by name
+     * ({@link #describes(String)}), or — for an entry with a {@code packType} — because the pack is made from that
+     * type of server tool. Such a pack carries the label {@code <type>:<pack name>} on each of its tools, so a
+     * mailbox called {@code sales} is found as an {@code imap_mailbox} whatever it is called.
+     *
+     * @param service the pack's service name, or {@code null} for a tool that belongs to none
+     */
+    public boolean describes(@Nullable String service, Collection<String> labels) {
+        if (service != null && describes(service)) return true;
+        if (packType == null) return false;
+        String prefix = packType + ":";
+        for (String label : labels) {
+            if (label.startsWith(prefix)) return true;
         }
         return false;
     }

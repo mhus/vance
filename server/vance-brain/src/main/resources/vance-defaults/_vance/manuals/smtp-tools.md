@@ -29,6 +29,22 @@ Attachments are **not in v1** — the file-blob handoff between
 workspace/documents and the SMTP layer needs explicit design. Comes
 in v2.
 
+## In a workflow
+
+A workflow sends mail with a `tool_task` on `<pack>__send_message`; the pack shows up in the editor's palette
+under its own name, with the mail icon. `to` is a list of addresses:
+
+```yaml
+notify:
+  type: tool_task
+  tool: noreply__send_message
+  params:
+    to: ["${params.owner}"]
+    subject: "Report ready"
+    body: "The report for ${params.month} is done."
+  on: { success: done }
+```
+
 ## Per-user vs. per-project credentials
 
 For SMTP **per-project is almost always right**: shared sender

@@ -67,6 +67,7 @@ class WorkflowToolsControllerTest {
                 Map.of("en", "Tickets"),
                 "ticket",
                 List.of("jira"),
+                null,
                 "atlassian",
                 "oauth-tools",
                 List.of(
@@ -125,15 +126,64 @@ class WorkflowToolsControllerTest {
                 resolved(tool("a__x", "a", Map.of("type", "object")), pack),
                 resolved(tool("b__x", "b", Map.of("type", "object")), pack)));
         var needsLogin = new ServiceCatalogEntry(
-                "a", Map.of("en", "A"), Map.of(), null, List.of("a"), "p", null, List.of(), List.of());
+                "a", Map.of("en", "A"), Map.of(), null, List.of("a"), null, "p", null, List.of(), List.of());
         var needsNone = new ServiceCatalogEntry(
-                "b", Map.of("en", "B"), Map.of(), null, List.of("b"), null, null, List.of(), List.of());
+                "b", Map.of("en", "B"), Map.of(), null, List.of("b"), null, null, null, List.of(), List.of());
 
         WorkflowToolsController.decorate(groups, List.of(needsLogin, needsNone), "en", provider -> null);
 
         assertThat(groups.get(0).getCatalog().getConnected()).isNull();
         assertThat(groups.get(1).getCatalog().getLoginProvider()).isNull();
         assertThat(groups.get(1).getCatalog().getConnected()).isNull();
+    }
+
+    @Test
+    void a_pack_of_a_server_tool_type_gets_the_entry_of_that_type_whatever_it_is_called() {
+        List<ToolServiceDto> groups = WorkflowToolsController.group(List.of(
+                resolved(
+                        tool(
+                                "sales__list_messages",
+                                "sales",
+                                Map.of("type", "object"),
+                                Set.of(),
+                                Set.of("imap_mailbox:sales")),
+                        pack),
+                resolved(
+                        tool(
+                                "noreply__send_message",
+                                "noreply",
+                                Map.of("type", "object"),
+                                Set.of(),
+                                Set.of("smtp_sender:noreply")),
+                        pack)));
+        var mail = new ServiceCatalogEntry(
+                "imap",
+                Map.of("en", "Mailbox"),
+                Map.of(),
+                "mail",
+                List.of(),
+                "imap_mailbox",
+                null,
+                null,
+                List.of(new ServiceCatalogEntry.Highlight("list_messages", Map.of("en", "List"), null)),
+                List.of());
+
+        WorkflowToolsController.decorate(groups, List.of(mail), "en", provider -> null);
+
+        var sales = groups.stream()
+                .filter(g -> g.getService().equals("sales"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(sales.getCatalog().getName()).isEqualTo("imap");
+        assertThat(sales.getCatalog().getIcon()).isEqualTo("mail");
+        assertThat(sales.getCatalog().getHighlights())
+                .singleElement()
+                .satisfies(h -> assertThat(h.getTool()).isEqualTo("sales__list_messages"));
+        var noreply = groups.stream()
+                .filter(g -> g.getService().equals("noreply"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(noreply.getCatalog()).isNull();
     }
 
     private static ToolSource source(String id) {
@@ -151,7 +201,17 @@ class WorkflowToolsControllerTest {
     }
 
     private static Tool tool(String name, String service, Map<String, Object> output, Set<String> roles) {
+        return tool(name, service, output, roles, Set.of());
+    }
+
+    private static Tool tool(
+            String name, String service, Map<String, Object> output, Set<String> roles, Set<String> labels) {
         return new Tool() {
+            @Override
+            public Set<String> labels() {
+                return labels;
+            }
+
             @Override
             public Set<String> requiresEngineRoles() {
                 return roles;

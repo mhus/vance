@@ -204,4 +204,61 @@ class ServiceCatalogTest {
         when(r.content()).thenReturn(content);
         return r;
     }
+
+    @Test
+    void anEntryMayNameATypeOfServerToolInsteadOfPackNames() {
+        ServiceCatalogEntry mail = ServiceCatalogLoader.parse("mail", "type: imap_mailbox\nhighlights: []\n");
+
+        assertThat(mail.packType()).isEqualTo("imap_mailbox");
+        assertThat(mail.match()).isEmpty();
+    }
+
+    @Test
+    void aTypedEntryDescribesEveryPackOfThatTypeWhateverItIsCalled() {
+        ServiceCatalogEntry mail = ServiceCatalogLoader.parse("mail", "type: imap_mailbox\nhighlights: []\n");
+
+        assertThat(mail.describes("sales", java.util.Set.of("mail", "imap_mailbox:sales")))
+                .isTrue();
+        assertThat(mail.describes("support", java.util.Set.of("imap_mailbox:support")))
+                .isTrue();
+        assertThat(mail.describes("noreply", java.util.Set.of("smtp_sender:noreply")))
+                .isFalse();
+        assertThat(mail.describes(null, java.util.Set.of())).isFalse();
+    }
+
+    @Test
+    void aNamedEntryStillGoesByName_andLabelsDoNotChangeThat() {
+        ServiceCatalogEntry jira = ServiceCatalogLoader.parse("jira", "match: [jira]\nhighlights: []\n");
+
+        assertThat(jira.describes("jira_rest", java.util.Set.of())).isTrue();
+        assertThat(jira.describes("other", java.util.Set.of("imap_mailbox:other")))
+                .isFalse();
+    }
+
+    @Test
+    void theBundledMailEntriesAreTypedAndTheImapOneHasANewMailTriggerThatNamesItsPack() throws IOException {
+        var imap = bundled("imap");
+        var smtp = bundled("smtp");
+
+        assertThat(imap.packType()).isEqualTo("imap_mailbox");
+        assertThat(smtp.packType()).isEqualTo("smtp_sender");
+        assertThat(smtp.highlights())
+                .extracting(ServiceCatalogEntry.Highlight::tool)
+                .containsExactly("send_message");
+        assertThat(imap.triggers()).singleElement().satisfies(t -> {
+            assertThat(t.name()).isEqualTo("new-mail");
+            assertThat(t.mode()).isEqualTo(ServiceCatalogEntry.TriggerMode.POLL);
+            assertThat(t.inputs()).extracting(ServiceCatalogEntry.Input::name).containsExactly("pack");
+            assertThat(t.poll().tool()).isEqualTo("${input.pack}__list_messages");
+            assertThat(t.poll().idFrom()).isEqualTo("messageId");
+            assertThat(t.poll().itemsFrom()).isEqualTo("messages");
+        });
+    }
+
+    private static ServiceCatalogEntry bundled(String name) throws IOException {
+        var resource = new PathMatchingResourcePatternResolver()
+                .getResource("classpath:vance-defaults/_vance/service-catalog/" + name + ".yaml");
+        return ServiceCatalogLoader.parse(
+                name, new String(resource.getInputStream().readAllBytes(), StandardCharsets.UTF_8));
+    }
 }

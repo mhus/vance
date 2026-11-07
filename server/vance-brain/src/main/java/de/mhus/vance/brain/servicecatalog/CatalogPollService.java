@@ -79,8 +79,10 @@ public class CatalogPollService {
                 : (Map<String, Object>) CatalogTriggerService.substitute(poll.params(), values);
         ToolInvocationContext context =
                 new ToolInvocationContext(tenantId, projectId, /* sessionId */ null, /* processId */ null, userId);
+        // The operation may name its pack by an input: a mailbox is called what its operator called it.
+        String operation = String.valueOf(CatalogTriggerService.substitute(poll.tool(), values));
         Map<String, Object> result =
-                tools.invoke(resolver.resolve(located.entry(), poll.tool(), context), params, context);
+                tools.invoke(resolver.resolve(located.entry(), operation, context), params, context);
         if (ToolFailure.classifyResult(result).isPresent()) {
             return new Polled(List.of(), new Pending(state.seen(), state.cursor()), result);
         }

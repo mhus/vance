@@ -21,55 +21,48 @@ import org.junit.jupiter.api.Test;
  */
 class ImapMailboxToolFactoryTest {
 
-    private final ImapMailboxToolFactory factory =
-            new ImapMailboxToolFactory(mock(SettingsSecretResolver.class));
+    private final ImapMailboxToolFactory factory = new ImapMailboxToolFactory(mock(SettingsSecretResolver.class));
 
     @Test
     void readonly_default_yields_four_read_tools() {
         Collection<Tool> tools = factory.create(packDoc(Map.of("host", "imap.example.com")));
 
-        assertThat(toolNames(tools)).containsExactlyInAnyOrder(
-                "imap__list_folders",
-                "imap__list_messages",
-                "imap__get_message",
-                "imap__preview_message");
-        assertThat(tools).allSatisfy(t -> assertThat(t.labels())
-                .contains("read-only")
-                .doesNotContain("write", "side-effect"));
+        assertThat(toolNames(tools))
+                .containsExactlyInAnyOrder(
+                        "imap__list_folders", "imap__list_messages", "imap__get_message", "imap__preview_message");
+        assertThat(tools)
+                .allSatisfy(t -> assertThat(t.labels()).contains("read-only").doesNotContain("write", "side-effect"));
     }
 
     @Test
     void readonly_false_adds_four_write_tools() {
-        Collection<Tool> tools = factory.create(packDoc(Map.of(
-                "host", "imap.example.com",
-                "readonly", false)));
+        Collection<Tool> tools = factory.create(packDoc(Map.of("host", "imap.example.com", "readonly", false)));
 
-        assertThat(toolNames(tools)).containsExactlyInAnyOrder(
-                "imap__list_folders",
-                "imap__list_messages",
-                "imap__get_message",
-                "imap__preview_message",
-                "imap__set_seen",
-                "imap__set_flagged",
-                "imap__move_message",
-                "imap__delete_message");
+        assertThat(toolNames(tools))
+                .containsExactlyInAnyOrder(
+                        "imap__list_folders",
+                        "imap__list_messages",
+                        "imap__get_message",
+                        "imap__preview_message",
+                        "imap__set_seen",
+                        "imap__set_flagged",
+                        "imap__move_message",
+                        "imap__delete_message");
     }
 
     @Test
     void write_tools_carry_side_effect_labels_read_tools_do_not() {
-        Collection<Tool> tools = factory.create(packDoc(Map.of(
-                "host", "imap.example.com",
-                "readonly", false)));
+        Collection<Tool> tools = factory.create(packDoc(Map.of("host", "imap.example.com", "readonly", false)));
 
-        Map<String, Tool> byName = tools.stream()
-                .collect(Collectors.toMap(Tool::name, t -> t));
+        Map<String, Tool> byName = tools.stream().collect(Collectors.toMap(Tool::name, t -> t));
 
         assertThat(byName.get("imap__list_folders").labels())
-                .contains("read-only").doesNotContain("write", "side-effect");
+                .contains("read-only")
+                .doesNotContain("write", "side-effect");
         assertThat(byName.get("imap__set_seen").labels())
-                .contains("write", "side-effect").doesNotContain("read-only");
-        assertThat(byName.get("imap__delete_message").labels())
-                .contains("write", "side-effect");
+                .contains("write", "side-effect")
+                .doesNotContain("read-only");
+        assertThat(byName.get("imap__delete_message").labels()).contains("write", "side-effect");
     }
 
     @Test
@@ -79,6 +72,16 @@ class ImapMailboxToolFactoryTest {
                 "readonly", "false")));
 
         assertThat(tools).hasSize(8);
+    }
+
+    @Test
+    void every_tool_is_a_service_of_the_pack_and_carries_the_type_label() {
+        Collection<Tool> tools = factory.create(packDoc(Map.of("host", "imap.example.com", "readonly", false)));
+
+        assertThat(tools).allSatisfy(t -> {
+            assertThat(t.service()).isEqualTo("imap");
+            assertThat(t.labels()).contains("imap_mailbox:imap");
+        });
     }
 
     private static ServerToolDocument packDoc(Map<String, Object> params) {

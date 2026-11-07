@@ -25,7 +25,7 @@ public class CatalogToolResolver {
         if (tool.contains("__")) return tool;
         List<String> names = tools.resolveAll(ctx).stream()
                 .map(r -> r.tool().toSpec(r.source().sourceId()))
-                .filter(spec -> spec.getService() != null && entry.describes(spec.getService()))
+                .filter(spec -> entry.describes(spec.getService(), spec.getLabels()))
                 .map(ToolSpec::getName)
                 .toList();
         return pick(entry, tool, names);

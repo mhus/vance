@@ -1,0 +1,18 @@
+# Catalog entry for SMTP sender packs (server tools of type smtp_sender). A sender is called what its operator
+# called it (noreply, sales, ...), so the entry goes by the type, not by a name.
+title: { en: "Mail sending (SMTP)", de: "Mailversand (SMTP)" }
+description:
+  en: "Send mail through an SMTP account: one operation, send_message, with recipients, subject and text (and optional HTML). The login lives in the pack's settings; attachments are not supported yet."
+  de: "E-Mails über ein SMTP-Konto senden: eine Operation, send_message, mit Empfängern, Betreff und Text (optional HTML). Die Anmeldung steht in den Einstellungen des Packs; Anhänge werden noch nicht unterstützt."
+# A path under _vance/webui/ (a logo the server serves) or the name of an icon of the web UI.
+icon: mail
+type: smtp_sender
+highlights:
+  - tool: send_message
+    description:
+      en: "Send a mail; to is a list of addresses."
+      de: "Sendet eine Mail; to ist eine Liste von Adressen."
+    params:
+      to: ["someone@example.com"]
+      subject: "Hello from a workflow"
+      body: "Sent by a workflow."

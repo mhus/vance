@@ -88,7 +88,11 @@ public class WorkflowToolsController {
             java.util.function.Function<String, @Nullable Boolean> connected) {
         for (ToolServiceDto group : groups) {
             entries.stream()
-                    .filter(e -> e.describes(group.getService()))
+                    .filter(e -> e.describes(
+                            group.getService(),
+                            group.getTools().stream()
+                                    .flatMap(t -> t.getLabels().stream())
+                                    .collect(java.util.stream.Collectors.toSet())))
                     .findFirst()
                     .ifPresent(entry -> {
                         List<ServiceCatalogHighlightDto> highlights = new ArrayList<>();

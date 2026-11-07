@@ -168,6 +168,7 @@ public class ImapMailboxToolFactory implements ToolFactory {
 
     private abstract class BaseImapTool implements Tool {
         final String name;
+        final String packName;
         final Map<String, Object> rawParams;
         final Set<String> labels;
         final boolean primary;
@@ -183,6 +184,7 @@ public class ImapMailboxToolFactory implements ToolFactory {
                 boolean deferred,
                 String hint) {
             this.name = packName + "__" + suffix;
+            this.packName = packName;
             this.rawParams = raw == null ? Map.of() : raw;
             this.labels = labels;
             this.primary = primary;
@@ -193,6 +195,12 @@ public class ImapMailboxToolFactory implements ToolFactory {
         @Override
         public String name() {
             return name;
+        }
+
+        /** The mailbox is a service of its own, so the editor lists its tools together under the pack's name. */
+        @Override
+        public @org.jspecify.annotations.Nullable String service() {
+            return packName;
         }
 
         @Override

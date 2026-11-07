@@ -41,19 +41,27 @@ public class SmtpSenderToolFactory implements ToolFactory {
     private static final Map<String, Object> PARAMETERS_SCHEMA = Map.of(
             "type", "object",
             "required", List.of("host"),
-            "properties", Map.of(
-                    "host", Map.of("type", "string"),
-                    "port", Map.of("type", "integer", "description", "587 (STARTTLS) / 465 (TLS) / 25 (plain)"),
-                    "tls", Map.of("type", "boolean", "description", "Implicit-TLS on 465."),
-                    "starttls", Map.of("type", "boolean", "description", "STARTTLS upgrade on 587 (default)."),
-                    "user", Map.of("type", "string"),
-                    "password", Map.of("type", "string"),
-                    "from", Map.of("type", "string", "description", "Default From: header.")));
+            "properties",
+                    Map.of(
+                            "host", Map.of("type", "string"),
+                            "port", Map.of("type", "integer", "description", "587 (STARTTLS) / 465 (TLS) / 25 (plain)"),
+                            "tls", Map.of("type", "boolean", "description", "Implicit-TLS on 465."),
+                            "starttls", Map.of("type", "boolean", "description", "STARTTLS upgrade on 587 (default)."),
+                            "user", Map.of("type", "string"),
+                            "password", Map.of("type", "string"),
+                            "from", Map.of("type", "string", "description", "Default From: header.")));
 
     private final SettingsSecretResolver secretResolver;
 
-    @Override public String typeId() { return TYPE_ID; }
-    @Override public Map<String, Object> parametersSchema() { return PARAMETERS_SCHEMA; }
+    @Override
+    public String typeId() {
+        return TYPE_ID;
+    }
+
+    @Override
+    public Map<String, Object> parametersSchema() {
+        return PARAMETERS_SCHEMA;
+    }
 
     @Override
     public Collection<Tool> create(ServerToolDocument document) {
@@ -61,8 +69,7 @@ public class SmtpSenderToolFactory implements ToolFactory {
     }
 
     @Override
-    public Collection<Tool> create(
-            ServerToolDocument document, @Nullable ToolInvocationContext ctx) {
+    public Collection<Tool> create(ServerToolDocument document, @Nullable ToolInvocationContext ctx) {
         Set<String> labels = labelsFor(document);
         Tool t = new SendMessageTool(
                 document.getName(),
@@ -73,8 +80,11 @@ public class SmtpSenderToolFactory implements ToolFactory {
                 document.getPromptHint() == null ? "" : document.getPromptHint());
         List<Tool> out = new ArrayList<>(1);
         out.add(t);
-        log.info("SmtpSenderToolFactory pack='{}' tenant='{}' project='{}' produced 1 tool",
-                document.getName(), document.getTenantId(), document.getProjectId());
+        log.info(
+                "SmtpSenderToolFactory pack='{}' tenant='{}' project='{}' produced 1 tool",
+                document.getName(),
+                document.getTenantId(),
+                document.getProjectId());
         return out;
     }
 
@@ -93,15 +103,22 @@ public class SmtpSenderToolFactory implements ToolFactory {
 
     private class SendMessageTool implements Tool {
         private final String name;
+        private final String pack;
         private final Map<String, Object> rawParams;
         private final Set<String> labels;
         private final boolean primary;
         private final boolean deferred;
         private final String promptHint;
 
-        SendMessageTool(String pack, Map<String, Object> raw, Set<String> labels,
-                        boolean primary, boolean deferred, String hint) {
+        SendMessageTool(
+                String pack,
+                Map<String, Object> raw,
+                Set<String> labels,
+                boolean primary,
+                boolean deferred,
+                String hint) {
             this.name = pack + "__send_message";
+            this.pack = pack;
             this.rawParams = raw == null ? Map.of() : raw;
             this.labels = labels;
             this.primary = primary;
@@ -109,30 +126,62 @@ public class SmtpSenderToolFactory implements ToolFactory {
             this.promptHint = hint;
         }
 
-        @Override public String name() { return name; }
-        @Override public String description() {
+        @Override
+        public String name() {
+            return name;
+        }
+        /** The sender is a service of its own, so the editor lists its tool under the pack's name. */
+        @Override
+        public @org.jspecify.annotations.Nullable String service() {
+            return pack;
+        }
+
+        @Override
+        public String description() {
             return "Send an email via SMTP. Required: to (list of addresses), subject, body. "
                     + "Optional: cc, bcc, html (multipart/alternative when set), from (overrides pack default), replyTo.";
         }
-        @Override public boolean primary() { return primary; }
-        @Override public boolean deferred() { return deferred; }
-        @Override public Set<String> labels() { return labels; }
-        @Override public String promptHint() { return promptHint; }
 
-        @Override public Map<String, Object> paramsSchema() {
+        @Override
+        public boolean primary() {
+            return primary;
+        }
+
+        @Override
+        public boolean deferred() {
+            return deferred;
+        }
+
+        @Override
+        public Set<String> labels() {
+            return labels;
+        }
+
+        @Override
+        public String promptHint() {
+            return promptHint;
+        }
+
+        @Override
+        public Map<String, Object> paramsSchema() {
             return Map.of(
                     "type", "object",
                     "required", List.of("to", "subject", "body"),
-                    "properties", Map.of(
-                            "to", Map.of("type", "array", "items", Map.of("type", "string")),
-                            "cc", Map.of("type", "array", "items", Map.of("type", "string")),
-                            "bcc", Map.of("type", "array", "items", Map.of("type", "string")),
-                            "subject", Map.of("type", "string"),
-                            "body", Map.of("type", "string", "description", "Plain-text body."),
-                            "html", Map.of("type", "string",
-                                    "description", "Optional HTML alternative — sent as multipart/alternative."),
-                            "from", Map.of("type", "string"),
-                            "replyTo", Map.of("type", "string")));
+                    "properties",
+                            Map.of(
+                                    "to", Map.of("type", "array", "items", Map.of("type", "string")),
+                                    "cc", Map.of("type", "array", "items", Map.of("type", "string")),
+                                    "bcc", Map.of("type", "array", "items", Map.of("type", "string")),
+                                    "subject", Map.of("type", "string"),
+                                    "body", Map.of("type", "string", "description", "Plain-text body."),
+                                    "html",
+                                            Map.of(
+                                                    "type",
+                                                    "string",
+                                                    "description",
+                                                    "Optional HTML alternative — sent as multipart/alternative."),
+                                    "from", Map.of("type", "string"),
+                                    "replyTo", Map.of("type", "string")));
         }
 
         @SuppressWarnings("unchecked")
@@ -164,8 +213,7 @@ public class SmtpSenderToolFactory implements ToolFactory {
             SmtpSender sender = new SmtpSender(SmtpConfig.fromParameters(resolved));
             try {
                 return sender.send(new MailMessage(
-                        to, cc.isEmpty() ? null : cc, bcc.isEmpty() ? null : bcc,
-                        subject, body, html, from, replyTo));
+                        to, cc.isEmpty() ? null : cc, bcc.isEmpty() ? null : bcc, subject, body, html, from, replyTo));
             } catch (RuntimeException ex) {
                 throw new ToolException("send_message failed: " + ex.getMessage(), ex);
             }

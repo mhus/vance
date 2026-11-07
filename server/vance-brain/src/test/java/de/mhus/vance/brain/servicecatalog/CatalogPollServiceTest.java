@@ -225,4 +225,39 @@ class CatalogPollServiceTest {
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("pack installed");
     }
+
+    @Test
+    void aTriggerMayNameItsPackByAnInput_soAMailboxIsPolledWhateverItIsCalled() {
+        String typed = """
+                type: imap_mailbox
+                highlights: []
+                triggers:
+                  - name: new-mail
+                    mode: poll
+                    inputs: [ { name: pack } ]
+                    poll:
+                      tool: "${input.pack}__list_messages"
+                      schedule: "0 */5 * * * *"
+                      params: { unread_only: true }
+                      itemsFrom: messages
+                      idFrom: messageId
+                """;
+        ServiceCatalogEntry mail = ServiceCatalogLoader.parse("imap", typed);
+        ServiceCatalogLoader catalog = mock(ServiceCatalogLoader.class);
+        when(catalog.locate(eq("acme"), eq("p"), eq("imap/new-mail")))
+                .thenReturn(Optional.of(
+                        new ServiceCatalogLoader.Located(mail, mail.triggers().get(0))));
+        CatalogPollService mailPolls =
+                new CatalogPollService(catalog, documents, tools, new CatalogToolResolver(tools));
+        when(tools.invoke(eq("sales__list_messages"), any(), any(ToolInvocationContext.class)))
+                .thenReturn(Map.of("messages", List.of(Map.of("messageId", "<a@x>", "subject", "Hi")), "count", 1));
+
+        var polled = mailPolls.poll("acme", "p", "mike", "inbox", "imap/new-mail", Map.of("pack", "sales"));
+
+        // The first look is a baseline; what it remembers is the id of the mail.
+        assertThat(polled.pending().ids()).containsExactly("<a@x>");
+        ArgumentCaptor<Map<String, Object>> params = ArgumentCaptor.forClass(Map.class);
+        verify(tools).invoke(eq("sales__list_messages"), params.capture(), any(ToolInvocationContext.class));
+        assertThat(params.getValue()).containsEntry("unread_only", true);
+    }
 }

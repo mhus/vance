@@ -51,21 +51,39 @@ export function typeColor(state: WorkflowStateNode): string {
   }
 }
 
-/** One vue-flow edge per workflow edge, drawn the same wherever the graph shows up. */
+/**
+ * One vue-flow edge per pair of states. Edges that run between the same two states (several `catch` kinds to one
+ * handler, say) would be drawn on top of each other with their labels in one place, so they are drawn as one
+ * edge that carries all their labels. The merged edge keeps the id and look of the first of them; the inspector of
+ * the source state still lists every edge for editing.
+ */
 export function toFlowEdges(edges: WorkflowEdge[]): Edge[] {
-  return edges.map((edge) => ({
-    id: edge.id,
-    source: edge.source,
-    target: edge.target,
-    label: edge.label,
-    type: 'smoothstep',
-    markerEnd: 'arrowclosed',
-    animated: false,
-    class: `wf-edge wf-edge--${edge.kind}${edge.dangling ? ' wf-edge--dangling' : ''}`,
-    style: edgeStyle(edge.kind, edge.dangling, edge.intoLoop === true),
-    labelBgStyle: { fill: 'var(--color-base-100)' },
-    labelStyle: { fontSize: '11px', fill: 'var(--color-base-content)' },
-  }));
+  const groups = new Map<string, WorkflowEdge[]>();
+  for (const edge of edges) {
+    const key = `${edge.source}\u0000${edge.target}`;
+    const group = groups.get(key);
+    if (group) group.push(edge);
+    else groups.set(key, [edge]);
+  }
+  return [...groups.values()].map((group) => {
+    const edge = group[0]!;
+    // A merged edge is the loop's arrow when any of its edges is.
+    const intoLoop = group.some((e) => e.intoLoop === true);
+    const labels = [...new Set(group.map((e) => e.label).filter((l) => l !== ''))];
+    return {
+      id: edge.id,
+      source: edge.source,
+      target: edge.target,
+      label: labels.join(', '),
+      type: 'smoothstep',
+      markerEnd: 'arrowclosed',
+      animated: false,
+      class: `wf-edge wf-edge--${edge.kind}${edge.dangling ? ' wf-edge--dangling' : ''}`,
+      style: edgeStyle(edge.kind, edge.dangling, intoLoop),
+      labelBgStyle: { fill: 'var(--color-base-100)' },
+      labelStyle: { fontSize: '11px', fill: 'var(--color-base-content)' },
+    };
+  });
 }
 
 /**

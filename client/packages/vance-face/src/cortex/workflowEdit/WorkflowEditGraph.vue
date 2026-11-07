@@ -72,12 +72,14 @@ const vfNodes = computed(() => [
   ),
 ]);
 const vfEdges = computed(() =>
-  toFlowEdges(graph.value.edges).map((edge, index) => {
-    const own = graph.value.edges[index];
+  toFlowEdges(graph.value.edges).map((edge) => {
+    // A drawn edge may stand for several workflow edges between the same two states.
     const picked = props.selectedEdge !== null
-      && own.source === props.selectedEdge.source
-      && own.kind === props.selectedEdge.kind
-      && own.key === props.selectedEdge.key;
+      && graph.value.edges.some((own) => own.source === edge.source
+        && own.target === edge.target
+        && own.source === props.selectedEdge?.source
+        && own.kind === props.selectedEdge.kind
+        && own.key === props.selectedEdge.key);
     return picked ? { ...edge, style: { ...edge.style, strokeWidth: '3.5' }, selected: true } : edge;
   }),
 );

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * The frame drawn around the body of a loop: a dashed outline with the loop's name in the corner. It takes the
+ * The frame drawn around the body of a loop: a dashed outline with the loop's name on its upper edge. It takes the
  * size it is given and takes no clicks, so what lies under it stays reachable.
  */
 import { VIcon } from '@/components';
@@ -31,8 +31,9 @@ defineProps<{
 }
 .wf-frame-label {
   position: absolute;
-  top: 0.3rem;
-  left: 0.6rem;
+  /* Above the outline, in the gap a frame leaves to the one around it: nothing the layout draws lies there. */
+  top: -1.15rem;
+  left: 0.4rem;
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;

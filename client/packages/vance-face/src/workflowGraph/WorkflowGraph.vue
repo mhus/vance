@@ -26,11 +26,12 @@ import { VueFlow } from '@vue-flow/core';
 import '@vue-flow/core/dist/style.css';
 import '@vue-flow/core/dist/theme-default.css';
 import { VAlert, VButton } from '@/components';
-import { toFlowEdges, toFlowNodes } from './flowElements';
+import { toFlowEdges, toFlowNodes, toFrameNodes } from './flowElements';
 import { useFitOnResize } from './useFitOnResize';
-import { layoutPositions, type GraphDirection } from './layout';
+import { layoutGraph, type GraphDirection } from './layout';
 import { parseWorkflowGraph } from './workflowGraphCodec';
 import type { GraphOverlay } from './overlay';
+import LoopFrame from './LoopFrame.vue';
 import WorkflowNodeCard from './WorkflowNodeCard.vue';
 
 defineOptions({ name: 'WorkflowGraph' });
@@ -69,10 +70,12 @@ const { onPaneReady } = useFitOnResize(canvas);
 const direction = ref<GraphDirection>('TB');
 
 const graph = computed(() => parseWorkflowGraph(props.doc));
-const positions = computed(() => layoutPositions(graph.value, direction.value));
+const layout = computed(() => layoutGraph(graph.value, direction.value));
+const positions = computed(() => layout.value.positions);
 
-const vfNodes = computed(() =>
-  toFlowNodes(
+const vfNodes = computed(() => [
+  ...toFrameNodes(layout.value.frames),
+  ...toFlowNodes(
     graph.value,
     positions.value,
     (state) => ({
@@ -82,16 +85,15 @@ const vfNodes = computed(() =>
     }),
     { draggable: false, selectable: false, connectable: false },
   ),
-);
+]);
 const vfEdges = computed(() => toFlowEdges(graph.value.edges));
 
 const hasStates = computed(() => graph.value.states.length > 0);
 const stateCount = computed(() => graph.value.states.filter((s) => !s.missing).length);
 
 function onNodeClick(event: { node: { id: string } }): void {
-  if (props.interactive && !graph.value.states.find((s) => s.name === event.node.id)?.missing) {
-    emit('node-click', event.node.id);
-  }
+  const state = graph.value.states.find((s) => s.name === event.node.id);
+  if (props.interactive && state && !state.missing) emit('node-click', event.node.id);
 }
 
 function toggleDirection(): void {
@@ -142,6 +144,9 @@ function toggleDirection(): void {
         @pane-ready="onPaneReady"
         @node-click="onNodeClick"
       >
+        <template #node-frame="{ data }">
+          <LoopFrame :loop="data.loop" />
+        </template>
         <template #node-state="{ data }">
           <WorkflowNodeCard
             :state="data.state"

@@ -1,5 +1,5 @@
 import type { Edge, Node } from '@vue-flow/core';
-import { fallbackPosition, type NodePosition } from './layout';
+import { fallbackPosition, type LoopFrame, type NodePosition } from './layout';
 import type {
   WorkflowEdge,
   WorkflowEdgeKind,
@@ -85,5 +85,21 @@ export function toFlowNodes(
     position: positions.get(state.name) ?? fallbackPosition(idx),
     data: { state, ...dataOf(state) },
     ...flags,
+  }));
+}
+
+/** The nodes that draw the frames of the loops: behind everything, taking no clicks. */
+export function toFrameNodes(frames: readonly LoopFrame[]): Node[] {
+  return frames.map((frame) => ({
+    id: `frame:${frame.loop}`,
+    type: 'frame',
+    position: { x: frame.x, y: frame.y },
+    data: { loop: frame.loop },
+    style: { width: `${frame.width}px`, height: `${frame.height}px`, pointerEvents: 'none' },
+    zIndex: -1,
+    draggable: false,
+    selectable: false,
+    connectable: false,
+    focusable: false,
   }));
 }

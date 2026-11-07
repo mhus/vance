@@ -17,9 +17,10 @@ import { VueFlow } from '@vue-flow/core';
 import '@vue-flow/core/dist/style.css';
 import '@vue-flow/core/dist/theme-default.css';
 import { VAlert, VButton } from '@/components';
-import { toFlowEdges, toFlowNodes } from '@/workflowGraph/flowElements';
+import { toFlowEdges, toFlowNodes, toFrameNodes } from '@/workflowGraph/flowElements';
 import type { EdgeRef } from './workflowMutations';
-import { layoutPositions, type GraphDirection } from '@/workflowGraph/layout';
+import { layoutGraph, type GraphDirection } from '@/workflowGraph/layout';
+import LoopFrame from '@/workflowGraph/LoopFrame.vue';
 import { useFitOnResize } from '@/workflowGraph/useFitOnResize';
 import { parseWorkflowGraph } from '@/workflowGraph/workflowGraphCodec';
 import WorkflowNodeCard from '@/workflowGraph/WorkflowNodeCard.vue';
@@ -53,16 +54,18 @@ const { onPaneReady } = useFitOnResize(canvas);
 
 const direction = ref<GraphDirection>('TB');
 const graph = computed(() => parseWorkflowGraph(props.doc));
-const positions = computed(() => layoutPositions(graph.value, direction.value));
+const layout = computed(() => layoutGraph(graph.value, direction.value));
+const positions = computed(() => layout.value.positions);
 
-const vfNodes = computed(() =>
-  toFlowNodes(
+const vfNodes = computed(() => [
+  ...toFrameNodes(layout.value.frames),
+  ...toFlowNodes(
     graph.value,
     positions.value,
     (state) => ({ selected: props.selected === state.name }),
     { draggable: false, selectable: false, connectable: true },
   ),
-);
+]);
 const vfEdges = computed(() =>
   toFlowEdges(graph.value.edges).map((edge, index) => {
     const own = graph.value.edges[index];
@@ -77,6 +80,7 @@ const vfEdges = computed(() =>
 const hasStates = computed(() => graph.value.states.length > 0);
 
 function onNodeClick(event: { node: { id: string } }): void {
+  // A frame is no state: it is not found here, and a click on it does nothing.
   const state = graph.value.states.find((s) => s.name === event.node.id);
   if (state && !state.missing) emit('select', state.name);
 }
@@ -160,6 +164,9 @@ function toggleDirection(): void {
         @connect="onConnect"
         @connect-end="onConnectEnd"
       >
+        <template #node-frame="{ data }">
+          <LoopFrame :loop="data.loop" />
+        </template>
         <template #node-state="{ data }">
           <WorkflowNodeCard
             :state="data.state"

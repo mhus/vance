@@ -2393,6 +2393,61 @@ public class DocumentService {
     }
 
     /**
+     * Like {@link #lookupCascade}, but the content stays bytes: for files that are not text. A document or resource
+     * larger than {@code maxBytes} counts as not found — it is neither read nor held in memory, so a caller that
+     * serves the bytes sets the bound it is willing to carry.
+     *
+     * @return the resolved bytes, or {@link Optional#empty()} when no layer carries the path or the first hit is too large
+     */
+    public Optional<BinaryLookupResult> lookupCascadeBytes(
+            String tenantId, String projectId, String path, long maxBytes) {
+        String norm = normalizePath(path);
+
+        if (!HomeBootstrapService.TENANT_PROJECT_NAME.equals(projectId)) {
+            Optional<DocumentDocument> own = activeDocument(tenantId, projectId, norm);
+            if (own.isPresent()) return binaryOf(own.get(), LookupResult.Source.PROJECT, maxBytes);
+        }
+        Optional<DocumentDocument> tenant = activeDocument(tenantId, HomeBootstrapService.TENANT_PROJECT_NAME, norm);
+        if (tenant.isPresent()) return binaryOf(tenant.get(), LookupResult.Source.VANCE, maxBytes);
+
+        return loadResourceBytes(norm, maxBytes)
+                .map(bytes -> new BinaryLookupResult(norm, bytes, LookupResult.Source.RESOURCE));
+    }
+
+    private Optional<DocumentDocument> activeDocument(String tenantId, String projectId, String normalizedPath) {
+        return repository
+                .findByTenantIdAndProjectIdAndPath(tenantId, projectId, normalizedPath)
+                .filter(doc -> doc.getStatus() == DocumentStatus.ACTIVE);
+    }
+
+    private Optional<BinaryLookupResult> binaryOf(DocumentDocument doc, LookupResult.Source source, long maxBytes) {
+        if (doc.getSize() > maxBytes) return Optional.empty();
+        try (InputStream in = loadContent(doc)) {
+            byte[] bytes = in.readNBytes((int) maxBytes + 1);
+            if (bytes.length > maxBytes) return Optional.empty();
+            return Optional.of(new BinaryLookupResult(doc.getPath(), bytes, source));
+        } catch (IOException e) {
+            log.warn("Failed to read document id='{}' path='{}': {}", doc.getId(), doc.getPath(), e.toString());
+            return Optional.empty();
+        }
+    }
+
+    private Optional<byte[]> loadResourceBytes(String normalizedPath, long maxBytes) {
+        String resourcePath = RESOURCE_PREFIX + normalizedPath;
+        try {
+            Resource resource = resourcePatternResolver.getResource("classpath:" + resourcePath);
+            if (!resource.exists() || !resource.isReadable()) return Optional.empty();
+            try (InputStream in = resource.getInputStream()) {
+                byte[] bytes = in.readNBytes((int) maxBytes + 1);
+                return bytes.length > maxBytes ? Optional.empty() : Optional.of(bytes);
+            }
+        } catch (IOException e) {
+            log.warn("Failed to read classpath resource '{}': {}", resourcePath, e.toString());
+            return Optional.empty();
+        }
+    }
+
+    /**
      * List all documents one level under {@code pathPrefix}, merged
      * across the cascade. Inner sources overwrite outer ones <b>per
      * normalized path</b>: a {@code documents/how_to_tools.md} found in

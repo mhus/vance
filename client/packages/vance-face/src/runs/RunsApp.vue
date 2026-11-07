@@ -18,7 +18,8 @@
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { EditorShell, ProjectListSidebar, VAlert, VButton, VEmptyState, VSelect } from '@/components';
+import { EditorShell, ProjectListSidebar, VAlert, VEmptyState, VSelect } from '@/components';
+import { VIconButton } from '@vance/components';
 import type { RunRestartRequest, RunSimulateRequest } from '@vance/generated';
 import { useTenantProjects } from '@/composables/useTenantProjects';
 import { recallProject, rememberProject } from '@/platform';
@@ -46,12 +47,33 @@ const newRunOpen = ref<boolean>(!!startPath.value || !!startWorkflow.value);
 
 const focusZone = ref<'sidebar' | 'main' | 'right' | 'footer'>('main');
 
+// Hides the project sidebar and the run list so the detail gets the full width.
+const NAV_HIDDEN_KEY = 'vance.runs.navHidden';
+function readNavHidden(): boolean {
+  try {
+    return window.localStorage.getItem(NAV_HIDDEN_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+const navHidden = ref<boolean>(readNavHidden());
+watch(navHidden, (hidden) => {
+  try {
+    window.localStorage.setItem(NAV_HIDDEN_KEY, hidden ? '1' : '0');
+  } catch {
+    // storage unavailable: the toggle still works for this page view
+  }
+});
+
 /** Sources present in the current list — a filter built from data. */
 const sourceOptions = computed(() => {
   const seen = [...new Set(runs.value.map((r) => r.source))];
   return [{ value: '', label: t('runs.filter.allSources') },
     ...seen.map((s) => ({ value: s, label: s }))];
 });
+
+/** The run itself gets the whole area as an IDE frame; forms and hints keep the padded, scrolling one. */
+const showsRun = computed(() => !(newRunOpen.value && projectId.value) && !detailLoading.value && !!detail.value);
 
 const visibleRuns = computed(() => sourceFilter.value
   ? runs.value.filter((r) => r.source === sourceFilter.value)
@@ -200,23 +222,32 @@ onMounted(async () => {
     v-model:focus-zone="focusZone"
     :title="t('runs.pageTitle')"
     :full-height="true"
-    :show-sidebar="true"
-    focus-model="auto"
+    :show-sidebar="!navHidden"
+    :focus-model="navHidden ? 'off' : 'auto'"
   >
     <template #topbar-extra>
-      <!-- At most one primary button per view: while the form is open, its Start is it. -->
-      <VButton
+      <VIconButton
+        icon="sidebar"
+        size="sm"
+        :active="!navHidden"
+        :label="navHidden ? t('runs.showNav') : t('runs.hideNav')"
+        @click="navHidden = !navHidden"
+      />
+      <VIconButton
         icon="add"
         size="sm"
-        :variant="newRunOpen ? 'secondary' : 'primary'"
+        :active="newRunOpen"
+        :label="t('runs.newRun')"
         :disabled="!projectId"
         @click="openNewRun"
-      >
-        {{ t('runs.newRun') }}
-      </VButton>
-      <VButton icon="refresh" size="sm" variant="plain" :disabled="loading" @click="refresh">
-        {{ t('runs.refresh') }}
-      </VButton>
+      />
+      <VIconButton
+        icon="refresh"
+        size="sm"
+        :label="t('runs.refresh')"
+        :disabled="loading"
+        @click="refresh"
+      />
     </template>
 
     <!-- Project selection is the same widget as everywhere else. The
@@ -239,8 +270,8 @@ onMounted(async () => {
     <!-- Master-detail: the runs of the chosen project on the left, the
          chosen run on the right. Both belong to the same question, so
          they share the content area. -->
-    <div class="split">
-      <div class="list">
+    <div :class="['split', { 'split--wide': navHidden }]">
+      <div v-show="!navHidden" class="list">
         <div class="list-head">
           <VSelect v-model="sourceFilter" size="sm" :options="sourceOptions" />
           <span class="count">{{ t('runs.count', { n: visibleRuns.length }) }}</span>
@@ -273,7 +304,7 @@ onMounted(async () => {
         </ul>
       </div>
 
-      <div class="detail">
+      <div :class="['detail', { 'detail--ide': showsRun }]">
         <VAlert v-if="error" variant="error">{{ error }}</VAlert>
         <NewRunPanel
           v-if="newRunOpen && projectId"
@@ -315,10 +346,15 @@ onMounted(async () => {
 }
 .list { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--color-base-300); }
 .detail { padding: 0.75rem; overflow-y: auto; min-height: 0; }
+.detail--ide { padding: 0; overflow: hidden; display: flex; flex-direction: column; }
+.detail--ide > :deep(.ide) { flex: 1 1 0; }
 @media (max-width: 60rem) {
   .split { grid-template-columns: 1fr; grid-template-rows: minmax(0, 40%) 1fr; }
   .list { border-right: 0; border-bottom: 1px solid var(--color-base-300); }
 }
+.split.split--wide { grid-template-columns: 1fr; grid-template-rows: 1fr; }
+/* With the navigation hidden the form is not held to its reading width. */
+.split--wide .detail :deep(.new-run) { max-width: none; }
 .list-head {
   display: flex; align-items: center; gap: 0.5rem;
   padding: 0.5rem; border-bottom: 1px solid var(--color-base-300);

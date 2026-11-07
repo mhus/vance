@@ -10,13 +10,13 @@
 import type { Component } from 'vue';
 import {
   AppWindow, Archive, ArchiveRestore, ArrowDown, ArrowLeft, ArrowLeftRight, ArrowRight, ArrowUp,
-  ArrowUpDown, Bell, Bot, Bug, Calendar, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp,
+  ArrowUpDown, Ban, Bell, Bot, Bug, Calendar, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp,
   CircleCheck, CircleHelp, CircleX, Code, Copy, Crop, Download, FileDiff, Ellipsis, ExternalLink, Eye, EyeOff,
   File, FilePlus, FileText, Folder, FolderInput, FolderOpen, FolderPlus, Globe, GripVertical, History, House, Image, Inbox,
   Info, KeyRound, LayoutGrid, Link, List, ListFilter, Loader, Lock, LockOpen, LogIn, LogOut, MapPin,
   Maximize2, Menu, MessageSquare, Mic, Minimize2, Minus, Moon, Package, PanelLeft, PanelRight,
   Paperclip, Palette, Pause, Pencil, Pin, Play, Plus, Power, Redo2, RotateCw, Save, Search, Send, Settings,
-  Share, Sparkles, Square, SquareKanban, Star, Sun, Table, Tag, Terminal, TriangleAlert, Trash2,
+  Share, Sparkles, Square, SquareKanban, StepForward, Star, Sun, Table, Tag, Terminal, TriangleAlert, Trash2,
   Undo2, Upload, User, Users, Volume2, Wrench, X,
   // document kinds and file types
   Braces, BrainCircuit, Contact, Database, FileArchive, FileAudio, FileCode, FileImage, FileJson,
@@ -70,6 +70,12 @@ export const ICONS = {
   'play': Play,
   'pause': Pause,
   'stop': Square,
+  // Run one step of a halted debug run, then halt again.
+  'step': StepForward,
+  // Give up the step in progress, not the run.
+  'abort': Ban,
+  // Replace a state's result by one you give (debugger).
+  'simulate': FlaskConical,
   'show': Eye,
   'hide': EyeOff,
   'pin': Pin,

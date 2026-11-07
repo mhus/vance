@@ -44,6 +44,8 @@ interface Props {
   overlay?: GraphOverlay;
   /** Canvas height — a view in a tab wants most of the screen, a panel less. */
   height?: string;
+  /** Take all the height the parent gives (the parent must have a definite one); overrides {@link height}. */
+  fill?: boolean;
   /** List structural problems above the canvas. */
   showProblems?: boolean;
   /** States marked with a breakpoint. The drawing only shows them; setting them is the caller's. */
@@ -62,6 +64,7 @@ const props = withDefaults(defineProps<Props>(), {
   breakpoints: () => [],
   icons: () => ({}),
   interactive: false,
+  fill: false,
   selected: null,
 });
 const emit = defineEmits<{ (e: 'node-click', state: string): void }>();
@@ -107,7 +110,7 @@ function toggleDirection(): void {
 </script>
 
 <template>
-  <div class="workflow-view">
+  <div :class="['workflow-view', { 'workflow-view--fill': fill }]">
     <div class="toolbar">
       <span v-if="hasStates" class="summary">
         {{ t('documents.workflowView.summary', {
@@ -137,7 +140,12 @@ function toggleDirection(): void {
       </ul>
     </VAlert>
 
-    <div v-if="hasStates" ref="canvas" class="canvas" :style="{ height }">
+    <div
+      v-if="hasStates"
+      ref="canvas"
+      :class="['canvas', { 'canvas--fill': fill }]"
+      :style="fill ? undefined : { height }"
+    >
       <VueFlow
         :nodes="vfNodes"
         :edges="vfEdges"
@@ -211,6 +219,8 @@ function toggleDirection(): void {
   border-radius: 0.5rem;
   overflow: hidden;
 }
+.canvas.canvas--fill { flex: 1 1 0; min-height: 0; }
+.workflow-view--fill { height: 100%; }
 .empty {
   font-size: 0.85rem;
   opacity: 0.6;

@@ -1132,6 +1132,8 @@ export default {
   runs: {
     pageTitle: 'Runs',
     newRun: 'New run',
+    hideNav: 'Hide projects and run list',
+    showNav: 'Show projects and run list',
     refresh: 'Refresh',
     loading: 'Loading runs…',
     loadingDetail: 'Loading run…',

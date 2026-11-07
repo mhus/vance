@@ -1,0 +1,62 @@
+$meta:
+  kind: vance-workflow
+
+description: |
+  {{ task }}, for each element of a list.
+version: "1"
+
+# The list is the parameter items; a sample, when the template was given one, is only the default for starts
+# by hand — remove it before something else runs this unattended.
+parameters:
+  items: { type: array, required: false{% if sampleItems %}, default: {{ sampleItems }}{% endif %} }
+
+bounds:
+  maxWallclockSeconds: 86400
+  # Two tasks per element plus the loop itself.
+  maxTaskSpawns: 600
+
+start: loop
+
+states:
+
+  # One pass through the body per element; the element is in ${state.item}, its place in ${state.index}.
+  # What the body leaves in ${state.result} is collected into the list `results`. A step that fails stops
+  # the run: add a catch to the step and send it to `next` to skip such an element instead.
+  loop:
+    type: for_each_task
+    items: "${params.items}"
+    maxItems: {{ maxItems | default('50') }}
+    collect: "${state.result}"
+    storeAs: results
+    on:
+      each: work
+      done: done
+
+  work:
+    type: agent_task
+    recipe: {{ recipe | default('ford') }}
+    params:
+      prompt: |
+        {{ task }}
+
+        Element ${state.index}:
+        ${state.item}
+    storeAs: result
+    timeoutSeconds: 900
+    on:
+      success: next
+    catch:
+      agent_error: failed
+
+  next:
+    type: end
+
+  done:
+    type: terminal
+    outcome: success
+    result:
+      results: "${state.results}"
+
+  failed:
+    type: terminal
+    outcome: failure

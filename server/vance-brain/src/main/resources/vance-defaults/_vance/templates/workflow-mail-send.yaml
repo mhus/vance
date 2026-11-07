@@ -1,0 +1,43 @@
+title:       { de: "Workflow: Mail schreiben und senden",
+               en: "Workflow: write and send a mail" }
+description: { de: "Ein Agent schreibt eine Mail nach deiner Anweisung, auf Wunsch gibt sie ein Mensch frei, dann wird sie über ein SMTP-Pack gesendet. Gedacht für Zeitpläne und Events (Wochenbericht, Bestätigung).",
+               en: "An agent writes a mail from your instruction, optionally a person approves it, then it is sent through an SMTP pack. Meant for schedules and events (weekly report, confirmation)." }
+icon: paper-airplane
+tags: [workflow, automation, mail]
+folder: _vance/workflows
+name: { mode: free, default: "mail-send" }
+
+fields:
+  - name: smtpPack
+    type: string
+    required: true
+    label: { de: "Name des Versand-Packs (SMTP)", en: "Name of the sender pack (SMTP)" }
+    help:  { de: "Der Name, unter dem das SMTP-Pack in der Werkzeugliste steht, z. B. noreply",
+             en: "The name the SMTP pack has in the tool list, e.g. noreply" }
+  - name: to
+    type: string
+    required: true
+    label: { de: "Empfänger", en: "Recipient" }
+    help:  { de: "Eine Adresse. Mehr Empfänger trägst du im Workflow in der Liste to ein.",
+             en: "One address. Add more recipients to the list to in the workflow." }
+  - name: subject
+    type: string
+    required: true
+    label: { de: "Betreff", en: "Subject" }
+  - name: instruction
+    # Single-line on purpose: the value lands inside a YAML block scalar.
+    type: string
+    required: true
+    label: { de: "Was in der Mail stehen soll", en: "What the mail should say" }
+    help:  { de: "Ein Satz. Zusätzliche Angaben des Laufs stehen im Parameter context.",
+             en: "One sentence. Further information from the run is in the parameter context." }
+  - name: approve
+    type: boolean
+    defaultValue: true
+    label: { de: "Vor dem Senden freigeben lassen", en: "Ask for approval before sending" }
+    help:  { de: "Ohne Freigabe geht die Mail sofort raus — nur für Texte, die der Agent nicht falsch machen kann.",
+             en: "Without approval the mail goes out at once — only for texts the agent cannot get wrong." }
+  - name: recipe
+    type: string
+    defaultValue: ford
+    label: { de: "Recipe des Entwurfs", en: "Recipe for the draft" }

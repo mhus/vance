@@ -1,0 +1,84 @@
+$meta:
+  kind: vance-workflow
+
+description: |
+  {{ instruction }}
+version: "1"
+
+# A scheduler or an event passes what the mail is about as the parameter context.
+parameters:
+  context: { type: string, required: false }
+
+bounds:
+  maxWallclockSeconds: 604800
+  maxTaskSpawns: 10
+
+start: write
+
+states:
+
+  write:
+    type: agent_task
+    recipe: {{ recipe | default('ford') }}
+    params:
+      prompt: |
+        Write a mail. {{ instruction }}
+        Answer with the body text only, no subject line.
+
+        Further information:
+        ${params.context}
+    storeAs: draft
+    timeoutSeconds: 600
+    on:
+      success: {% if approve %}review{% else %}send{% endif %}
+    catch:
+      agent_error: failed
+{% if approve %}
+
+  # Nothing is sent without a person's approval.
+  review:
+    type: gate_task
+    inbox:
+      kind: APPROVAL
+      title: "Send this mail to {{ to }}?"
+      body: |
+        Subject: {{ subject }}
+
+        ${state.draft}
+      criticality: NORMAL
+    timeoutSeconds: 604800
+    on:
+      approved: send
+      rejected: rejected
+    catch:
+      timeout: failed
+{% endif %}
+
+  send:
+    type: tool_task
+    tool: {{ smtpPack }}__send_message
+    params:
+      to: ["{{ to }}"]
+      subject: "{{ subject }}"
+      body: "${state.draft}"
+    retry:
+      maxAttempts: 3
+      on: [rate_limited, unavailable]
+      backoffSeconds: 60
+    on:
+      success: done
+    catch:
+      technical_error: failed
+      business_error: failed
+
+  done:
+    type: terminal
+    outcome: success
+
+  rejected:
+    type: terminal
+    outcome: failure
+
+  failed:
+    type: terminal
+    outcome: failure

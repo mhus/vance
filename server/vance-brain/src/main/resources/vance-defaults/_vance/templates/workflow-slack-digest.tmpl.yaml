@@ -1,0 +1,74 @@
+$meta:
+  kind: vance-workflow
+
+description: |
+  Summarises the latest messages of the Slack channel {{ channel }} and puts the summary in the inbox.
+version: "1"
+
+bounds:
+  maxWallclockSeconds: 1800
+  maxTaskSpawns: 10
+
+start: fetch
+
+states:
+
+  # The Slack tools take the token as a parameter: the sign-in of the user the run belongs to.
+  fetch:
+    type: tool_task
+    tool: {{ pack }}__conversations_history
+    params:
+      token: "{% verbatim %}{{secret:user:oauth.slack.access_token}}{% endverbatim %}"
+      channel: "{{ channel }}"
+      limit: {{ limit | default('100') }}
+    storeAs: history
+    retry:
+      maxAttempts: 3
+      on: [rate_limited, unavailable]
+      backoffSeconds: 30
+    on:
+      success: summarise
+    catch:
+      auth_error: failed
+      technical_error: failed
+      permission_error: failed
+
+  summarise:
+    type: agent_task
+    recipe: {{ recipe | default('ford') }}
+    params:
+      prompt: |
+        Summarise these messages from a Slack channel, newest first. Look for: {{ focus }}
+        Keep it short: a few bullet points, then a list of what needs an answer.
+
+        ${state.history.json.messages}
+    storeAs: summary
+    timeoutSeconds: 600
+    on:
+      success: post
+    catch:
+      agent_error: failed
+
+  post:
+    type: tool_task
+    tool: inbox_post
+    params:
+      targetUserId: "{{ notifyUser }}"
+      type: OUTPUT_TEXT
+      title: "Summary of Slack channel {{ channel }}"
+      body: "${state.summary}"
+    on:
+      success: done
+    catch:
+      technical_error: failed
+      permission_error: failed
+
+  done:
+    type: terminal
+    outcome: success
+    result:
+      summary: "${state.summary}"
+
+  failed:
+    type: terminal
+    outcome: failure

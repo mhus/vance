@@ -1,0 +1,45 @@
+title:       { de: "Workflow: Postfach sichten und bewerten",
+               en: "Workflow: read a mailbox and rate each mail" }
+description: { de: "Holt die ungelesenen Mails eines IMAP-Postfachs, ein Agent bewertet jede (dringend, normal, ignorieren), bei dringenden landet eine Nachricht im Posteingang, danach wird die Mail als gelesen markiert",
+               en: "Fetches the unread mail of an IMAP mailbox, an agent rates each one (urgent, normal, ignore), an urgent one puts a message in the inbox, then the mail is marked read" }
+icon: envelope
+tags: [workflow, automation, mail]
+folder: _vance/workflows
+name: { mode: free, default: "mail-triage" }
+
+fields:
+  - name: pack
+    type: string
+    required: true
+    label: { de: "Name des Postfach-Packs", en: "Name of the mailbox pack" }
+    help:  { de: "Der Name, unter dem das IMAP-Pack in der Werkzeugliste steht, z. B. sales",
+             en: "The name the IMAP pack has in the tool list, e.g. sales" }
+  - name: criteria
+    # Single-line on purpose: the value lands inside a YAML block scalar.
+    type: string
+    required: true
+    label: { de: "Was dringend heißt", en: "What counts as urgent" }
+    help:  { de: "Ein Satz, z. B. „Ausfälle, Zahlungsprobleme und Mails von Kunden mit Frist“",
+             en: "One sentence, e.g. “outages, payment problems and customer mails with a deadline”" }
+  - name: notifyUser
+    type: string
+    required: true
+    label: { de: "Wer die Nachricht im Posteingang bekommt", en: "Who gets the inbox message" }
+    help:  { de: "Der Benutzername. Die Nachricht ist nur ein Hinweis; der Lauf wartet nicht darauf.",
+             en: "The user name. The message is a notice; the run does not wait for it." }
+  - name: markSeen
+    type: boolean
+    defaultValue: true
+    label: { de: "Bewertete Mails als gelesen markieren", en: "Mark rated mails as read" }
+    help:  { de: "Braucht ein Pack mit readonly: false. Ohne Markierung sieht der nächste Lauf dieselben Mails wieder.",
+             en: "Needs a pack set up with readonly: false. Without the mark the next run sees the same mails again." }
+  - name: limit
+    type: integer
+    integerMin: 1
+    integerMax: 50
+    defaultValue: 20
+    label: { de: "Höchstens so viele Mails je Lauf", en: "At most this many mails per run" }
+  - name: recipe
+    type: string
+    defaultValue: ford
+    label: { de: "Recipe der Bewertung", en: "Recipe for the rating" }

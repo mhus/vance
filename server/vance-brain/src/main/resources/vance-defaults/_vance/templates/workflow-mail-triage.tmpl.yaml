@@ -1,0 +1,121 @@
+$meta:
+  kind: vance-workflow
+
+description: |
+  Rates the unread mail of the mailbox {{ pack }}. Urgent: {{ criteria }}
+version: "1"
+
+# Start it by hand, from a scheduler, or from a schedule of the mailbox's catalog entry. Every mail is
+# looked at once: with markSeen it is marked read afterwards, so the next run does not see it again.
+bounds:
+  maxWallclockSeconds: 3600
+  # About seven tasks per mail; the cap keeps a run that went wrong from reading the whole mailbox.
+  maxTaskSpawns: 400
+
+start: list
+
+states:
+
+  list:
+    type: tool_task
+    tool: {{ pack }}__list_messages
+    params:
+      unread_only: true
+      limit: {{ limit | default('20') }}
+    storeAs: mails
+    retry:
+      maxAttempts: 3
+      on: [rate_limited, unavailable]
+      backoffSeconds: 30
+    on:
+      success: each
+    catch:
+      technical_error: failed
+      permission_error: failed
+
+  # One pass through the body per mail; the mail is in ${state.mail}. A mail whose step fails is skipped, so
+  # one broken mail does not hold back the rest.
+  each:
+    type: for_each_task
+    items: "${state.mails.messages}"
+    as: mail
+    maxItems: 50
+    on:
+      each: read
+      done: done
+
+  read:
+    type: tool_task
+    tool: {{ pack }}__preview_message
+    params:
+      messageRef: "${state.mail.messageId}"
+    storeAs: text
+    on:
+      success: rate
+    catch:
+      technical_error: next
+      business_error: next
+
+  rate:
+    type: agent_task
+    recipe: {{ recipe | default('ford') }}
+    params:
+      prompt: |
+        Rate this mail. Urgent means: {{ criteria }}
+
+        From: ${state.mail.from}
+        Subject: ${state.mail.subject}
+
+        ${state.text.body}
+    decide:
+      options: [urgent, normal, ignore]
+      maxCorrections: 2
+    storeAs: rating
+    timeoutSeconds: 300
+    on:
+      urgent: notify
+      normal: {% if markSeen %}mark{% else %}next{% endif %}
+      ignore: {% if markSeen %}mark{% else %}next{% endif %}
+    catch:
+      agent_error: next
+
+  # An urgent mail puts a notice in the inbox. It does not wait for an answer.
+  notify:
+    type: tool_task
+    tool: inbox_post
+    params:
+      targetUserId: "{{ notifyUser }}"
+      type: OUTPUT_TEXT
+      title: "Urgent mail: ${state.mail.subject}"
+      body: "From ${state.mail.from}\n\n${state.text.body}"
+      criticality: CRITICAL
+    on:
+      success: {% if markSeen %}mark{% else %}next{% endif %}
+    catch:
+      technical_error: next
+      permission_error: next
+{% if markSeen %}
+
+  mark:
+    type: tool_task
+    tool: {{ pack }}__set_seen
+    params:
+      messageRef: "${state.mail.messageId}"
+      seen: true
+    on:
+      success: next
+    catch:
+      technical_error: next
+      business_error: next
+{% endif %}
+
+  next:
+    type: end
+
+  done:
+    type: terminal
+    outcome: success
+
+  failed:
+    type: terminal
+    outcome: failure

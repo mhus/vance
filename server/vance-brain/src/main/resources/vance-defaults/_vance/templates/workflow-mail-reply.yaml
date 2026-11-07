@@ -1,0 +1,47 @@
+title:       { de: "Workflow: Mails beantworten mit Freigabe",
+               en: "Workflow: answer mail, with approval" }
+description: { de: "Holt die ungelesenen Mails eines IMAP-Postfachs, ein Agent entwirft zu jeder eine Antwort, ein Mensch gibt sie im Posteingang frei, danach wird sie über ein SMTP-Pack gesendet",
+               en: "Fetches the unread mail of an IMAP mailbox, an agent drafts a reply to each, a person approves it in the inbox, then it is sent through an SMTP pack" }
+icon: paper-airplane
+tags: [workflow, automation, mail, approval]
+folder: _vance/workflows
+name: { mode: free, default: "mail-reply" }
+
+fields:
+  - name: imapPack
+    type: string
+    required: true
+    label: { de: "Name des Postfach-Packs (IMAP)", en: "Name of the mailbox pack (IMAP)" }
+    help:  { de: "Der Name, unter dem das IMAP-Pack in der Werkzeugliste steht, z. B. support",
+             en: "The name the IMAP pack has in the tool list, e.g. support" }
+  - name: smtpPack
+    type: string
+    required: true
+    label: { de: "Name des Versand-Packs (SMTP)", en: "Name of the sender pack (SMTP)" }
+    help:  { de: "Der Name des SMTP-Packs, z. B. noreply. Die Antwort geht an den Absender der Mail.",
+             en: "The name of the SMTP pack, e.g. noreply. The reply goes to the sender of the mail." }
+  - name: instructions
+    # Single-line on purpose: the value lands inside a YAML block scalar.
+    type: string
+    required: true
+    label: { de: "Wie geantwortet werden soll", en: "How to reply" }
+    help:  { de: "Ein Satz, z. B. „freundlich und kurz, in der Sprache der Mail, ohne Zusagen zu Terminen“",
+             en: "One sentence, e.g. “friendly and short, in the language of the mail, no commitments on dates”" }
+  - name: markSeen
+    type: boolean
+    defaultValue: true
+    label: { de: "Beantwortete Mails als gelesen markieren", en: "Mark answered mails as read" }
+    help:  { de: "Braucht ein Postfach-Pack mit readonly: false.",
+             en: "Needs a mailbox pack set up with readonly: false." }
+  - name: limit
+    type: integer
+    integerMin: 1
+    integerMax: 20
+    defaultValue: 5
+    label: { de: "Höchstens so viele Mails je Lauf", en: "At most this many mails per run" }
+    help:  { de: "Jede Mail wartet auf deine Freigabe, bevor die nächste drankommt.",
+             en: "Each mail waits for your approval before the next one is looked at." }
+  - name: recipe
+    type: string
+    defaultValue: ford
+    label: { de: "Recipe des Entwurfs", en: "Recipe for the draft" }

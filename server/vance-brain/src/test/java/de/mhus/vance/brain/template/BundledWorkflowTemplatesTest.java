@@ -45,7 +45,11 @@ class BundledWorkflowTemplatesTest {
         for (Template t : workflowTemplates()) {
             String rendered = renderer.renderStructured(t.body(), t.defaultContext());
 
-            assertThat(rendered).as("%s: unresolved placeholder", t.name()).doesNotContain("{{");
+            // A secret reference ({{secret:user:oauth.slack.access_token}}) is meant to stay: the tool call resolves it
+            // at run time. Anything else in double braces is a Pebble expression that was not rendered.
+            assertThat(rendered.replaceAll("\\{\\{secret:[^}]*}}", ""))
+                    .as("%s: unresolved placeholder", t.name())
+                    .doesNotContain("{{");
             assertThat(rendered).as("%s: kind header", t.name()).contains("kind: vance-workflow");
 
             ResolvedMagratheaWorkflow workflow = MagratheaWorkflowLoader.parseYaml(t.name(), rendered);

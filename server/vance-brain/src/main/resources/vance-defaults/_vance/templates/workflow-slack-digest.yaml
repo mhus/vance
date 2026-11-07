@@ -1,0 +1,43 @@
+title:       { de: "Workflow: Slack-Kanal zusammenfassen",
+               en: "Workflow: summarise a Slack channel" }
+description: { de: "Liest die letzten Nachrichten eines Slack-Kanals, ein Agent fasst sie zusammen und legt die Zusammenfassung in den Posteingang. Gedacht für einen Zeitplan (täglich, wöchentlich).",
+               en: "Reads the latest messages of a Slack channel, an agent summarises them and puts the summary in the inbox. Meant for a schedule (daily, weekly)." }
+icon: chat-bubble-left-right
+tags: [workflow, automation, slack]
+folder: _vance/workflows
+name: { mode: free, default: "slack-digest" }
+
+fields:
+  - name: pack
+    type: string
+    defaultValue: slack_rest
+    required: true
+    label: { de: "Name des Slack-Packs", en: "Name of the Slack pack" }
+    help:  { de: "Der Name, unter dem das Slack-Pack in der Werkzeugliste steht",
+             en: "The name the Slack pack has in the tool list" }
+  - name: channel
+    type: string
+    required: true
+    label: { de: "Kanal-ID", en: "Channel id" }
+    help:  { de: "z. B. C0123456789 (Kanaldetails → unten im Tab Info)",
+             en: "e.g. C0123456789 (channel details → bottom of the About tab)" }
+  - name: notifyUser
+    type: string
+    required: true
+    label: { de: "Wer die Zusammenfassung im Posteingang bekommt", en: "Who gets the summary in the inbox" }
+    help:  { de: "Der Benutzername", en: "The user name" }
+  - name: focus
+    # Single-line on purpose: the value lands inside a YAML block scalar.
+    type: string
+    defaultValue: "decisions, open questions and anything that needs a reply"
+    label: { de: "Worauf die Zusammenfassung achten soll", en: "What the summary should look for" }
+  - name: limit
+    type: integer
+    integerMin: 10
+    integerMax: 200
+    defaultValue: 100
+    label: { de: "So viele der letzten Nachrichten lesen", en: "How many of the latest messages to read" }
+  - name: recipe
+    type: string
+    defaultValue: ford
+    label: { de: "Recipe der Zusammenfassung", en: "Recipe for the summary" }

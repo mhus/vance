@@ -1,0 +1,33 @@
+title:       { de: "Workflow: Liste abarbeiten, jedes Element für sich",
+               en: "Workflow: work through a list, one element at a time" }
+description: { de: "Ein Agent bearbeitet jedes Element einer Liste nacheinander (eine Schleife im selben Workflow), die Ergebnisse werden eingesammelt. Die Vorlage für „für jedes … tu …“.",
+               en: "An agent handles each element of a list in turn (a loop in the same workflow); the results are collected. The template for “for each … do …”." }
+icon: queue-list
+tags: [workflow, automation, loop]
+folder: _vance/workflows
+name: { mode: free, default: "for-each-item" }
+
+fields:
+  - name: task
+    # Single-line on purpose: the value lands inside a YAML block scalar.
+    type: string
+    required: true
+    label: { de: "Was mit jedem Element geschehen soll", en: "What to do with each element" }
+    help:  { de: "Ein Satz. Das Element steht im Auftrag an den Agenten.",
+             en: "One sentence. The element is part of the agent's brief." }
+  - name: sampleItems
+    type: string
+    defaultValue: '["first", "second", "third"]'
+    label: { de: "Beispielliste für manuelle Tests (JSON, eine Zeile)", en: "Sample list for manual tests (JSON, one line)" }
+    help:  { de: "Wird der Standardwert des Parameters items. Für den Produktivbetrieb leeren und die Liste beim Start übergeben.",
+             en: "Becomes the default of the parameter items. Clear it for production and pass the list when starting." }
+  - name: maxItems
+    type: integer
+    integerMin: 1
+    integerMax: 200
+    defaultValue: 50
+    label: { de: "Höchstens so viele Elemente", en: "At most this many elements" }
+  - name: recipe
+    type: string
+    defaultValue: ford
+    label: { de: "Recipe der Bearbeitung", en: "Recipe for the work" }

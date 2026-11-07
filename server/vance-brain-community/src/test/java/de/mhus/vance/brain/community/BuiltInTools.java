@@ -7,10 +7,13 @@ import de.mhus.vance.toolpack.Tool;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import org.mockito.Answers;
 import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.context.annotation.ClassPathScanningCandidateComponentProvider;
 import org.springframework.core.annotation.AnnotatedElementUtils;
+import org.springframework.core.env.MapPropertySource;
+import org.springframework.core.env.StandardEnvironment;
 import org.springframework.core.type.filter.AssignableTypeFilter;
 import org.springframework.stereotype.Component;
 
@@ -31,6 +34,15 @@ final class BuiltInTools {
     static List<Tool> all() throws ClassNotFoundException {
         ClassPathScanningCandidateComponentProvider scanner = new ClassPathScanningCandidateComponentProvider(false);
         scanner.addIncludeFilter(new AssignableTypeFilter(Tool.class));
+        // The scanner honours @ConditionalOnProperty, so a feature-gated tool family would be invisible
+        // to every test built on this set — a selector on its label then looks unknown, and a tool
+        // without a release decision would never be checked. Magrathea (workflow_*) is the one gate
+        // switched on here; the dev bundle runs with it.
+        StandardEnvironment environment = new StandardEnvironment();
+        environment
+                .getPropertySources()
+                .addFirst(new MapPropertySource("built-in-tools", Map.of("vance.services.magrathea", "true")));
+        scanner.setEnvironment(environment);
         List<Tool> out = new ArrayList<>();
         for (BeanDefinition bd : scanner.findCandidateComponents("de.mhus.vance")) {
             Class<?> type = Class.forName(bd.getBeanClassName());

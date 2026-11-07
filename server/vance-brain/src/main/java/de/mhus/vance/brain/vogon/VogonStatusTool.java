@@ -55,6 +55,11 @@ public class VogonStatusTool extends VogonBaseTool {
     }
 
     @Override
+    public java.util.Set<String> labels() {
+        return java.util.Set.of(de.mhus.vance.toolpack.ToolLabels.INTERNAL);
+    }
+
+    @Override
     public Map<String, Object> paramsSchema() {
         return Map.of("type", "object", "properties", Map.of(), "required", java.util.List.of());
     }

@@ -109,6 +109,10 @@ modes:
     allowedToolsAdd:
       - kit_install
       - kit_update
+      # Workflow family, by label — "why did my workflow fail" / "step
+      # through it" are user-hub questions. Write/side-effect members stay
+      # deferred below; manual_read('workflow-debug') explains the flow.
+      - "@workflow"
     allowedToolsDefer:
       - "@write"
       - "@executive"

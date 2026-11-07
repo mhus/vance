@@ -72,8 +72,25 @@ public class RunSourceRegistry {
      */
     public List<RunSummaryDto> list(
             de.mhus.vance.shared.permission.SecurityContext subject, String tenantId, String projectId, int limit) {
+        return list(subject, tenantId, projectId, limit, null);
+    }
+
+    /**
+     * Like {@link #list(de.mhus.vance.shared.permission.SecurityContext, String, String, int)}, but
+     * asking one source only. The cut to {@code limit} then happens within that source — a caller
+     * that wants the runs of one runtime must not lose them to the newer runs of another.
+     *
+     * @param sourceId the source to ask; {@code null} asks all of them
+     */
+    public List<RunSummaryDto> list(
+            de.mhus.vance.shared.permission.SecurityContext subject,
+            String tenantId,
+            String projectId,
+            int limit,
+            @Nullable String sourceId) {
         List<RunSummaryDto> all = new ArrayList<>();
         for (RunSource source : byId.values()) {
+            if (sourceId != null && !sourceId.equals(source.sourceId())) continue;
             try {
                 for (RunSummaryDto run : source.list(tenantId, projectId, limit)) {
                     RunId runId = RunId.parse(run.getRunId());

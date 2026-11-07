@@ -1,6 +1,12 @@
 package de.mhus.vance.brain.mcpserver;
 
+import de.mhus.vance.brain.execution.ExecutionRegistryEntry;
+import de.mhus.vance.brain.execution.ExecutionRegistryService;
+import de.mhus.vance.brain.permission.SecurityContextFactory;
 import de.mhus.vance.shared.document.DocumentService;
+import de.mhus.vance.shared.permission.Action;
+import de.mhus.vance.shared.permission.PermissionService;
+import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
@@ -36,11 +42,14 @@ import tools.jackson.databind.ObjectMapper;
  *       endpoint's READ gate, project resolution, and the write tools'
  *       own per-document WRITE enforcement (reserved {@code _vance/}
  *       paths need ADMIN, rule R4). The dispatcher's other gate, the
- *       Shooty TOOL point ({@code ToolGuardGate}), is not lost either:
- *       it covers only the exec-run family and only calls with a
- *       process context — neither applies to this process-less,
- *       document-only surface. Widening the TOOL point to doc tools
- *       or process-less calls means adding the gate here.</li>
+ *       Shooty TOOL point ({@code ToolGuardGate}), covers only the
+ *       exec-run family and only calls with a process context. This
+ *       surface has no process, so the {@code exec} capability is
+ *       <b>not</b> guarded by it — its confinement is the entry's
+ *       {@code dirs}, a named caller, {@code rw}, and {@code Project
+ *       EXECUTE}, which the file and exec families get here because the
+ *       dispatcher's gate is bypassed. Widening the TOOL point to
+ *       process-less calls means adding the gate here.</li>
  * </ul>
  *
  * <p>Denials are always normal MCP responses: {@code isError:true}
@@ -60,6 +69,9 @@ public class McpProjectService {
     private final McpProjectAccessService accessService;
     private final McpProjectToolCatalog catalog;
     private final ObjectMapper objectMapper;
+    private final PermissionService permissionService;
+    private final SecurityContextFactory contextFactory;
+    private final ExecutionRegistryService executionRegistry;
 
     /**
      * Handle one JSON-RPC frame for {@code caller}.
@@ -87,7 +99,7 @@ public class McpProjectService {
             log.debug("MCP project tools/list denied: no access entry for '{}/{}'", tenant, project);
             return McpProtocol.toolsListResult(List.of());
         }
-        List<Tool> tools = catalog.forMode(entry.mode()).stream()
+        List<Tool> tools = catalog.visibleTo(entry).stream()
                 .map(McpProjectToolCatalog.CatalogEntry::tool)
                 .toList();
         return McpProtocol.toolsListResult(tools);
@@ -109,6 +121,22 @@ public class McpProjectService {
         if (catalogEntry == null) {
             return McpProtocol.callContent("Unknown tool on this surface: " + call.name(), true);
         }
+        if (!entry.allows(catalogEntry.capability())) {
+            log.debug(
+                    "MCP project tools/call '{}' denied: capability '{}' not granted (entry '{}')",
+                    call.name(),
+                    catalogEntry.capability().wire(),
+                    entry.name());
+            return McpProtocol.callContent(
+                    entry.grantsAnything()
+                            ? "Tool '" + call.name() + "' needs the capability '"
+                                    + catalogEntry.capability().wire() + "', which access entry '" + entry.name()
+                                    + "' does not grant"
+                            : "access entry '" + entry.name()
+                                    + "' grants no capabilities — add a 'capabilities:' list in "
+                                    + McpProjectAccessService.CONFIG_PATH,
+                    true);
+        }
         if (catalogEntry.write() && entry.mode() == McpProjectAccessConfig.Mode.RO) {
             log.debug("MCP project tools/call '{}' denied: mode 'ro' (entry '{}')", call.name(), entry.name());
             return McpProtocol.callContent(
@@ -116,7 +144,12 @@ public class McpProjectService {
                             + "')",
                     true);
         }
-        String violation = violationOf(catalogEntry, entry, call.arguments(), project);
+        String forbidden = executeGateDenial(catalogEntry, tenant, project, username);
+        if (forbidden != null) {
+            log.debug("MCP project tools/call '{}' denied: {}", call.name(), forbidden);
+            return McpProtocol.callContent(forbidden, true);
+        }
+        String violation = violationOf(catalogEntry, entry, call.arguments(), project, tenant);
         if (violation != null) {
             log.debug("MCP project tools/call '{}' denied by surface: {}", call.name(), violation);
             return McpProtocol.callContent(violation, true);
@@ -173,23 +206,35 @@ public class McpProjectService {
      * caller-visible denial message, or {@code null} when the call may
      * proceed.
      */
-    private static @Nullable String violationOf(
+    private @Nullable String violationOf(
             McpProjectToolCatalog.CatalogEntry catalogEntry,
             McpProjectAccessConfig.Entry entry,
             Map<String, Object> args,
-            String routeProject) {
+            String routeProject,
+            String tenant) {
         // Path-only addressing: doc_read by id checks only the tenant,
-        // and id addressing would sidestep every prefix rule anyway.
-        if (stringArg(args, "id") != null || stringArg(args, "documentId") != null) {
+        // and id addressing would sidestep every prefix rule anyway. Document tools
+        // only — an exec job is addressed by its id, which is checked below.
+        if (catalogEntry.capability() == McpProjectCapability.DOC
+                && (stringArg(args, "id") != null || stringArg(args, "documentId") != null)) {
             return "documents are addressed by 'path' only on this surface;"
                     + " 'id'/'documentId' arguments are not accepted";
+        }
+        String dirViolation = dirViolationOf(catalogEntry, entry, args, routeProject, tenant);
+        if (dirViolation != null) return dirViolation;
+        for (String rejected : catalogEntry.rejectedParams()) {
+            if (stringArg(args, rejected) != null) {
+                return "the argument '" + rejected + "' is not accepted for "
+                        + catalogEntry.tool().name() + " on this surface; start a plan by 'name'";
+            }
         }
         String explicitProject = stringArg(args, "projectId");
         if (explicitProject != null && !explicitProject.equals(routeProject)) {
             return "this surface is pinned to project '" + routeProject + "'; 'projectId' must match it or be omitted";
         }
         List<String> scopes = scopesOf(catalogEntry, args);
-        if (!entry.isWholeProject()) {
+        // Prefixes confine documents; the other families have their own confinement (dirs, project).
+        if (catalogEntry.capability() == McpProjectCapability.DOC && !entry.isWholeProject()) {
             if (scopes.isEmpty()) {
                 return "access entry '" + entry.name() + "' is path-scoped; pass an explicit"
                         + " path argument within its prefixes: " + entry.paths();
@@ -210,6 +255,73 @@ public class McpProjectService {
         // config that regulates it. (Reads there follow the prefixes.)
         if (catalogEntry.write() && scopes.stream().anyMatch(McpProjectService::isReserved)) {
             return "the reserved '" + RESERVED_PREFIX + "' area is never writable" + " through this surface";
+        }
+        return null;
+    }
+
+    /**
+     * {@code Project EXECUTE} for the workspace families. On the normal path the tool dispatcher asks it
+     * of every call; this door calls tools directly, and the file and exec tools do not ask themselves
+     * (they are workspace tools, with no finer per-item right to check). The document and workflow
+     * tools enforce {@code READ}/{@code WRITE} themselves and are not asked here.
+     *
+     * <p>The Shooty guard of the exec-run family is not consulted either: it resolves its rules from a
+     * recipe, and this door has no process (see the class comment).
+     */
+    private @Nullable String executeGateDenial(
+            McpProjectToolCatalog.CatalogEntry catalogEntry, String tenant, String project, @Nullable String username) {
+        if (!catalogEntry.capability().requiresExecute()) return null;
+        boolean allowed = permissionService.check(
+                contextFactory.forToolSubject(tenant, username), new Resource.Project(tenant, project), Action.EXECUTE);
+        return allowed
+                ? null
+                : "this account may not use workspace files or commands in project '" + project
+                        + "' (EXECUTE is required)";
+    }
+
+    /**
+     * The RootDir rules of {@code file} and {@code exec}: the call must name a directory and it must be
+     * one the entry lists; an exec job must belong to such a directory. There is no default directory
+     * (the normal path falls back to a per-process temp dir, which this door has no process for) and no
+     * "all of them".
+     *
+     * <p>A job that is unknown, belongs to another project or has no recorded directory reads as
+     * unknown — the same answer for all three, so the job ids of others are not confirmed.
+     */
+    private @Nullable String dirViolationOf(
+            McpProjectToolCatalog.CatalogEntry catalogEntry,
+            McpProjectAccessConfig.Entry entry,
+            Map<String, Object> args,
+            String routeProject,
+            String tenant) {
+        String dirParam = catalogEntry.dirParam();
+        if (dirParam != null) {
+            String dir = stringArg(args, dirParam);
+            if (dir == null) {
+                return "'" + dirParam + "' is required on this surface — name one of the directories of access"
+                        + " entry '" + entry.name() + "': " + entry.dirs();
+            }
+            if (!entry.dirs().contains(dir)) {
+                return "directory '" + dir + "' is not one of the directories of access entry '" + entry.name() + "': "
+                        + entry.dirs();
+            }
+        }
+        String jobParam = catalogEntry.jobParam();
+        if (jobParam != null) {
+            String id = stringArg(args, jobParam);
+            if (id == null) {
+                return "'" + jobParam + "' (the job id) is required";
+            }
+            boolean ours = executionRegistry
+                    .find(id)
+                    .filter(job -> tenant.equals(job.tenantId()) && routeProject.equals(job.projectId()))
+                    .map(ExecutionRegistryEntry::dirName)
+                    .filter(entry.dirs()::contains)
+                    .isPresent();
+            if (!ours) {
+                return "Unknown exec job: '" + id + "' (not in this project's directories for access entry '"
+                        + entry.name() + "')";
+            }
         }
         return null;
     }

@@ -135,6 +135,7 @@ waiting for a person, not stuck.
 
 ## Related
 
+- `manual_read('workflow-debug')` — a run failed, hangs, or must be stepped through: inspect, restart in the debugger, breakpoints, simulate.
 - `manual_read('slartibartfast')` — writing a *new* plan.
 - `manual_read('processes')` — spawning and inspecting workers in general.
 - `manual_read('inbox-post')` — how the gate questions reach people.

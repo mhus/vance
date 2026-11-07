@@ -124,7 +124,7 @@ public class WorkspaceWriteTool implements Tool {
         // returned "path" as a WORKSPACE:<processId>/<path> resource key
         // — see HistoryTagBuilder.LABEL_WORKSPACE and
         // planning/process-history-search.md §5.1.
-        return java.util.Set.of(ToolLabels.WORKER, "write", "side-effect", "workspace");
+        return java.util.Set.of(ToolLabels.WORKER, "write", "side-effect", "workspace", "work-file");
     }
 
     @Override

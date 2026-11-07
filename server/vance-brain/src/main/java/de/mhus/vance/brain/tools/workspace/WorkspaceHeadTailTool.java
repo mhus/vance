@@ -93,7 +93,7 @@ public class WorkspaceHeadTailTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "read-only");
+        return Set.of(ToolLabels.WORKER, "read-only", "work-file");
     }
 
     @Override

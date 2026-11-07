@@ -13,9 +13,11 @@ import org.yaml.snakeyaml.Yaml;
  *
  * <p>The config is a <b>ceiling on a smaller surface</b>, never a grant:
  * it can only narrow what the calling identity may already do. The
- * surface offers a fixed set of {@code doc_*} tools; the config decides
- * per caller whether they are visible at all ({@link Mode}), and to
- * which path prefixes they apply. Authorization against the account's
+ * surface offers fixed tool families ({@link McpProjectCapability});
+ * the config decides per caller which families are visible at all
+ * ({@code capabilities:}, none by default), whether the writing tools
+ * among them are ({@link Mode}), and to which path prefixes the document
+ * tools apply. Authorization against the account's
  * grants still happens per call — read tools enforce READ via the
  * endpoint gate and project resolution, write tools enforce per-document
  * WRITE (reserved {@code _vance/} paths need ADMIN, rule R4).
@@ -63,10 +65,36 @@ public record McpProjectAccessConfig(List<Entry> access) {
      * @param name   required, human-facing — names the rule in logs and errors
      * @param caller who the rule applies to; {@link McpCallerFilter#ANY} = any authenticated caller
      * @param mode   {@code ro} or {@code rw}
-     * @param paths  normalized path prefixes; empty = the whole project
+     * @param capabilities the tool families this entry grants; <b>empty = nothing</b> — an entry without
+     *               {@code capabilities:} still matches its callers (so it cannot be skipped over by a
+     *               later entry) but offers no tool. There is no default capability.
+     * @param paths  normalized path prefixes for the {@code doc} capability; empty = the whole project
      *               (writes into {@code _vance/} stay denied regardless)
+     * @param dirs   names of the workspace RootDirs the {@code file} and {@code exec} capabilities may
+     *               touch; <b>required</b> for those two (there is no "every directory"), meaningless —
+     *               and refused — without them
      */
-    public record Entry(String name, McpCallerFilter caller, Mode mode, List<String> paths) {
+    public record Entry(
+            String name,
+            McpCallerFilter caller,
+            Mode mode,
+            List<McpProjectCapability> capabilities,
+            List<String> paths,
+            List<String> dirs) {
+
+        /** A RootDir name: what the workspace store itself accepts as one path segment (no '/', no '..'). */
+        private static final java.util.regex.Pattern DIR_NAME =
+                java.util.regex.Pattern.compile("[a-zA-Z0-9_][a-zA-Z0-9._-]*");
+
+        /** An entry that confines no workspace directories — everything but {@code file}/{@code exec}. */
+        public Entry(
+                String name,
+                McpCallerFilter caller,
+                Mode mode,
+                List<McpProjectCapability> capabilities,
+                List<String> paths) {
+            this(name, caller, mode, capabilities, paths, List.of());
+        }
 
         public Entry {
             if (name == null || name.isBlank()) {
@@ -76,8 +104,62 @@ public record McpProjectAccessConfig(List<Entry> access) {
                 throw new IllegalStateException("access entry '" + name + "' needs a 'mode'");
             }
             if (caller == null) caller = McpCallerFilter.ANY;
+            capabilities = capabilities == null
+                    ? List.of()
+                    : capabilities.stream().distinct().toList();
             if (paths == null) paths = List.of();
             paths = normalizePrefixes(paths);
+            // Path prefixes confine document paths. A workflow run has none, so a prefix-confined entry
+            // that also granted workflow tools would hand out the whole project's runs and their
+            // variables under a rule that reads as narrower. Refused rather than guessed at.
+            if (capabilities.contains(McpProjectCapability.WORKFLOW) && !paths.isEmpty()) {
+                throw new IllegalStateException("access entry '" + name + "' grants 'workflow' but has 'paths' —"
+                        + " workflow runs are not confined by document prefixes; put them in a separate entry");
+            }
+            dirs = dirs == null
+                    ? List.of()
+                    : dirs.stream().map(String::trim).distinct().toList();
+            for (String dir : dirs) {
+                if (!DIR_NAME.matcher(dir).matches()) {
+                    throw new IllegalStateException("access entry '" + name + "': '" + dir
+                            + "' is not a workspace directory name (letters, digits, '.', '_', '-')");
+                }
+            }
+            boolean workspace = capabilities.contains(McpProjectCapability.FILE)
+                    || capabilities.contains(McpProjectCapability.EXEC);
+            // The directories are the confinement of these two families, like the prefixes are for
+            // documents. Without them an entry would mean "every directory of the project" — a reading
+            // this door does not have. And a list that nothing reads would look like a confinement it is not.
+            if (workspace && dirs.isEmpty()) {
+                throw new IllegalStateException("access entry '" + name + "' grants 'file' or 'exec' but names no"
+                        + " 'dirs' — list the workspace directories it may use");
+            }
+            if (!workspace && !dirs.isEmpty()) {
+                throw new IllegalStateException("access entry '" + name
+                        + "' has 'dirs' but grants neither 'file' nor 'exec' — they confine nothing else");
+            }
+            if (capabilities.contains(McpProjectCapability.EXEC)) {
+                // A command has no read-only form, and arbitrary code in the project's sandbox is not
+                // something to offer to "whoever the entry happens to match".
+                if (mode == Mode.RO) {
+                    throw new IllegalStateException("access entry '" + name
+                            + "' grants 'exec' with mode 'ro' — running a command is not read-only; use 'rw'");
+                }
+                if (caller.token() == null && caller.users().isEmpty()) {
+                    throw new IllegalStateException("access entry '" + name + "' grants 'exec' to every caller —"
+                            + " name a 'token' or 'users' for it");
+                }
+            }
+        }
+
+        /** Whether this entry offers anything at all — an entry without capabilities does not. */
+        public boolean grantsAnything() {
+            return !capabilities.isEmpty();
+        }
+
+        /** Whether this entry grants the tool family. */
+        public boolean allows(McpProjectCapability capability) {
+            return capabilities.contains(capability);
         }
 
         /** The integration-token id this entry is restricted to, or {@code null}. */
@@ -166,8 +248,39 @@ public record McpProjectAccessConfig(List<Entry> access) {
         McpCallerFilter caller = McpCallerFilter.parse(spec, String.valueOf(name));
         String modeWire = stringOrNull(spec.get("mode"));
         Mode mode = modeWire == null ? null : Mode.fromWire(modeWire);
+        List<McpProjectCapability> capabilities = parseCapabilities(spec.get("capabilities"), String.valueOf(name));
         List<String> paths = stringList(spec.get("paths"));
-        return new Entry(name, caller, mode, paths);
+        Object dirsRaw = spec.get("dirs");
+        if (dirsRaw != null && !(dirsRaw instanceof List<?>)) {
+            throw new IllegalStateException("access entry '" + name + "': 'dirs' must be a list");
+        }
+        return new Entry(name, caller, mode, capabilities, paths, stringList(dirsRaw));
+    }
+
+    /**
+     * The {@code capabilities:} list. Absent or empty means <em>no capability</em>, not "all": there is
+     * no legacy reading of an entry that predates the key. A value that is not a list of non-blank
+     * strings, or names a capability that does not exist, is a load error — a typo must not leave an
+     * entry looking like it grants something.
+     */
+    private static List<McpProjectCapability> parseCapabilities(@Nullable Object raw, String entryName) {
+        if (raw == null) return List.of();
+        if (!(raw instanceof List<?> list)) {
+            throw new IllegalStateException("access entry '" + entryName + "': 'capabilities' must be a list");
+        }
+        List<McpProjectCapability> out = new java.util.ArrayList<>(list.size());
+        for (Object item : list) {
+            if (!(item instanceof String s) || s.isBlank()) {
+                throw new IllegalStateException(
+                        "access entry '" + entryName + "': 'capabilities' entries must be non-blank strings");
+            }
+            try {
+                out.add(McpProjectCapability.fromWire(s));
+            } catch (IllegalStateException ex) {
+                throw new IllegalStateException("access entry '" + entryName + "': " + ex.getMessage(), ex);
+            }
+        }
+        return List.copyOf(out);
     }
 
     private static @Nullable String stringOrNull(Object value) {

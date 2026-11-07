@@ -3,6 +3,8 @@ package de.mhus.vance.brain.tools.magrathea;
 import de.mhus.vance.brain.magrathea.MagratheaWorkflowService;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
+import de.mhus.vance.shared.magrathea.MagratheaDebugSetup;
+import de.mhus.vance.shared.magrathea.MagratheaRunBinding;
 import de.mhus.vance.shared.magrathea.MagratheaWorkflowLoader;
 import de.mhus.vance.shared.magrathea.MagratheaWorkflowParseException;
 import de.mhus.vance.toolpack.Tool;
@@ -83,6 +85,25 @@ public class WorkflowStartTool implements Tool {
                         "Free-form caller params, validated against the "
                                 + "workflow's parameters: block. Missing required params "
                                 + "fail the start."));
+        props.put(
+                "debug",
+                Map.of(
+                        "type",
+                        "boolean",
+                        "description",
+                        "Start the run in step mode: it halts before every state, and you release it "
+                                + "with workflow_control. The states execute for real — debugging is "
+                                + "not a dry run. See manual_read('workflow-debug')."));
+        props.put(
+                "breakpoints",
+                Map.of(
+                        "type",
+                        "array",
+                        "items",
+                        Map.of("type", "string"),
+                        "description",
+                        "Start the run so that it halts before these states only (state names of the "
+                                + "workflow, see workflow_get) and runs freely in between."));
         // Neither is required on its own — invoke() enforces exactly one,
         // which a JSON schema cannot say without anyOf that models read
         // poorly. A clear error beats a clever schema here.
@@ -91,6 +112,7 @@ public class WorkflowStartTool implements Tool {
 
     private final MagratheaWorkflowService workflowService;
     private final DocumentService documentService;
+    private final WorkflowToolSupport support;
 
     @Override
     public String name() {
@@ -105,7 +127,9 @@ public class WorkflowStartTool implements Tool {
                 + "never copy a plan into _vance/workflows/ to make it startable. "
                 + "Returns a workflowRunId for later status calls. The run belongs "
                 + "to the project: anything the plan needs from a person goes to "
-                + "the inbox, and nobody is waiting on the result. When somebody "
+                + "the inbox, and nobody is waiting on the result. Pass debug or breakpoints "
+                + "to start it halted for step-by-step debugging (workflow_run_get, "
+                + "workflow_control; manual_read('workflow-debug')). When somebody "
                 + "IS waiting — they asked for it and want the answer here — spawn "
                 + "the 'vogon' recipe instead. See manual_read('plans').";
     }
@@ -137,9 +161,10 @@ public class WorkflowStartTool implements Tool {
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        if (ctx.projectId() == null || ctx.projectId().isBlank()) {
-            throw new ToolException("workflow_start requires a project context");
-        }
+        // The project check lives in the tool, not only in the dispatcher: the project-scoped MCP door
+        // calls tools without the dispatcher's gate, and starting a run is Project WRITE on every
+        // other surface (the REST start asks the same).
+        support.scope(name(), ctx, de.mhus.vance.shared.permission.Action.WRITE);
         String name = trimmedOrNull(params, "name");
         String path = trimmedOrNull(params, "path");
 
@@ -159,6 +184,8 @@ public class WorkflowStartTool implements Tool {
                     "Give either 'name' or 'path', not both — they are two ways to " + "address one plan");
         }
         Map<String, Object> callerParams = readParamsMap(params);
+        MagratheaDebugSetup debug =
+                MagratheaDebugSetup.of(params.get("debug") instanceof Boolean b ? b : null, readBreakpoints(params));
         if (path != null) {
             requireAuthoredPlan(ctx.tenantId(), ctx.projectId(), path);
         }
@@ -167,18 +194,43 @@ public class WorkflowStartTool implements Tool {
         try {
             runId = path != null
                     ? workflowService.startFromDocument(
-                            ctx.tenantId(), ctx.projectId(), path, callerParams, ctx.userId())
-                    : workflowService.start(ctx.tenantId(), ctx.projectId(), name, callerParams, ctx.userId());
+                            ctx.tenantId(),
+                            ctx.projectId(),
+                            path,
+                            callerParams,
+                            ctx.userId(),
+                            MagratheaRunBinding.headless(),
+                            debug)
+                    : workflowService.start(
+                            ctx.tenantId(),
+                            ctx.projectId(),
+                            name,
+                            callerParams,
+                            ctx.userId(),
+                            /* parent */ null,
+                            /* parentState */ null,
+                            MagratheaRunBinding.headless(),
+                            debug);
         } catch (MagratheaWorkflowService.MagratheaWorkflowException ex) {
             throw new ToolException(ex.getMessage(), ex);
         } catch (MagratheaWorkflowParseException ex) {
             throw new ToolException("Workflow YAML invalid: " + ex.getMessage(), ex);
+        } catch (IllegalArgumentException ex) {
+            // A breakpoint on something that is not a state of the workflow.
+            throw new ToolException(ex.getMessage(), ex);
         }
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("workflowRunId", runId);
         result.put("workflowName", name != null ? name : stemOf(path));
         if (path != null) result.put("workflowPath", path);
+        if (debug.active()) {
+            result.put("debug", true);
+            result.put(
+                    "note",
+                    "The run halts before its first debuggable state — look at it with "
+                            + "workflow_run_get and release it with workflow_control.");
+        }
         return result;
     }
 
@@ -238,6 +290,19 @@ public class WorkflowStartTool implements Tool {
         String stem = path.substring(path.lastIndexOf('/') + 1);
         int dot = stem.lastIndexOf('.');
         return dot > 0 ? stem.substring(0, dot) : stem;
+    }
+
+    private static @org.jspecify.annotations.Nullable List<String> readBreakpoints(Map<String, Object> params) {
+        Object raw = params == null ? null : params.get("breakpoints");
+        if (raw == null) return null;
+        if (!(raw instanceof List<?> list)) {
+            throw new ToolException("'breakpoints' must be a list of state names");
+        }
+        List<String> out = new java.util.ArrayList<>();
+        for (Object o : list) {
+            if (o instanceof String s && !s.isBlank()) out.add(s.trim());
+        }
+        return out;
     }
 
     @SuppressWarnings("unchecked")

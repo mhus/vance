@@ -12,6 +12,7 @@ import static org.mockito.Mockito.when;
 import de.mhus.vance.brain.magrathea.MagratheaWorkflowService;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
+import de.mhus.vance.shared.magrathea.MagratheaDebugSetup;
 import de.mhus.vance.shared.magrathea.MagratheaWorkflowParseException;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
@@ -24,7 +25,11 @@ class WorkflowStartToolTest {
 
     private final MagratheaWorkflowService workflowService = mock(MagratheaWorkflowService.class);
     private final DocumentService documentService = mock(DocumentService.class);
-    private final WorkflowStartTool tool = new WorkflowStartTool(workflowService, documentService);
+    private final WorkflowToolSupport support = new WorkflowToolSupport(
+            mock(de.mhus.vance.shared.permission.PermissionService.class),
+            mock(de.mhus.vance.brain.permission.SecurityContextFactory.class),
+            mock(de.mhus.vance.brain.runs.RunSourceRegistry.class));
+    private final WorkflowStartTool tool = new WorkflowStartTool(workflowService, documentService, support);
 
     /** A plan document an administrator vouched for. */
     private void privilegedPlanAt(String path) {
@@ -36,48 +41,41 @@ class WorkflowStartToolTest {
 
     @Test
     void happy_path_returns_workflowRunId_and_name() {
-        when(workflowService.start(
-                eq("acme"), eq("proj"), eq("demo"), any(), eq("alice")))
+        when(workflowService.start(eq("acme"), eq("proj"), eq("demo"), any(), eq("alice"), any(), any(), any(), any()))
                 .thenReturn("ab12cd34");
 
-        Map<String, Object> result = tool.invoke(
-                Map.of("name", "demo", "params", Map.of("k", "v")),
-                ctx("acme", "proj", "alice"));
+        Map<String, Object> result =
+                tool.invoke(Map.of("name", "demo", "params", Map.of("k", "v")), ctx("acme", "proj", "alice"));
 
-        assertThat(result).containsEntry("workflowRunId", "ab12cd34")
-                          .containsEntry("workflowName", "demo");
+        assertThat(result).containsEntry("workflowRunId", "ab12cd34").containsEntry("workflowName", "demo");
     }
 
     @Test
     void params_block_is_forwarded() {
-        when(workflowService.start(any(), any(), any(), any(), any())).thenReturn("ab");
+        when(workflowService.start(any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn("ab");
 
-        tool.invoke(Map.of("name", "demo", "params", Map.of("k", "v")),
-                ctx("acme", "proj", "alice"));
+        tool.invoke(Map.of("name", "demo", "params", Map.of("k", "v")), ctx("acme", "proj", "alice"));
 
-        ArgumentCaptor<Map<String, Object>> captor =
-                ArgumentCaptor.<Map<String, Object>>captor();
-        verify(workflowService).start(any(), any(), eq("demo"), captor.capture(), any());
+        ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.<Map<String, Object>>captor();
+        verify(workflowService).start(any(), any(), eq("demo"), captor.capture(), any(), any(), any(), any(), any());
         assertThat(captor.getValue()).containsEntry("k", "v");
     }
 
     @Test
     void missing_project_in_context_fails() {
         assertThatThrownBy(() -> tool.invoke(
-                Map.of("name", "demo"),
-                new ToolInvocationContext("acme", null, null, null, "alice")))
+                        Map.of("name", "demo"), new ToolInvocationContext("acme", null, null, null, "alice")))
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("project context");
-        verify(workflowService, never()).start(any(), any(), any(), any(), any());
+        verify(workflowService, never()).start(any(), any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
     void neither_name_nor_path_fails() {
         // 'name' alone stopped being required when 'path' arrived: a plan is
         // addressed one way or the other, and the error has to name both.
-        assertThatThrownBy(() -> tool.invoke(
-                Map.of("params", Map.of()),
-                ctx("acme", "proj", "alice")))
+        assertThatThrownBy(() -> tool.invoke(Map.of("params", Map.of()), ctx("acme", "proj", "alice")))
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("name")
                 .hasMessageContaining("path");
@@ -85,34 +83,29 @@ class WorkflowStartToolTest {
 
     @Test
     void non_map_params_field_fails() {
-        assertThatThrownBy(() -> tool.invoke(
-                Map.of("name", "demo", "params", "not-a-map"),
-                ctx("acme", "proj", "alice")))
+        assertThatThrownBy(
+                        () -> tool.invoke(Map.of("name", "demo", "params", "not-a-map"), ctx("acme", "proj", "alice")))
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("must be an object");
     }
 
     @Test
     void unknown_workflow_propagates_as_ToolException() {
-        when(workflowService.start(any(), any(), any(), any(), any()))
+        when(workflowService.start(any(), any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenThrow(new MagratheaWorkflowService.MagratheaWorkflowException(
                         "Workflow 'ghost' not found in cascade for tenant=acme project=proj"));
 
-        assertThatThrownBy(() -> tool.invoke(
-                Map.of("name", "ghost"),
-                ctx("acme", "proj", "alice")))
+        assertThatThrownBy(() -> tool.invoke(Map.of("name", "ghost"), ctx("acme", "proj", "alice")))
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("not found");
     }
 
     @Test
     void yaml_parse_failure_propagates_as_ToolException() {
-        when(workflowService.start(any(), any(), any(), any(), any()))
+        when(workflowService.start(any(), any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenThrow(new MagratheaWorkflowParseException("bad shape"));
 
-        assertThatThrownBy(() -> tool.invoke(
-                Map.of("name", "broken"),
-                ctx("acme", "proj", "alice")))
+        assertThatThrownBy(() -> tool.invoke(Map.of("name", "broken"), ctx("acme", "proj", "alice")))
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("YAML invalid");
     }
@@ -135,18 +128,17 @@ class WorkflowStartToolTest {
     void by_path_starts_that_document() {
         privilegedPlanAt("workflows/hello.yaml");
         when(workflowService.startFromDocument(
-                eq("acme"), eq("proj"), eq("workflows/hello.yaml"), any(), eq("alice")))
+                        eq("acme"), eq("proj"), eq("workflows/hello.yaml"), any(), eq("alice"), any(), any()))
                 .thenReturn("run-2");
 
-        Map<String, Object> result = tool.invoke(
-                Map.of("path", "workflows/hello.yaml"),
-                ctx("acme", "proj", "alice"));
+        Map<String, Object> result = tool.invoke(Map.of("path", "workflows/hello.yaml"), ctx("acme", "proj", "alice"));
 
-        assertThat(result).containsEntry("workflowRunId", "run-2")
-                          .containsEntry("workflowPath", "workflows/hello.yaml")
-                          // The stem still names the run, so listings group.
-                          .containsEntry("workflowName", "hello");
-        verify(workflowService, never()).start(any(), any(), any(), any(), any());
+        assertThat(result)
+                .containsEntry("workflowRunId", "run-2")
+                .containsEntry("workflowPath", "workflows/hello.yaml")
+                // The stem still names the run, so listings group.
+                .containsEntry("workflowName", "hello");
+        verify(workflowService, never()).start(any(), any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -154,23 +146,19 @@ class WorkflowStartToolTest {
         // Refusing it would be pedantry — the value already says how it wants
         // to be resolved, and the workaround an agent reaches for is copying.
         privilegedPlanAt("workflows/hello.yaml");
-        when(workflowService.startFromDocument(
-                any(), any(), eq("workflows/hello.yaml"), any(), any()))
+        when(workflowService.startFromDocument(any(), any(), eq("workflows/hello.yaml"), any(), any(), any(), any()))
                 .thenReturn("run-3");
 
-        Map<String, Object> result = tool.invoke(
-                Map.of("name", "workflows/hello.yaml"),
-                ctx("acme", "proj", "alice"));
+        Map<String, Object> result = tool.invoke(Map.of("name", "workflows/hello.yaml"), ctx("acme", "proj", "alice"));
 
         assertThat(result).containsEntry("workflowRunId", "run-3");
-        verify(workflowService, never()).start(any(), any(), any(), any(), any());
+        verify(workflowService, never()).start(any(), any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
     void both_name_and_path_is_rejected_rather_than_silently_preferring_one() {
         assertThatThrownBy(() -> tool.invoke(
-                Map.of("name", "demo", "path", "workflows/other.yaml"),
-                ctx("acme", "proj", "alice")))
+                        Map.of("name", "demo", "path", "workflows/other.yaml"), ctx("acme", "proj", "alice")))
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("not both");
     }
@@ -179,11 +167,10 @@ class WorkflowStartToolTest {
     void params_are_forwarded_on_the_path_route_too() {
         privilegedPlanAt("workflows/hello.yaml");
         ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.captor();
-        when(workflowService.startFromDocument(any(), any(), any(), captor.capture(), any()))
+        when(workflowService.startFromDocument(any(), any(), any(), captor.capture(), any(), any(), any()))
                 .thenReturn("run-4");
 
-        tool.invoke(Map.of("path", "workflows/hello.yaml", "params", Map.of("k", "v")),
-                ctx("acme", "proj", "alice"));
+        tool.invoke(Map.of("path", "workflows/hello.yaml", "params", Map.of("k", "v")), ctx("acme", "proj", "alice"));
 
         assertThat(captor.getValue()).containsEntry("k", "v");
     }
@@ -197,16 +184,12 @@ class WorkflowStartToolTest {
         // route does not reach here, so this is where it is said.
         DocumentDocument ordinary = new DocumentDocument();
         ordinary.setPath("documents/plan.yaml");
-        when(documentService.findByPath("acme", "proj", "documents/plan.yaml"))
-                .thenReturn(Optional.of(ordinary));
+        when(documentService.findByPath("acme", "proj", "documents/plan.yaml")).thenReturn(Optional.of(ordinary));
 
-        assertThatThrownBy(() -> tool.invoke(
-                Map.of("path", "documents/plan.yaml"),
-                ctx("acme", "proj", "alice")))
+        assertThatThrownBy(() -> tool.invoke(Map.of("path", "documents/plan.yaml"), ctx("acme", "proj", "alice")))
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("privileged");
-        verify(workflowService, never())
-                .startFromDocument(any(), any(), any(), any(), any());
+        verify(workflowService, never()).startFromDocument(any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -214,7 +197,7 @@ class WorkflowStartToolTest {
         // Writing there already takes ADMIN (reserved prefix), and it is the
         // same file the name route would have started.
         String path = "_vance/workflows/hello.yaml";
-        when(workflowService.startFromDocument(eq("acme"), eq("proj"), eq(path), any(), any()))
+        when(workflowService.startFromDocument(eq("acme"), eq("proj"), eq(path), any(), any(), any(), any()))
                 .thenReturn("run-5");
 
         assertThat(tool.invoke(Map.of("path", path), ctx("acme", "proj", "alice")))
@@ -224,14 +207,52 @@ class WorkflowStartToolTest {
 
     @Test
     void by_path_a_missing_document_says_so() {
-        when(documentService.findByPath("acme", "proj", "documents/ghost.yaml"))
-                .thenReturn(Optional.empty());
+        when(documentService.findByPath("acme", "proj", "documents/ghost.yaml")).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> tool.invoke(
-                Map.of("path", "documents/ghost.yaml"),
-                ctx("acme", "proj", "alice")))
+        assertThatThrownBy(() -> tool.invoke(Map.of("path", "documents/ghost.yaml"), ctx("acme", "proj", "alice")))
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("No document at");
+    }
+
+    @Test
+    void debug_and_breakpoints_reach_the_service_as_one_setup() {
+        when(workflowService.start(any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn("dbg-1");
+
+        Map<String, Object> result = tool.invoke(
+                Map.of("name", "demo", "debug", true, "breakpoints", java.util.List.of("build", " ")),
+                ctx("acme", "proj", "alice"));
+
+        ArgumentCaptor<MagratheaDebugSetup> captor = ArgumentCaptor.captor();
+        verify(workflowService).start(any(), any(), eq("demo"), any(), any(), any(), any(), any(), captor.capture());
+        assertThat(captor.getValue().stepping()).isTrue();
+        assertThat(captor.getValue().breakpoints()).containsExactly("build");
+        assertThat(result).containsEntry("workflowRunId", "dbg-1").containsEntry("debug", true);
+    }
+
+    @Test
+    void a_plain_start_is_not_a_debug_run() {
+        when(workflowService.start(any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn("ab");
+
+        Map<String, Object> result = tool.invoke(Map.of("name", "demo"), ctx("acme", "proj", "alice"));
+
+        ArgumentCaptor<MagratheaDebugSetup> captor = ArgumentCaptor.captor();
+        verify(workflowService).start(any(), any(), any(), any(), any(), any(), any(), any(), captor.capture());
+        assertThat(captor.getValue().active()).isFalse();
+        assertThat(result).doesNotContainKey("debug");
+    }
+
+    @Test
+    void a_breakpoint_that_is_no_state_is_a_tool_error() {
+        when(workflowService.start(any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenThrow(new IllegalArgumentException("'ghost' is not a state of workflow 'demo'"));
+
+        assertThatThrownBy(() -> tool.invoke(
+                        Map.of("name", "demo", "breakpoints", java.util.List.of("ghost")),
+                        ctx("acme", "proj", "alice")))
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("ghost");
     }
 
     private static ToolInvocationContext ctx(String tenant, String project, String user) {

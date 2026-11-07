@@ -119,7 +119,7 @@ public class ExecRunTool implements Tool {
 
     @Override
     public java.util.Set<String> labels() {
-        return java.util.Set.of(ToolLabels.WORKER, "executive", "side-effect");
+        return java.util.Set.of(ToolLabels.WORKER, "executive", "side-effect", "work-exec");
     }
 
     @Override

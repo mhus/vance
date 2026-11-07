@@ -147,7 +147,10 @@ class WorkspaceReadOnlyToolsTest {
     @Test
     void grep_carriesReadOnlyLabel_only() {
         WorkspaceGrepTool tool = new WorkspaceGrepTool(workspace);
-        assertThat(tool.labels()).containsExactlyInAnyOrder(de.mhus.vance.toolpack.ToolLabels.WORKER, "read-only");
+        // 'work-file' is the family label the project MCP door selects on; the point of this test
+        // is that no write/side-effect label sneaks in.
+        assertThat(tool.labels())
+                .containsExactlyInAnyOrder(de.mhus.vance.toolpack.ToolLabels.WORKER, "read-only", "work-file");
     }
 
     // ──────────────── scratch_find ────────────────
@@ -276,6 +279,9 @@ class WorkspaceReadOnlyToolsTest {
     @Test
     void count_carriesReadOnlyLabel_only() {
         WorkspaceCountTool tool = new WorkspaceCountTool(workspace);
-        assertThat(tool.labels()).containsExactlyInAnyOrder(de.mhus.vance.toolpack.ToolLabels.WORKER, "read-only");
+        // 'work-file' is the family label the project MCP door selects on; the point of this test
+        // is that no write/side-effect label sneaks in.
+        assertThat(tool.labels())
+                .containsExactlyInAnyOrder(de.mhus.vance.toolpack.ToolLabels.WORKER, "read-only", "work-file");
     }
 }

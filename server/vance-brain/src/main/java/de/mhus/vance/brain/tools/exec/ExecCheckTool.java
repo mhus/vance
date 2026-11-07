@@ -104,7 +104,7 @@ public class ExecCheckTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "executive");
+        return Set.of(ToolLabels.WORKER, "executive", "work-exec");
     }
 
     @Override

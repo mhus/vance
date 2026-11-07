@@ -70,7 +70,7 @@ public class WorkspaceDeleteTool implements Tool {
 
     @Override
     public java.util.Set<String> labels() {
-        return java.util.Set.of(ToolLabels.WORKER, "write", "side-effect");
+        return java.util.Set.of(ToolLabels.WORKER, "write", "side-effect", "work-file");
     }
 
     @Override

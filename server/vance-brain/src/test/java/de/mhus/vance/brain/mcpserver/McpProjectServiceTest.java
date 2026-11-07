@@ -10,6 +10,13 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import de.mhus.vance.brain.execution.ExecutionOwner;
+import de.mhus.vance.brain.execution.ExecutionRegistryEntry;
+import de.mhus.vance.brain.execution.ExecutionRegistryService;
+import de.mhus.vance.brain.execution.ExecutionStatus;
+import de.mhus.vance.brain.permission.SecurityContextFactory;
+import de.mhus.vance.shared.permission.Action;
+import de.mhus.vance.shared.permission.PermissionService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
@@ -20,6 +27,7 @@ import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import tools.jackson.databind.ObjectMapper;
@@ -36,6 +44,12 @@ class McpProjectServiceTest {
     @Mock
     McpProjectAccessService accessService;
 
+    PermissionService permissionService = mock(PermissionService.class);
+
+    SecurityContextFactory contextFactory = mock(SecurityContextFactory.class);
+
+    ExecutionRegistryService executionRegistry = new ExecutionRegistryService();
+
     McpProjectService service;
     Map<String, Tool> tools;
 
@@ -43,7 +57,12 @@ class McpProjectServiceTest {
     void setUp() {
         tools = stubTools();
         McpProjectToolCatalog catalog = new McpProjectToolCatalog(new ArrayList<>(tools.values()));
-        service = new McpProjectService(accessService, catalog, new ObjectMapper());
+        // An account that may execute, unless a test says otherwise.
+        lenient()
+                .when(permissionService.check(any(), any(), eq(Action.EXECUTE)))
+                .thenReturn(true);
+        service = new McpProjectService(
+                accessService, catalog, new ObjectMapper(), permissionService, contextFactory, executionRegistry);
     }
 
     // ──────────────────── tools/list ────────────────────
@@ -76,7 +95,8 @@ class McpProjectServiceTest {
 
         assertThat(toolNamesOf(out))
                 .hasSize(11)
-                .contains("doc_read", "doc_write", "doc_move", "doc_copy", "doc_delete");
+                .contains("doc_read", "doc_write", "doc_move", "doc_copy", "doc_delete")
+                .noneMatch(n -> n.startsWith("workflow_"));
     }
 
     // ──────────────────── tools/call: access ────────────────────
@@ -354,12 +374,402 @@ class McpProjectServiceTest {
         assertThat(textOf(out)).contains("failed");
     }
 
+    // ──────────────────── capabilities ────────────────────
+
+    @Test
+    void toolsList_entryWithoutCapabilities_isEmptyCatalogue() {
+        entry(Mode.RW, List.of());
+
+        McpProtocol.Outcome out = service.handle(toolsListBody(), TENANT, PROJECT, TOKEN);
+
+        assertThat(toolNamesOf(out)).isNotEmpty(); // sanity: the helper's default grants doc
+        entryWithNoCapabilities();
+        assertThat(toolNamesOf(service.handle(toolsListBody(), TENANT, PROJECT, TOKEN)))
+                .isEmpty();
+    }
+
+    @Test
+    void toolsCall_entryWithoutCapabilities_isDeniedAndSaysHowToFixIt() {
+        entryWithNoCapabilities();
+
+        McpProtocol.Outcome out =
+                service.handle(callBody("doc_read", Map.of("path", "spec/x.md")), TENANT, PROJECT, TOKEN);
+
+        assertThat(isErrorOf(out)).isTrue();
+        assertThat(textOf(out)).contains("grants no capabilities").contains("capabilities:");
+        verify(tools.get("doc_read"), never()).invoke(anyMap(), any(ToolInvocationContext.class));
+    }
+
+    @Test
+    void toolsList_workflowCapability_roSeesTheInspectionToolsOnly() {
+        entry(Mode.RO, List.of(), McpProjectCapability.WORKFLOW);
+
+        assertThat(toolNamesOf(service.handle(toolsListBody(), TENANT, PROJECT, TOKEN)))
+                .containsExactly("workflow_list", "workflow_get", "workflow_runs", "workflow_run_get");
+    }
+
+    @Test
+    void toolsList_workflowCapability_rwAddsTheSteeringTools() {
+        entry(Mode.RW, List.of(), McpProjectCapability.WORKFLOW);
+
+        assertThat(toolNamesOf(service.handle(toolsListBody(), TENANT, PROJECT, TOKEN)))
+                .containsExactly(
+                        "workflow_list",
+                        "workflow_get",
+                        "workflow_runs",
+                        "workflow_run_get",
+                        "workflow_start",
+                        "workflow_control",
+                        "workflow_breakpoints",
+                        "workflow_simulate",
+                        "workflow_restart");
+    }
+
+    @Test
+    void toolsList_bothCapabilities_listsBothFamiliesInDefinitionOrder() {
+        entry(Mode.RO, List.of(), McpProjectCapability.WORKFLOW, McpProjectCapability.DOC);
+
+        List<String> names = toolNamesOf(service.handle(toolsListBody(), TENANT, PROJECT, TOKEN));
+
+        assertThat(names).hasSize(9).startsWith("doc_read").endsWith("workflow_run_get");
+    }
+
+    @Test
+    void toolsCall_toolOfAFamilyTheEntryDoesNotGrant_isDenied() {
+        entry(Mode.RW, List.of(), McpProjectCapability.DOC);
+
+        McpProtocol.Outcome out = service.handle(callBody("workflow_runs", Map.of()), TENANT, PROJECT, TOKEN);
+
+        assertThat(isErrorOf(out)).isTrue();
+        assertThat(textOf(out)).contains("needs the capability 'workflow'");
+        verify(tools.get("workflow_runs"), never()).invoke(anyMap(), any(ToolInvocationContext.class));
+    }
+
+    @Test
+    void toolsCall_workflowWriteToolInRoEntry_isDenied() {
+        entry(Mode.RO, List.of(), McpProjectCapability.WORKFLOW);
+
+        McpProtocol.Outcome out = service.handle(
+                callBody("workflow_control", Map.of("runId", "r1", "action", "stop")), TENANT, PROJECT, TOKEN);
+
+        assertThat(isErrorOf(out)).isTrue();
+        assertThat(textOf(out)).contains("not available in access mode 'ro'");
+    }
+
+    @Test
+    void toolsCall_workflowRun_reachesTheToolWithTheCallersIdentity() {
+        entry(Mode.RW, List.of(), McpProjectCapability.WORKFLOW);
+        when(tools.get("workflow_run_get").invoke(anyMap(), any(ToolInvocationContext.class)))
+                .thenReturn(Map.of("status", "PAUSED"));
+
+        McpProtocol.Outcome out =
+                service.handle(callBody("workflow_run_get", Map.of("runId", "r1")), TENANT, PROJECT, TOKEN);
+
+        assertThat(isErrorOf(out)).isFalse();
+        ArgumentCaptor<ToolInvocationContext> ctx = ArgumentCaptor.forClass(ToolInvocationContext.class);
+        verify(tools.get("workflow_run_get")).invoke(anyMap(), ctx.capture());
+        assertThat(ctx.getValue().tenantId()).isEqualTo(TENANT);
+        assertThat(ctx.getValue().projectId()).isEqualTo(PROJECT);
+        assertThat(ctx.getValue().userId()).isEqualTo(USER);
+    }
+
+    @Test
+    void toolsCall_workflowStartByPath_isRefused_byNameIsFine() {
+        entry(Mode.RW, List.of(), McpProjectCapability.WORKFLOW);
+        when(tools.get("workflow_start").invoke(anyMap(), any(ToolInvocationContext.class)))
+                .thenReturn(Map.of("workflowRunId", "r1"));
+
+        McpProtocol.Outcome byPath =
+                service.handle(callBody("workflow_start", Map.of("path", "docs/plan.yaml")), TENANT, PROJECT, TOKEN);
+        McpProtocol.Outcome byName =
+                service.handle(callBody("workflow_start", Map.of("name", "release")), TENANT, PROJECT, TOKEN);
+
+        assertThat(isErrorOf(byPath)).isTrue();
+        assertThat(textOf(byPath)).contains("'path' is not accepted").contains("by 'name'");
+        assertThat(isErrorOf(byName)).isFalse();
+        verify(tools.get("workflow_start"), org.mockito.Mockito.times(1)).invoke(anyMap(), any());
+    }
+
+    @Test
+    void catalog_withoutTheWorkflowTools_offersNoWorkflowCapability() {
+        // Magrathea is a feature switch: on a Brain without it the family is not on the classpath and is
+        // simply not offered — the boot must not fail over it.
+        List<Tool> docOnly = tools.values().stream()
+                .filter(t -> !t.name().startsWith("workflow_"))
+                .toList();
+        McpProjectToolCatalog catalog = new McpProjectToolCatalog(new ArrayList<>(docOnly));
+        McpProjectAccessConfig.Entry both = new McpProjectAccessConfig.Entry(
+                "e",
+                McpCallerFilter.ANY,
+                Mode.RW,
+                List.of(McpProjectCapability.DOC, McpProjectCapability.WORKFLOW),
+                List.of());
+
+        assertThat(catalog.visibleTo(both)).hasSize(11).allMatch(e -> e.capability() == McpProjectCapability.DOC);
+    }
+
+    @Test
+    void catalog_withAHalfPresentWorkflowFamily_failsTheBoot() {
+        // A renamed tool must stop the server, not quietly shrink the external contract.
+        List<Tool> missingOne = tools.values().stream()
+                .filter(t -> !t.name().equals("workflow_restart"))
+                .toList();
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> new McpProjectToolCatalog(new ArrayList<>(missingOne)))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("workflow_restart");
+    }
+
+    private void entryWithNoCapabilities() {
+        McpProjectAccessConfig.Entry entry = new McpProjectAccessConfig.Entry(
+                "bare", new McpCallerFilter("tok-1", null, List.of()), Mode.RW, List.of(), List.of());
+        when(accessService.resolveEntry(TENANT, PROJECT, TOKEN)).thenReturn(entry);
+    }
+
+    // ──────────────────── file and exec ────────────────────
+
+    @Test
+    void toolsList_fileCapability_roSeesTheReadTools_rwAddsWriteAndEdit() {
+        entry(Mode.RO, List.of(), List.of("build"), McpProjectCapability.FILE);
+        assertThat(toolNamesOf(service.handle(toolsListBody(), TENANT, PROJECT, TOKEN)))
+                .containsExactly(
+                        "work_file_read",
+                        "work_file_list",
+                        "work_file_find",
+                        "work_file_grep",
+                        "work_file_head_tail",
+                        "work_file_count");
+
+        entry(Mode.RW, List.of(), List.of("build"), McpProjectCapability.FILE);
+        assertThat(toolNamesOf(service.handle(toolsListBody(), TENANT, PROJECT, TOKEN)))
+                .hasSize(8)
+                .endsWith("work_file_write", "work_file_edit")
+                .doesNotContain("work_file_delete");
+    }
+
+    @Test
+    void toolsList_execCapability_listsTheCommandTools() {
+        entry(Mode.RW, List.of(), List.of("build"), McpProjectCapability.EXEC);
+
+        assertThat(toolNamesOf(service.handle(toolsListBody(), TENANT, PROJECT, TOKEN)))
+                .containsExactly(
+                        "work_exec_run",
+                        "work_exec_status",
+                        "work_exec_tail",
+                        "work_exec_stat",
+                        "work_exec_check",
+                        "work_exec_kill");
+    }
+
+    @Test
+    void fileCall_inAListedDirectory_reachesTheTool() {
+        entry(Mode.RW, List.of(), List.of("build"), McpProjectCapability.FILE);
+        when(tools.get("work_file_read").invoke(anyMap(), any(ToolInvocationContext.class)))
+                .thenReturn(Map.of("content", "hi"));
+
+        McpProtocol.Outcome out = service.handle(
+                callBody("work_file_read", Map.of("dirName", "build", "path", "a.txt")), TENANT, PROJECT, TOKEN);
+
+        assertThat(isErrorOf(out)).isFalse();
+        verify(tools.get("work_file_read")).invoke(anyMap(), any(ToolInvocationContext.class));
+    }
+
+    @Test
+    void fileCall_withoutADirectory_isRefused_thereIsNoDefault() {
+        entry(Mode.RW, List.of(), List.of("build"), McpProjectCapability.FILE);
+
+        McpProtocol.Outcome out =
+                service.handle(callBody("work_file_read", Map.of("path", "a.txt")), TENANT, PROJECT, TOKEN);
+
+        assertThat(isErrorOf(out)).isTrue();
+        assertThat(textOf(out)).contains("'dirName' is required").contains("[build]");
+        verify(tools.get("work_file_read"), never()).invoke(anyMap(), any(ToolInvocationContext.class));
+    }
+
+    @Test
+    void fileCall_inADirectoryTheEntryDoesNotList_isRefused() {
+        entry(Mode.RW, List.of(), List.of("build"), McpProjectCapability.FILE);
+
+        McpProtocol.Outcome out = service.handle(
+                callBody("work_file_write", Map.of("dirName", "secrets", "path", "a", "content", "x")),
+                TENANT,
+                PROJECT,
+                TOKEN);
+
+        assertThat(isErrorOf(out)).isTrue();
+        assertThat(textOf(out)).contains("directory 'secrets' is not one of the directories");
+        verify(tools.get("work_file_write"), never()).invoke(anyMap(), any(ToolInvocationContext.class));
+    }
+
+    @Test
+    void fileAndExecCalls_needProjectExecute() {
+        entry(Mode.RW, List.of(), List.of("build"), McpProjectCapability.FILE);
+        when(permissionService.check(any(), any(), eq(Action.EXECUTE))).thenReturn(false);
+
+        McpProtocol.Outcome out = service.handle(
+                callBody("work_file_read", Map.of("dirName", "build", "path", "a.txt")), TENANT, PROJECT, TOKEN);
+
+        assertThat(isErrorOf(out)).isTrue();
+        assertThat(textOf(out)).contains("EXECUTE is required");
+        verify(tools.get("work_file_read"), never()).invoke(anyMap(), any(ToolInvocationContext.class));
+    }
+
+    @Test
+    void documentAndWorkflowCalls_areNotAskedForExecute() {
+        // They enforce the finer READ/WRITE themselves; a READER keeps reading documents.
+        entry(Mode.RO, List.of(), McpProjectCapability.DOC);
+        when(permissionService.check(any(), any(), eq(Action.EXECUTE))).thenReturn(false);
+        when(tools.get("doc_read").invoke(anyMap(), any(ToolInvocationContext.class)))
+                .thenReturn(Map.of("content", "x"));
+
+        McpProtocol.Outcome out =
+                service.handle(callBody("doc_read", Map.of("path", "spec/x.md")), TENANT, PROJECT, TOKEN);
+
+        assertThat(isErrorOf(out)).isFalse();
+    }
+
+    @Test
+    void execRun_inAListedDirectory_reachesTheTool() {
+        entry(Mode.RW, List.of(), List.of("build"), McpProjectCapability.EXEC);
+        when(tools.get("work_exec_run").invoke(anyMap(), any(ToolInvocationContext.class)))
+                .thenReturn(Map.of("status", "COMPLETED"));
+
+        McpProtocol.Outcome out = service.handle(
+                callBody("work_exec_run", Map.of("dirName", "build", "command", "make")), TENANT, PROJECT, TOKEN);
+
+        assertThat(isErrorOf(out)).isFalse();
+    }
+
+    @Test
+    void execRun_withoutADirectory_isRefused_notRunInADefault() {
+        entry(Mode.RW, List.of(), List.of("build"), McpProjectCapability.EXEC);
+
+        McpProtocol.Outcome out =
+                service.handle(callBody("work_exec_run", Map.of("command", "make")), TENANT, PROJECT, TOKEN);
+
+        assertThat(isErrorOf(out)).isTrue();
+        verify(tools.get("work_exec_run"), never()).invoke(anyMap(), any(ToolInvocationContext.class));
+    }
+
+    @Test
+    void execJobTools_followOnlyJobsOfTheEntrysDirectories() {
+        entry(Mode.RW, List.of(), List.of("build"), McpProjectCapability.EXEC);
+        jobInDir("job-ours", "build");
+        jobInDir("job-theirs", "other");
+        when(tools.get("work_exec_status").invoke(anyMap(), any(ToolInvocationContext.class)))
+                .thenReturn(Map.of("status", "RUNNING"));
+
+        McpProtocol.Outcome ours =
+                service.handle(callBody("work_exec_status", Map.of("id", "job-ours")), TENANT, PROJECT, TOKEN);
+        McpProtocol.Outcome theirs =
+                service.handle(callBody("work_exec_status", Map.of("id", "job-theirs")), TENANT, PROJECT, TOKEN);
+        McpProtocol.Outcome unknown =
+                service.handle(callBody("work_exec_kill", Map.of("id", "nope")), TENANT, PROJECT, TOKEN);
+
+        assertThat(isErrorOf(ours)).isFalse();
+        assertThat(isErrorOf(theirs)).isTrue();
+        // A job of another directory reads exactly like one that does not exist — no confirmation.
+        assertThat(textOf(theirs)).contains("Unknown exec job: 'job-theirs'");
+        assertThat(isErrorOf(unknown)).isTrue();
+        assertThat(textOf(unknown)).contains("Unknown exec job: 'nope'");
+        verify(tools.get("work_exec_kill"), never()).invoke(anyMap(), any(ToolInvocationContext.class));
+    }
+
+    @Test
+    void execJobTools_ignoreAJobOfAnotherProject() {
+        entry(Mode.RW, List.of(), List.of("build"), McpProjectCapability.EXEC);
+        executionRegistry.register(new ExecutionRegistryEntry(
+                "job-else",
+                ExecutionOwner.Brain.INSTANCE,
+                TENANT,
+                "other-project",
+                null,
+                null,
+                "echo",
+                "build",
+                java.time.Instant.now(),
+                java.time.Instant.now(),
+                null,
+                ExecutionStatus.RUNNING,
+                null,
+                null,
+                null,
+                Map.of()));
+
+        McpProtocol.Outcome out =
+                service.handle(callBody("work_exec_status", Map.of("id", "job-else")), TENANT, PROJECT, TOKEN);
+
+        assertThat(isErrorOf(out)).isTrue();
+    }
+
+    @Test
+    void pathPrefixesOfTheDocumentFamily_doNotBlockTheFileTools() {
+        // 'paths' confine documents. An entry that has them and also grants file must not demand a
+        // document path on a workspace call.
+        entry(Mode.RW, List.of("spec/"), List.of("build"), McpProjectCapability.DOC, McpProjectCapability.FILE);
+        when(tools.get("work_file_read").invoke(anyMap(), any(ToolInvocationContext.class)))
+                .thenReturn(Map.of("content", "hi"));
+
+        McpProtocol.Outcome out = service.handle(
+                callBody("work_file_read", Map.of("dirName", "build", "path", "a.txt")), TENANT, PROJECT, TOKEN);
+
+        assertThat(isErrorOf(out)).isFalse();
+    }
+
+    @Test
+    void anIdArgument_isOnlyRefusedOnDocumentTools() {
+        entry(Mode.RW, List.of(), List.of("build"), McpProjectCapability.DOC, McpProjectCapability.EXEC);
+        jobInDir("job-ours", "build");
+        when(tools.get("work_exec_status").invoke(anyMap(), any(ToolInvocationContext.class)))
+                .thenReturn(Map.of("status", "RUNNING"));
+
+        McpProtocol.Outcome doc = service.handle(callBody("doc_read", Map.of("id", "abc")), TENANT, PROJECT, TOKEN);
+        McpProtocol.Outcome job =
+                service.handle(callBody("work_exec_status", Map.of("id", "job-ours")), TENANT, PROJECT, TOKEN);
+
+        assertThat(isErrorOf(doc)).isTrue();
+        assertThat(textOf(doc)).contains("addressed by 'path' only");
+        assertThat(isErrorOf(job)).isFalse();
+    }
+
     // ──────────────────── helpers ────────────────────
 
     private void entry(McpProjectAccessConfig.Mode mode, List<String> paths) {
-        McpProjectAccessConfig.Entry entry =
-                new McpProjectAccessConfig.Entry("test", new McpCallerFilter("tok-1", null, List.of()), mode, paths);
+        entry(mode, paths, McpProjectCapability.DOC);
+    }
+
+    private void entry(McpProjectAccessConfig.Mode mode, List<String> paths, McpProjectCapability... capabilities) {
+        entry(mode, paths, List.of(), capabilities);
+    }
+
+    private void entry(
+            McpProjectAccessConfig.Mode mode,
+            List<String> paths,
+            List<String> dirs,
+            McpProjectCapability... capabilities) {
+        McpProjectAccessConfig.Entry entry = new McpProjectAccessConfig.Entry(
+                "test", new McpCallerFilter("tok-1", null, List.of()), mode, List.of(capabilities), paths, dirs);
         when(accessService.resolveEntry(TENANT, PROJECT, TOKEN)).thenReturn(entry);
+    }
+
+    private void jobInDir(String jobId, String dir) {
+        executionRegistry.register(new ExecutionRegistryEntry(
+                jobId,
+                ExecutionOwner.Brain.INSTANCE,
+                TENANT,
+                PROJECT,
+                null,
+                null,
+                "echo hi",
+                dir,
+                java.time.Instant.now(),
+                java.time.Instant.now(),
+                null,
+                ExecutionStatus.RUNNING,
+                null,
+                null,
+                null,
+                Map.of()));
     }
 
     /** Short aliases for the real enum constants, to keep the fixtures readable. */
@@ -381,7 +791,30 @@ class McpProjectServiceTest {
                 "doc_replace_lines",
                 "doc_move",
                 "doc_copy",
-                "doc_delete")) {
+                "doc_delete",
+                "workflow_list",
+                "workflow_get",
+                "workflow_runs",
+                "workflow_run_get",
+                "workflow_start",
+                "workflow_control",
+                "workflow_breakpoints",
+                "workflow_simulate",
+                "workflow_restart",
+                "work_file_read",
+                "work_file_list",
+                "work_file_find",
+                "work_file_grep",
+                "work_file_head_tail",
+                "work_file_count",
+                "work_file_write",
+                "work_file_edit",
+                "work_exec_run",
+                "work_exec_status",
+                "work_exec_tail",
+                "work_exec_stat",
+                "work_exec_check",
+                "work_exec_kill")) {
             Tool tool = mock(Tool.class);
             // Shared fixture: every test uses a different subset of the
             // surface tools, so the common stubbings are lenient.

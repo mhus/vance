@@ -63,7 +63,7 @@ public class DocListFoldersTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "folders", "read-only");
+        return Set.of(ToolLabels.WORKER, "folders", "read-only", "document");
     }
 
     @Override

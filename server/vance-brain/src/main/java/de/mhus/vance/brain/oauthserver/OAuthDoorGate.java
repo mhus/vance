@@ -53,9 +53,16 @@ public class OAuthDoorGate {
                         || !permissionService.check(subject, new Resource.Project(tenant, project), Action.READ)) {
                     yield "You have no read access to project '" + project + "'.";
                 }
-                if (projectAccess.resolveEntry(tenant, project, caller) == null) {
+                var entry = projectAccess.resolveEntry(tenant, project, caller);
+                if (entry == null) {
                     yield "Project '" + project + "' does not admit OAuth clients for your account ("
                             + McpProjectAccessService.CONFIG_PATH + ").";
+                }
+                // An entry without capabilities matches but offers nothing — a grant for it would be an
+                // empty catalogue behind a consent screen.
+                if (!entry.grantsAnything()) {
+                    yield "Project '" + project + "' admits your account but grants it no capabilities ("
+                            + McpProjectAccessService.CONFIG_PATH + ", 'capabilities').";
                 }
                 yield null;
             }

@@ -220,6 +220,11 @@ modes:
       - foreign_doc_search
       - foreign_doc_read
       - foreign_doc_copy
+      # Workflow family (workflow_list/get/runs/run_get/control/breakpoints/
+      # simulate/restart/start), by label so a new family tool needs no edit
+      # here. All deferred; the write/side-effect ones stay deferred below.
+      # manual_read('workflow-debug') tells the model how to use them.
+      - "@workflow"
     allowedToolsDefer:
       - "@write"
       - "@executive"

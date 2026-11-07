@@ -81,7 +81,7 @@ public class VogonStartTool extends VogonBaseTool {
 
     @Override
     public java.util.Set<String> labels() {
-        return java.util.Set.of("write", "side-effect");
+        return java.util.Set.of(de.mhus.vance.toolpack.ToolLabels.INTERNAL, "write", "side-effect");
     }
 
     @Override

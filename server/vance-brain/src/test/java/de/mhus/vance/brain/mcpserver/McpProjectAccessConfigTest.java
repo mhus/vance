@@ -8,15 +8,19 @@ import org.junit.jupiter.api.Test;
 
 class McpProjectAccessConfigTest {
 
+    private static final List<McpProjectCapability> DOC = List.of(McpProjectCapability.DOC);
+
     private static final String VALID = """
             default: deny
             access:
               - name: claude-code
                 token: "tok-123"
                 mode: rw
+                capabilities: [doc]
                 paths: ["spec", "readme/"]
               - name: humans
                 mode: ro
+                capabilities: [doc, workflow]
             """;
 
     @Test
@@ -36,6 +40,227 @@ class McpProjectAccessConfigTest {
         assertThat(open.token()).isNull();
         assertThat(open.mode()).isEqualTo(McpProjectAccessConfig.Mode.RO);
         assertThat(open.isWholeProject()).isTrue();
+    }
+
+    @Test
+    void parse_readsCapabilities() {
+        McpProjectAccessConfig config = McpProjectAccessConfig.parse(VALID);
+
+        assertThat(config.access().get(0).capabilities()).containsExactly(McpProjectCapability.DOC);
+        assertThat(config.access().get(1).capabilities())
+                .containsExactly(McpProjectCapability.DOC, McpProjectCapability.WORKFLOW);
+        assertThat(config.access().get(1).allows(McpProjectCapability.WORKFLOW)).isTrue();
+        assertThat(config.access().get(0).allows(McpProjectCapability.WORKFLOW)).isFalse();
+    }
+
+    @Test
+    void parse_entryWithoutCapabilities_matchesButGrantsNothing() {
+        // No legacy reading: an entry that predates the key offers no tool. It still matches, so it is
+        // not silently skipped in favour of a later, broader entry.
+        McpProjectAccessConfig config = McpProjectAccessConfig.parse("""
+                access:
+                  - name: old
+                    mode: rw
+                  - name: later
+                    mode: rw
+                    capabilities: [doc]
+                """);
+
+        McpProjectAccessConfig.Entry resolved = config.resolve(McpCaller.account("alice"));
+
+        assertThat(resolved.name()).isEqualTo("old");
+        assertThat(resolved.capabilities()).isEmpty();
+        assertThat(resolved.grantsAnything()).isFalse();
+    }
+
+    @Test
+    void parse_emptyCapabilitiesList_grantsNothingToo() {
+        McpProjectAccessConfig config = McpProjectAccessConfig.parse("""
+                access:
+                  - name: x
+                    mode: rw
+                    capabilities: []
+                """);
+
+        assertThat(config.access().get(0).grantsAnything()).isFalse();
+    }
+
+    @Test
+    void parse_unknownCapability_isALoadError() {
+        assertThatThrownBy(() -> McpProjectAccessConfig.parse("""
+                access:
+                  - name: x
+                    mode: ro
+                    capabilities: [doc, shell]
+                """))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("unknown capability 'shell'")
+                .hasMessageContaining("doc, workflow, file, exec");
+    }
+
+    @Test
+    void parse_capabilitiesThatIsNotAList_isALoadError() {
+        assertThatThrownBy(() -> McpProjectAccessConfig.parse("""
+                access:
+                  - name: x
+                    mode: ro
+                    capabilities: doc
+                """))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("must be a list");
+    }
+
+    @Test
+    void parse_blankCapabilityEntry_isALoadError() {
+        assertThatThrownBy(() -> McpProjectAccessConfig.parse("""
+                access:
+                  - name: x
+                    mode: ro
+                    capabilities: [doc, ~]
+                """))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("non-blank");
+    }
+
+    @Test
+    void parse_workflowTogetherWithPaths_isALoadError() {
+        // Workflow runs have no document path; a prefix on such an entry would read as narrower than it is.
+        assertThatThrownBy(() -> McpProjectAccessConfig.parse("""
+                access:
+                  - name: x
+                    mode: ro
+                    capabilities: [doc, workflow]
+                    paths: ["spec/"]
+                """))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("workflow")
+                .hasMessageContaining("paths");
+    }
+
+    @Test
+    void parse_fileWithDirs_isRead() {
+        McpProjectAccessConfig config = McpProjectAccessConfig.parse("""
+                access:
+                  - name: builder
+                    mode: rw
+                    capabilities: [file]
+                    dirs: [build, "out-1"]
+                """);
+
+        McpProjectAccessConfig.Entry entry = config.access().get(0);
+        assertThat(entry.dirs()).containsExactly("build", "out-1");
+        assertThat(entry.allows(McpProjectCapability.FILE)).isTrue();
+    }
+
+    @Test
+    void parse_fileOrExecWithoutDirs_isALoadError() {
+        assertThatThrownBy(() -> McpProjectAccessConfig.parse("""
+                access:
+                  - name: x
+                    mode: rw
+                    capabilities: [file]
+                """))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("names no 'dirs'");
+        assertThatThrownBy(() -> McpProjectAccessConfig.parse("""
+                access:
+                  - name: x
+                    mode: rw
+                    token: "t"
+                    capabilities: [exec]
+                """))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("names no 'dirs'");
+    }
+
+    @Test
+    void parse_dirsWithoutFileOrExec_isALoadError() {
+        assertThatThrownBy(() -> McpProjectAccessConfig.parse("""
+                access:
+                  - name: x
+                    mode: rw
+                    capabilities: [doc]
+                    dirs: [build]
+                """))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("grants neither 'file' nor 'exec'");
+    }
+
+    @Test
+    void parse_dirsThatIsNotAListOrNotAName_isALoadError() {
+        assertThatThrownBy(() -> McpProjectAccessConfig.parse("""
+                access:
+                  - name: x
+                    mode: rw
+                    capabilities: [file]
+                    dirs: build
+                """))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("'dirs' must be a list");
+        assertThatThrownBy(() -> McpProjectAccessConfig.parse("""
+                access:
+                  - name: x
+                    mode: rw
+                    capabilities: [file]
+                    dirs: ["../etc"]
+                """))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("not a workspace directory name");
+    }
+
+    @Test
+    void parse_exec_needsRw_andANamedCaller() {
+        assertThatThrownBy(() -> McpProjectAccessConfig.parse("""
+                access:
+                  - name: x
+                    mode: ro
+                    token: "t"
+                    capabilities: [exec]
+                    dirs: [build]
+                """))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("not read-only");
+        assertThatThrownBy(() -> McpProjectAccessConfig.parse("""
+                access:
+                  - name: x
+                    mode: rw
+                    capabilities: [exec]
+                    dirs: [build]
+                """))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("every caller");
+        // oauth: true alone is still "every OAuth user".
+        assertThatThrownBy(() -> McpProjectAccessConfig.parse("""
+                access:
+                  - name: x
+                    mode: rw
+                    oauth: true
+                    capabilities: [exec]
+                    dirs: [build]
+                """))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("every caller");
+    }
+
+    @Test
+    void parse_exec_withATokenOrNamedUsers_isRead() {
+        McpProjectAccessConfig config = McpProjectAccessConfig.parse("""
+                access:
+                  - name: ci
+                    mode: rw
+                    token: "tok-1"
+                    capabilities: [exec, file]
+                    dirs: [build]
+                  - name: mike
+                    mode: rw
+                    oauth: true
+                    users: [mike]
+                    capabilities: [exec]
+                    dirs: [build]
+                """);
+
+        assertThat(config.access()).hasSize(2);
+        assertThat(config.access().get(0).allows(McpProjectCapability.EXEC)).isTrue();
     }
 
     @Test
@@ -103,11 +328,12 @@ class McpProjectAccessConfigTest {
         // shadows it for everyone.
         McpProjectAccessConfig ordered = new McpProjectAccessConfig(List.of(
                 new McpProjectAccessConfig.Entry(
-                        "ro-first", McpCallerFilter.ANY, McpProjectAccessConfig.Mode.RO, List.of()),
+                        "ro-first", McpCallerFilter.ANY, McpProjectAccessConfig.Mode.RO, DOC, List.of()),
                 new McpProjectAccessConfig.Entry(
                         "pinned",
                         new McpCallerFilter("tok-1", null, List.of()),
                         McpProjectAccessConfig.Mode.RW,
+                        DOC,
                         List.of())));
         assertThat(ordered.resolve(McpCaller.integration("alice", "tok-1")).name())
                 .isEqualTo("ro-first");
@@ -124,7 +350,7 @@ class McpProjectAccessConfigTest {
     @Test
     void pathAllowed_matchesPrefixSubtrees_only() {
         McpProjectAccessConfig.Entry entry = new McpProjectAccessConfig.Entry(
-                "x", McpCallerFilter.ANY, McpProjectAccessConfig.Mode.RO, List.of("spec/"));
+                "x", McpCallerFilter.ANY, McpProjectAccessConfig.Mode.RO, DOC, List.of("spec/"));
 
         assertThat(entry.pathAllowed("spec/design.md")).isTrue();
         assertThat(entry.pathAllowed("spec/sub/deep.md")).isTrue();

@@ -2,9 +2,10 @@ package de.mhus.vance.brain.action;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import de.mhus.vance.brain.tools.magrathea.WorkflowStartTool;
 import de.mhus.vance.brain.tools.hooks.HookDeleteTool;
 import de.mhus.vance.brain.tools.hooks.HookSetTool;
+import de.mhus.vance.brain.tools.magrathea.WorkflowRestartTool;
+import de.mhus.vance.brain.tools.magrathea.WorkflowStartTool;
 import de.mhus.vance.brain.tools.process.ProcessSpawnTool;
 import de.mhus.vance.brain.tools.script.ScriptRunDocTool;
 import de.mhus.vance.brain.tools.script.ScriptRunWorkspaceTool;
@@ -40,6 +41,7 @@ class AllSpawnToolsAnnotatedTest {
             ScriptRunDocTool.class,
             ScriptRunWorkspaceTool.class,
             WorkflowStartTool.class,
+            WorkflowRestartTool.class,
             UrsaSchedulerSetTool.class,
             UrsaSchedulerDeleteTool.class,
             HookSetTool.class,

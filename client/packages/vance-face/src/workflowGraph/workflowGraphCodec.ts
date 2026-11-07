@@ -102,6 +102,11 @@ export interface WorkflowGraph {
   parameters: WorkflowParameter[];
   states: WorkflowStateNode[];
   edges: WorkflowEdge[];
+  /**
+   * Where the author put states, from the optional top-level `layout:` block ({@code plan: [120, 40]}): state name →
+   * top-left corner. Empty when the workflow is arranged automatically. The engine ignores it.
+   */
+  layout: Record<string, { x: number; y: number }>;
   /** Reader-visible structural problems, in document order. */
   problems: string[];
 }
@@ -121,7 +126,7 @@ export function parseWorkflowGraph(body: string): WorkflowGraph {
   const problems: string[] = [];
 
   if (!body.trim()) {
-    return { start: null, parameters: [], states: [], edges: [], problems: ['empty document'] };
+    return { start: null, parameters: [], states: [], edges: [], layout: {}, problems: ['empty document'] };
   }
 
   let root: Record<string, unknown>;
@@ -136,6 +141,7 @@ export function parseWorkflowGraph(body: string): WorkflowGraph {
       parameters: [],
       states: [],
       edges: [],
+      layout: {},
       problems: [e instanceof Error ? e.message : String(e)],
     };
   }
@@ -153,6 +159,7 @@ export function parseWorkflowGraph(body: string): WorkflowGraph {
       parameters: parseParameters(root.parameters),
       states: [],
       edges: [],
+      layout: parseLayout(root.layout),
       problems,
     };
   }
@@ -246,6 +253,7 @@ export function parseWorkflowGraph(body: string): WorkflowGraph {
     parameters: parseParameters(root.parameters),
     states: [...states, ...missing.values()],
     edges,
+    layout: parseLayout(root.layout),
     problems,
   };
 }
@@ -273,6 +281,21 @@ function annotateEnds(
       );
     }
   }
+}
+
+/**
+ * The `layout:` block: state name → `[x, y]`. An entry that is not a pair of finite numbers is skipped — a
+ * half-written position should not hide the rest, and the state is then placed automatically.
+ */
+function parseLayout(raw: unknown): Record<string, { x: number; y: number }> {
+  const out: Record<string, { x: number; y: number }> = {};
+  if (!isRecord(raw)) return out;
+  for (const [name, at] of Object.entries(raw)) {
+    if (Array.isArray(at) && at.length === 2 && at.every((n) => typeof n === 'number' && Number.isFinite(n))) {
+      out[name] = { x: at[0] as number, y: at[1] as number };
+    }
+  }
+  return out;
 }
 
 /**

@@ -188,6 +188,7 @@ export function removeState(text: string, name: string): string {
   stateOf(doc, name);
   doc.deleteIn(['states', name]);
   retargetAll(doc, name, null);
+  dropPosition(doc, name);
   if (scalarText(doc.get('start', true)) === name) {
     const first = statesOf(doc)?.items.map((p) => scalarText(p.key)).find((n) => n !== null);
     if (first) doc.set('start', first);
@@ -208,6 +209,9 @@ export function renameState(text: string, from: string, to: string): string {
   const start = doc.get('start', true);
   if (scalarText(start) === from && isScalar(start)) start.value = to;
   retargetAll(doc, from, to);
+  const layout = doc.get('layout', true);
+  const place = isMap(layout) ? layout.items.find((p) => scalarText(p.key) === from) : undefined;
+  if (place) (place.key as { value: string }).value = to;
   return print(doc);
 }
 
@@ -298,6 +302,58 @@ export function setStateExtras(
   owned: ReadonlySet<string>,
 ): string {
   return setMapExtras(text, state, [], extras, owned);
+}
+
+// ── where states are drawn ───────────────────────────────────────
+
+/** A position as written: a flow pair of whole numbers, {@code plan: [120, 40]}. */
+function pair(doc: Document, x: number, y: number): YAMLSeq {
+  const seq = doc.createNode([Math.round(x), Math.round(y)]) as YAMLSeq;
+  seq.flow = true;
+  return seq;
+}
+
+/** Remove a state's entry from {@code layout:}, and the block itself when that was its last entry. */
+function dropPosition(doc: Document, name: string): void {
+  const layout = doc.get('layout', true);
+  if (!isMap(layout)) return;
+  layout.delete(name);
+  if (layout.items.length === 0) doc.delete('layout');
+}
+
+/**
+ * Write the whole {@code layout:} block: where each state is drawn. Entries for names that are no state are left
+ * out. The engine ignores the block; only the drawing reads it.
+ */
+export function setLayout(text: string, positions: Record<string, { x: number; y: number }>): string {
+  const doc = load(text);
+  const map = doc.createNode({}) as YAMLMap;
+  for (const [name, at] of Object.entries(positions)) {
+    if (hasState(doc, name)) map.set(name, pair(doc, at.x, at.y));
+  }
+  if (map.items.length === 0) doc.delete('layout');
+  else doc.set('layout', map);
+  return print(doc);
+}
+
+/** Move one state: its entry in {@code layout:} is made or changed, the block made when there was none. */
+export function setStatePosition(text: string, state: string, x: number, y: number): string {
+  const doc = load(text);
+  stateOf(doc, state);
+  let layout = doc.get('layout', true);
+  if (!isMap(layout)) {
+    doc.set('layout', doc.createNode({}));
+    layout = doc.get('layout', true);
+  }
+  (layout as YAMLMap).set(state, pair(doc, x, y));
+  return print(doc);
+}
+
+/** Forget where states were put: the drawing is arranged automatically again. */
+export function clearLayout(text: string): string {
+  const doc = load(text);
+  doc.delete('layout');
+  return print(doc);
 }
 
 // ── connections ──────────────────────────────────────────────────

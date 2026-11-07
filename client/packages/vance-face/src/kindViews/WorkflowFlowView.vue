@@ -33,9 +33,19 @@ import { workflowNameOf } from '@/cortex/workflowEdit/workflowSources';
 import { toolLabel, type PaletteTool } from '@/cortex/workflowEdit/paletteModel';
 import { stateTemplate, toolStateTemplate } from '@/cortex/workflowEdit/stateTemplates';
 import { useWorkflowChange } from '@/cortex/workflowEdit/useWorkflowChange';
-import { addState, connect, freeStateName, type EdgeRef } from '@/cortex/workflowEdit/workflowMutations';
+import { placeNewState } from '@/cortex/workflowEdit/placement';
+import {
+  addState,
+  clearLayout,
+  connect,
+  freeStateName,
+  setLayout,
+  setStatePosition,
+  type EdgeRef,
+} from '@/cortex/workflowEdit/workflowMutations';
 import { useWorkflowServerCheck } from '@/cortex/workflowEdit/useWorkflowServerCheck';
 import { useWorkflowTools } from '@/cortex/workflowEdit/useWorkflowTools';
+import { isManualLayout, layoutGraph } from '@/workflowGraph/layout';
 import WorkflowGraph from '@/workflowGraph/WorkflowGraph.vue';
 import { parseWorkflowGraph, type WorkflowTaskType } from '@/workflowGraph/workflowGraphCodec';
 
@@ -124,10 +134,35 @@ const change = useWorkflowChange(() => props.doc, (next) => emit('update:doc', n
 
 const paletteOpen = ref(false);
 
-/** A new state at the end of the workflow, picked right away so it can be edited. */
+/**
+ * A state is added to the text. In a drawing the author arranged, it is also given a place — below the state it
+ * follows, or the one picked — so that no state of an arranged drawing is left without one; in an automatic
+ * drawing the arrangement finds its place.
+ */
+function withState(text: string, name: string, body: Record<string, unknown>, anchor: string | undefined): string {
+  const added = addState(text, name, body);
+  const drawing = parseWorkflowGraph(text);
+  if (!isManualLayout(drawing)) return added;
+  const at = placeNewState(layoutGraph(drawing, 'TB').positions, anchor);
+  return setStatePosition(added, name, at.x, at.y);
+}
+
+/** A new state, picked right away so it can be edited. */
 function addPicked(base: string, body: Record<string, unknown>): void {
   const name = freeStateName(props.doc, base);
-  if (change.apply(() => addState(props.doc, name, body))) pickState(name);
+  if (change.apply(() => withState(props.doc, name, body, selected.value ?? undefined))) pickState(name);
+}
+
+/** A state was moved in the editor. */
+function onMove(moved: { name: string; x: number; y: number; all: Record<string, { x: number; y: number }> }): void {
+  change.apply(() => (isManualLayout(graph.value)
+    ? setStatePosition(props.doc, moved.name, moved.x, moved.y)
+    : setLayout(props.doc, moved.all)));
+}
+
+/** Forget the positions: the automatic arrangement is back. */
+function onRearrange(): void {
+  change.apply(() => clearLayout(props.doc));
 }
 
 function onPickTask(type: WorkflowTaskType): void {
@@ -166,7 +201,7 @@ function confirmConnect(answer: ConnectAnswer): void {
   const made = change.apply(() => {
     if (target === null && answer.newType) {
       target = freeStateName(text, answer.newType);
-      text = addState(text, target, stateTemplate(answer.newType));
+      text = withState(text, target, stateTemplate(answer.newType), request.source);
     }
     text = connect(text, {
       source: request.source,
@@ -245,6 +280,8 @@ watch(() => props.docPath, () => check.clear());
         @select-edge="pickEdge"
         @add="paletteOpen = true"
         @connect="onConnect"
+        @move="onMove"
+        @rearrange="onRearrange"
       />
       <WorkflowGraph
         v-else

@@ -1556,6 +1556,9 @@ export default {
       modeView: 'Show',
       modeEdit: 'Build',
       addState: 'Add state',
+      rearrange: 'Re-arrange',
+      rearrangeHint: 'Forget the positions you set; the states are arranged automatically again',
+      directionManual: 'The states are positioned by hand — re-arrange first to change the direction',
       sources: {
         label: 'Starts with',
         none: 'Nothing starts this workflow yet.',

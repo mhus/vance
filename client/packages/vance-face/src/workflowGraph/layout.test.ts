@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fallbackPosition, layoutGraph, layoutPositions, NODE_H, NODE_W } from './layout';
+import { fallbackPosition, isManualLayout, layoutGraph, layoutPositions, NODE_H, NODE_W } from './layout';
 import { parseWorkflowGraph } from './workflowGraphCodec';
 
 const DOC = `
@@ -138,5 +138,48 @@ states:
     on: { done: nowhere }
 `);
     expect(layoutGraph(g, 'TB').positions.has('nowhere')).toBe(true);
+  });
+});
+
+describe('layoutGraph with a layout block', () => {
+  const withLayout = (layout: string): string => `${LOOP}\nlayout:\n${layout}`;
+
+  it('is automatic without a block and manual with one', () => {
+    expect(isManualLayout(parseWorkflowGraph(LOOP))).toBe(false);
+    expect(isManualLayout(parseWorkflowGraph(withLayout('  poll: [10, 20]')))).toBe(true);
+  });
+
+  it('keeps every state where it was put, when all are placed', () => {
+    const at: Record<string, [number, number]> = {
+      poll: [0, 0], each: [0, 200], work: [400, 100], step: [400, 300], next: [400, 500], commit: [0, 400], done: [0, 600],
+    };
+    const doc = withLayout(Object.entries(at).map(([n, [x, y]]) => `  ${n}: [${x}, ${y}]`).join('\n'));
+    const { positions } = layoutGraph(parseWorkflowGraph(doc), 'TB');
+    for (const [name, [x, y]] of Object.entries(at)) expect(positions.get(name)).toEqual({ x, y });
+  });
+
+  it('places a state the block leaves out automatically, and keeps the others', () => {
+    const { positions } = layoutGraph(parseWorkflowGraph(withLayout('  poll: [5, 7]')), 'TB');
+    expect(positions.get('poll')).toEqual({ x: 5, y: 7 });
+    expect(positions.has('commit')).toBe(true);
+  });
+
+  it('skips an entry that is no pair of numbers', () => {
+    const g = parseWorkflowGraph(withLayout('  poll: [1]\n  each: [a, b]\n  work: [3, 4]'));
+    expect(g.layout).toEqual({ work: { x: 3, y: 4 } });
+  });
+
+  it('draws the frame around the body where its states stand', () => {
+    const doc = withLayout(
+      '  poll: [0, 0]\n  each: [0, 200]\n  work: [600, 100]\n  step: [600, 300]\n  next: [600, 500]\n  commit: [0, 400]\n  done: [0, 600]',
+    );
+    const { frames } = layoutGraph(parseWorkflowGraph(doc), 'TB');
+    expect(frames).toHaveLength(1);
+    expect(frames[0].x).toBeLessThan(600);
+    expect(frames[0].x + frames[0].width).toBeGreaterThan(600 + NODE_W);
+    expect(frames[0].y).toBeLessThan(100);
+    expect(frames[0].y + frames[0].height).toBeGreaterThan(500 + NODE_H);
+    // The states of the body lie inside it, the others do not.
+    expect(frames[0].x).toBeGreaterThan(NODE_W);
   });
 });

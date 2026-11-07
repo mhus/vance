@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { parseWorkflowGraph } from '@/workflowGraph/workflowGraphCodec';
 import {
   addState,
+  clearLayout,
   connect,
   disconnect,
   freeStateName,
@@ -9,8 +10,10 @@ import {
   removeState,
   renameState,
   retarget,
+  setLayout,
   setMapExtras,
   setStart,
+  setStatePosition,
   setStateExtras,
   setStateField,
   WorkflowEditError,
@@ -381,5 +384,48 @@ describe('setMapExtras', () => {
 
   it('keeps an owned key even when the map would otherwise be empty', () => {
     expect(setMapExtras(TOOL, 't', ['params'], {}, new Set(['a', 'b']))).toBe(TOOL);
+  });
+});
+
+describe('where states are drawn', () => {
+  const layoutOf = (text: string) => parseWorkflowGraph(text).layout;
+
+  it('writes the whole block as one flow pair per state, rounded, and leaves out names that are no state', () => {
+    const out = setLayout(DOC, { plan: { x: 120.4, y: 40.6 }, check: { x: 0, y: 200 }, nope: { x: 1, y: 1 } });
+    expect(out).toMatch(/plan: \[ ?120, 41 ?\]/);
+    expect(layoutOf(out)).toEqual({ plan: { x: 120, y: 41 }, check: { x: 0, y: 200 } });
+    expect(out).toContain('# first step');
+  });
+
+  it('moves one state and makes the block when there is none', () => {
+    const out = setStatePosition(DOC, 'check', 60, 80);
+    expect(layoutOf(out)).toEqual({ check: { x: 60, y: 80 } });
+    expect(layoutOf(setStatePosition(out, 'plan', 1, 2))).toEqual({
+      check: { x: 60, y: 80 }, plan: { x: 1, y: 2 },
+    });
+    expect(layoutOf(setStatePosition(out, 'check', 5, 6))).toEqual({ check: { x: 5, y: 6 } });
+  });
+
+  it('forgets every position', () => {
+    const out = clearLayout(setStatePosition(DOC, 'plan', 1, 2));
+    expect(out).not.toContain('layout');
+    expect(out).toBe(DOC);
+  });
+
+  it('follows a state that is renamed and one that is removed', () => {
+    const placed = setLayout(DOC, { plan: { x: 1, y: 2 }, check: { x: 3, y: 4 }, done: { x: 5, y: 6 } });
+    expect(layoutOf(renameState(placed, 'plan', 'design'))).toEqual({
+      design: { x: 1, y: 2 }, check: { x: 3, y: 4 }, done: { x: 5, y: 6 },
+    });
+    expect(layoutOf(removeState(placed, 'check'))).toEqual({ plan: { x: 1, y: 2 }, done: { x: 5, y: 6 } });
+  });
+
+  it('drops the block when its last state is removed', () => {
+    const placed = setStatePosition(DOC, 'check', 3, 4);
+    expect(removeState(placed, 'check')).not.toContain('layout');
+  });
+
+  it('refuses to place a state that does not exist', () => {
+    fails(() => setStatePosition(DOC, 'nope', 1, 1), /no state 'nope'/);
   });
 });

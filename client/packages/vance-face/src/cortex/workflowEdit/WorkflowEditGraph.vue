@@ -19,7 +19,8 @@ import '@vue-flow/core/dist/theme-default.css';
 import { VAlert, VButton } from '@/components';
 import { toFlowEdges, toFlowNodes, toFrameNodes } from '@/workflowGraph/flowElements';
 import type { EdgeRef } from './workflowMutations';
-import { layoutGraph, type GraphDirection } from '@/workflowGraph/layout';
+import { isManualLayout, layoutGraph, type GraphDirection } from '@/workflowGraph/layout';
+import { GRID } from './placement';
 import LoopFrame from '@/workflowGraph/LoopFrame.vue';
 import { useFitOnResize } from '@/workflowGraph/useFitOnResize';
 import { parseWorkflowGraph } from '@/workflowGraph/workflowGraphCodec';
@@ -43,6 +44,10 @@ const emit = defineEmits<{
   (e: 'add'): void;
   /** A connection was picked; {@code null} when the pick is cleared. */
   (e: 'select-edge', edge: EdgeRef | null): void;
+  /** A state was moved: where it now stands, and where every state stands (for a drawing that was still automatic). */
+  (e: 'move', moved: { name: string; x: number; y: number; all: Record<string, { x: number; y: number }> }): void;
+  /** The person wants the automatic arrangement back. */
+  (e: 'rearrange'): void;
   /** A line was drawn from {@code source} to {@code target}, or dropped on empty canvas ({@code null}). */
   (e: 'connect', source: string, target: string | null): void;
 }>();
@@ -63,7 +68,7 @@ const vfNodes = computed(() => [
     graph.value,
     positions.value,
     (state) => ({ selected: props.selected === state.name }),
-    { draggable: false, selectable: false, connectable: true },
+    { draggable: true, selectable: false, connectable: true },
   ),
 ]);
 const vfEdges = computed(() =>
@@ -116,6 +121,27 @@ function onConnectEnd(event?: MouseEvent | TouchEvent): void {
   if (from && !connected && dropped) emit('connect', from, null);
 }
 
+/** The drawing has positions the author set: the automatic arrangement and its direction no longer apply. */
+const manual = computed(() => isManualLayout(graph.value));
+
+/**
+ * A state was let go. The first move of an automatic drawing fixes where every state stands, so nothing else
+ * jumps when the next change re-arranges; later moves change just the one.
+ */
+function onNodeDragStop(event: { node: { id: string; position: { x: number; y: number } } }): void {
+  const moved = graph.value.states.find((s) => s.name === event.node.id);
+  if (!moved || moved.missing) return;
+  const at = { x: Math.round(event.node.position.x), y: Math.round(event.node.position.y) };
+  const all: Record<string, { x: number; y: number }> = {};
+  for (const state of graph.value.states) {
+    if (state.missing) continue;
+    const pos = layout.value.positions.get(state.name);
+    if (pos) all[state.name] = { x: Math.round(pos.x), y: Math.round(pos.y) };
+  }
+  all[moved.name] = at;
+  emit('move', { name: moved.name, ...at, all });
+}
+
 function toggleDirection(): void {
   direction.value = direction.value === 'TB' ? 'LR' : 'TB';
 }
@@ -131,7 +157,18 @@ function toggleDirection(): void {
       <VButton
         size="sm"
         variant="plain"
-        :title="t('documents.workflowView.directionHint')"
+        icon="refresh"
+        :disabled="!manual"
+        :title="t('documents.workflowView.rearrangeHint')"
+        @click="emit('rearrange')"
+      >
+        {{ t('documents.workflowView.rearrange') }}
+      </VButton>
+      <VButton
+        size="sm"
+        variant="plain"
+        :disabled="manual"
+        :title="manual ? t('documents.workflowView.directionManual') : t('documents.workflowView.directionHint')"
         @click="toggleDirection"
       >
         {{ direction === 'TB'
@@ -152,12 +189,15 @@ function toggleDirection(): void {
         :nodes="vfNodes"
         :edges="vfEdges"
         :fit-view-on-init="true"
-        :nodes-draggable="false"
+        :nodes-draggable="true"
+        :snap-to-grid="true"
+        :snap-grid="[GRID, GRID]"
         :nodes-connectable="true"
         :elements-selectable="false"
         :zoom-on-double-click="false"
         @pane-ready="onPaneReady"
         @node-click="onNodeClick"
+        @node-drag-stop="onNodeDragStop"
         @pane-click="emit('select', null); emit('select-edge', null)"
         @edge-click="onEdgeClick"
         @connect-start="onConnectStart"

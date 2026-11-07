@@ -1640,7 +1640,6 @@ export default {
         errorKind: 'Error kind',
         condition: 'Condition',
         conditionHelp: 'A SpEL expression, e.g. #state[\'plan\'][\'risk\'] == \'low\'. The first branch that holds wins.',
-        newStateType: 'Type of the new state',
         cancel: 'Cancel',
         confirm: 'Connect',
       },

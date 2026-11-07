@@ -1,18 +1,17 @@
 <script setup lang="ts">
 /**
  * Asks what a new connection is: which kind (outcome, error, branch, else) and
- * what it is called — and, when the line was dropped on empty canvas, which
- * kind of state it leads to. Pure form: it changes nothing, it reports the
- * answer.
+ * what it is called. Pure form: it changes nothing, it reports the answer. A line
+ * dropped on empty canvas leads to a new state; which one is picked in the palette
+ * beforehand, so it is not asked here.
  *
  * Plan: {@code planning/workflow-editor.md}.
  */
 import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { VButton, VCombobox, VInput, VModal, VSegment, VSelect } from '@/components';
-import type { WorkflowEdgeKind, WorkflowTaskType } from '@/workflowGraph/workflowGraphCodec';
+import { VButton, VCombobox, VInput, VModal, VSegment } from '@/components';
+import type { WorkflowEdgeKind } from '@/workflowGraph/workflowGraphCodec';
 import { connectionKinds, defaultLabel, ERROR_KINDS, outcomeSuggestions } from './connectionVocabulary';
-import { TEMPLATE_TYPES } from './stateTemplates';
 
 defineOptions({ name: 'ConnectDialog' });
 
@@ -21,7 +20,7 @@ export interface ConnectRequest {
   source: string;
   /** Type of the source state — decides which kinds and words are offered. */
   sourceType: string;
-  /** The state it leads to; {@code null} when a new one is to be made. */
+  /** The state it leads to; {@code null} when a new one is to be made (picked in the palette beforehand). */
   target: string | null;
   /** Outcomes / error kinds the source already routes, so the defaults are free ones. */
   taken: Record<'on' | 'catch', string[]>;
@@ -32,8 +31,6 @@ export interface ConnectRequest {
 export interface ConnectAnswer {
   kind: WorkflowEdgeKind;
   label: string;
-  /** Set when {@link ConnectRequest.target} was {@code null}. */
-  newType: WorkflowTaskType | null;
 }
 
 const props = defineProps<{ request: ConnectRequest | null }>();
@@ -46,7 +43,6 @@ const { t } = useI18n();
 
 const kind = ref<WorkflowEdgeKind>('on');
 const label = ref('');
-const newType = ref<WorkflowTaskType>('shell_task');
 
 const kinds = computed<WorkflowEdgeKind[]>(() => {
   const req = props.request;
@@ -71,7 +67,6 @@ watch(
   (req) => {
     if (!req) return;
     kind.value = kinds.value[0] ?? 'on';
-    newType.value = 'shell_task';
     resetLabel();
   },
   { immediate: true },
@@ -89,8 +84,6 @@ const labelOptions = computed(() => {
   return pool.map((word) => ({ value: word, label: word }));
 });
 
-const typeOptions = TEMPLATE_TYPES.map((type) => ({ value: type, label: type }));
-
 const needsLabel = computed(() => kind.value !== 'else');
 const valid = computed(() => !needsLabel.value || label.value.trim() !== '');
 
@@ -99,7 +92,6 @@ function submit(): void {
   emit('confirm', {
     kind: kind.value,
     label: label.value.trim(),
-    newType: props.request.target === null ? newType.value : null,
   });
 }
 </script>
@@ -130,12 +122,6 @@ function submit(): void {
         :help="t('documents.workflowView.connect.conditionHelp')"
       />
 
-      <VSelect
-        v-if="request.target === null"
-        v-model="newType"
-        :options="typeOptions"
-        :label="t('documents.workflowView.connect.newStateType')"
-      />
     </form>
     <template #actions>
       <VButton variant="secondary" @click="emit('cancel')">{{ t('documents.workflowView.connect.cancel') }}</VButton>

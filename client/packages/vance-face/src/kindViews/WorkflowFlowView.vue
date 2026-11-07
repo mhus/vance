@@ -165,20 +165,57 @@ function onRearrange(): void {
   change.apply(() => clearLayout(props.doc));
 }
 
+/** The state a line dropped on empty canvas is to lead to, once the palette has named it. */
+interface NewTarget {
+  base: string;
+  body: Record<string, unknown>;
+}
+
+/** The source of a line dropped on empty canvas, while the palette is open to pick what it leads to. */
+const awaitingTarget = ref<string | null>(null);
+const newTarget = ref<NewTarget | null>(null);
+
 function onPickTask(type: WorkflowTaskType): void {
-  addPicked(type, stateTemplate(type));
+  pickInPalette({ base: type, body: stateTemplate(type) });
 }
 
 function onPickTool(tool: PaletteTool): void {
-  addPicked(toolLabel(tool.name), toolStateTemplate(tool.name, tool.params));
+  pickInPalette({ base: toolLabel(tool.name), body: toolStateTemplate(tool.name, tool.params) });
 }
+
+/** A pick adds a state — or, with a line waiting for its target, becomes that target. */
+function pickInPalette(state: NewTarget): void {
+  const source = awaitingTarget.value;
+  if (source === null) {
+    addPicked(state.base, state.body);
+    return;
+  }
+  awaitingTarget.value = null;
+  newTarget.value = state;
+  askConnection(source, null);
+}
+
+// A palette closed without a pick drops the line it was opened for.
+watch(paletteOpen, (open) => {
+  if (!open) awaitingTarget.value = null;
+});
 
 // ── connections ──────────────────────────────────────────────────
 
 const pending = ref<ConnectRequest | null>(null);
 
-/** A line was drawn: ask what it is before it becomes part of the workflow. */
+/** A line was drawn: onto a state it is asked about at once; onto empty canvas the palette names the target first. */
 function onConnect(source: string, target: string | null): void {
+  if (target !== null) {
+    askConnection(source, target);
+    return;
+  }
+  awaitingTarget.value = source;
+  paletteOpen.value = true;
+}
+
+/** Ask what the line is before it becomes part of the workflow. */
+function askConnection(source: string, target: string | null): void {
   const own = graph.value.edges.filter((e) => e.source === source);
   pending.value = {
     source,
@@ -196,12 +233,14 @@ function confirmConnect(answer: ConnectAnswer): void {
   const request = pending.value;
   if (!request) return;
   pending.value = null;
+  const created = newTarget.value;
+  newTarget.value = null;
   let target = request.target;
   let text = props.doc;
   const made = change.apply(() => {
-    if (target === null && answer.newType) {
-      target = freeStateName(text, answer.newType);
-      text = withState(text, target, stateTemplate(answer.newType), request.source);
+    if (target === null && created) {
+      target = freeStateName(text, created.base);
+      text = withState(text, target, created.body, request.source);
     }
     text = connect(text, {
       source: request.source,
@@ -316,7 +355,7 @@ watch(() => props.docPath, () => check.clear());
       @pick-task="onPickTask"
       @pick-tool="onPickTool"
     />
-    <ConnectDialog :request="pending" @confirm="confirmConnect" @cancel="pending = null" />
+    <ConnectDialog :request="pending" @confirm="confirmConnect" @cancel="pending = null; newTarget = null" />
   </div>
 </template>
 

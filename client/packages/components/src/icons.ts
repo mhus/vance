@@ -23,6 +23,8 @@ import {
   FileQuestionMark, FileSpreadsheet, FileType, FileVideo, ListChecks, ListTree, Presentation, QrCode,
   Waypoints,
   SlidersHorizontal, StickyNote,
+  // workflow task types
+  CornerDownLeft, Repeat, Workflow,
   // sheet editing
   AlignCenter, AlignLeft, AlignRight, BetweenHorizontalEnd, BetweenHorizontalStart,
   BetweenVerticalEnd, BetweenVerticalStart, Bold, Delete, Eraser, Italic, PanelBottom, PanelTop,
@@ -219,6 +221,18 @@ export const ICONS = {
   'error': CircleX,
   'loading': Loader,
   'minus': Minus,
+  // workflow task types (workflows.md §13): one meaning per task type
+  'task-agent': Bot,
+  'task-shell': Terminal,
+  'task-script': FileCode,
+  'task-tool': Wrench,
+  'task-gate': Inbox,
+  'task-timer': Hourglass,
+  'task-condition': Waypoints,
+  'task-workflow': Workflow,
+  'task-for-each': Repeat,
+  'task-end': CornerDownLeft,
+  'task-terminal': Flag,
 } as const satisfies Record<string, Component>;
 
 export type IconName = keyof typeof ICONS;

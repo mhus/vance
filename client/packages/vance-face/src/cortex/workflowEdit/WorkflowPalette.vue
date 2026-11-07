@@ -11,6 +11,7 @@ import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { VAlert, VBadge, VButton, VGroup, VGroupRow, VInput, VModal } from '@/components';
 import type { WorkflowTaskType } from '@/workflowGraph/workflowGraphCodec';
+import { taskIcon } from '@/workflowGraph/taskIcon';
 import { paletteGroups, type PaletteTool } from './paletteModel';
 import { TEMPLATE_TYPES } from './stateTemplates';
 import type { WorkflowTools } from './useWorkflowTools';
@@ -90,6 +91,7 @@ function pickTool(tool: PaletteTool): void {
           v-for="type in taskTypes"
           :key="type"
           :label="type"
+          :icon="taskIcon(type) ?? undefined"
           :description="t(`documents.workflowView.palette.task.${type}`)"
           navigates
           @click="pickTask(type)"
@@ -117,6 +119,7 @@ function pickTool(tool: PaletteTool): void {
           v-for="tool in group.tools"
           :key="tool.name"
           :label="tool.label"
+          icon="task-tool"
           :description="tool.description"
           navigates
           @click="pickTool(tool)"

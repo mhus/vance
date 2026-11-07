@@ -15,6 +15,7 @@ import { formatDuration } from '@/util/formatDuration';
 import { typeColor } from './flowElements';
 import type { GraphDirection } from './layout';
 import { nodeClasses } from './nodeClasses';
+import { taskIcon } from './taskIcon';
 import type { GraphStateRun } from './overlay';
 import type { WorkflowStateNode } from './workflowGraphCodec';
 
@@ -86,6 +87,7 @@ function runLine(run: GraphStateRun): string {
       ><VIcon name="refresh" /></span>
     </div>
     <div class="wf-node-type" :style="{ color: typeColor(state) }">
+      <VIcon v-if="!state.missing && taskIcon(state.type)" :name="taskIcon(state.type)!" />
       {{ typeLabel(state) }}
     </div>
     <div v-if="state.detail" class="wf-node-detail" :title="state.detail">
@@ -145,10 +147,17 @@ function runLine(run: GraphStateRun): string {
   white-space: nowrap;
 }
 .wf-node-type {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
   font-size: 0.68rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   opacity: 0.85;
+}
+.wf-node-type :deep(.v-icon) {
+  width: 12px;
+  height: 12px;
 }
 .wf-node-detail {
   font-family: ui-monospace, monospace;

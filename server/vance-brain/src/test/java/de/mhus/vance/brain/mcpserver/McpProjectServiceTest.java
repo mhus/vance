@@ -860,4 +860,20 @@ class McpProjectServiceTest {
                 (List<Map<String, Object>>) resultOf(out).get("content");
         return (String) content.get(0).get("text");
     }
+
+    @Test
+    void toolsCall_carriesTheCredentialsProjectConfinementIntoTheToolContext() {
+        entry(Mode.RO, List.of());
+        when(tools.get("doc_read").invoke(anyMap(), any(ToolInvocationContext.class)))
+                .thenReturn(Map.of("content", "x"));
+        McpCaller pinned = new McpCaller(McpCaller.Kind.INTEGRATION, "tok-1", USER, PROJECT);
+        McpProjectAccessConfig.Entry resolved = accessService.resolveEntry(TENANT, PROJECT, TOKEN);
+        when(accessService.resolveEntry(TENANT, PROJECT, pinned)).thenReturn(resolved);
+
+        service.handle(callBody("doc_read", Map.of("path", "spec/design.md")), TENANT, PROJECT, pinned);
+
+        ArgumentCaptor<ToolInvocationContext> captor = ArgumentCaptor.forClass(ToolInvocationContext.class);
+        verify(tools.get("doc_read")).invoke(anyMap(), captor.capture());
+        assertThat(captor.getValue().confinedToProject()).isEqualTo(PROJECT);
+    }
 }

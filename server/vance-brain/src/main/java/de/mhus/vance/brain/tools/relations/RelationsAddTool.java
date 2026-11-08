@@ -168,7 +168,7 @@ public class RelationsAddTool implements Tool {
                     "application/yaml",
                     new ByteArrayInputStream(bytes),
                     ctx.userId(),
-                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), file));
+                    contextFactory.writeActor(ctx, file));
         } catch (DocumentService.DocumentAlreadyExistsException e) {
             // Race with a concurrent create — fall back to append on the
             // newly-created file.
@@ -202,12 +202,7 @@ public class RelationsAddTool implements Tool {
 
         try {
             return documentService.update(
-                    doc.getId(),
-                    null,
-                    null,
-                    body.toString(),
-                    null,
-                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), doc.getPath()));
+                    doc.getId(), null, null, body.toString(), null, contextFactory.writeActor(ctx, doc.getPath()));
         } catch (RuntimeException e) {
             throw new ToolException("Failed to append relation to '" + doc.getPath() + "': " + e.getMessage(), e);
         }

@@ -5,10 +5,10 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import de.mhus.vance.brain.permission.SecurityContextFactory;
-import de.mhus.vance.brain.tools.eddie.EddieContext;
 import de.mhus.vance.brain.documents.DocumentBufferService;
 import de.mhus.vance.brain.documents.DocumentInvalidationEmitter;
+import de.mhus.vance.brain.permission.SecurityContextFactory;
+import de.mhus.vance.brain.tools.eddie.EddieContext;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.document.kind.validate.KindValidationService;
 import de.mhus.vance.shared.permission.Action;
@@ -31,23 +31,34 @@ class KindToolSupportAuthzTest {
     private final PermissionService permissionService = mock(PermissionService.class);
     private final SecurityContextFactory contextFactory = mock(SecurityContextFactory.class);
     private final KindToolSupport support = new KindToolSupport(
-            mock(DocumentBufferService.class), mock(DocumentService.class),
-            mock(EddieContext.class), mock(DocumentInvalidationEmitter.class),
-            permissionService, contextFactory, mock(KindValidationService.class));
+            mock(DocumentBufferService.class),
+            mock(DocumentService.class),
+            mock(EddieContext.class),
+            mock(DocumentInvalidationEmitter.class),
+            permissionService,
+            contextFactory,
+            mock(KindValidationService.class));
 
     @Test
     void enforceDocWrite_checks_target_document_against_tool_subject() {
         SecurityContext subject = SecurityContext.user("alice", "acme", java.util.List.of());
-        when(contextFactory.forToolSubject("acme", "alice")).thenReturn(subject);
-        ToolInvocationContext ctx = new ToolInvocationContext(
-                "acme", "proj", "sess", "proc", "alice");
+        when(contextFactory.forToolSubject(
+                        org.mockito.ArgumentMatchers.argThat((de.mhus.vance.toolpack.ToolInvocationContext c) ->
+                                java.util.Objects.equals("acme", c.tenantId())
+                                        && java.util.Objects.equals("alice", c.userId()))))
+                .thenReturn(subject);
+        ToolInvocationContext ctx = new ToolInvocationContext("acme", "proj", "sess", "proc", "alice");
 
         support.enforceDocWrite(ctx, "_tenant", "_vance/scheduler/x.yaml", Action.CREATE);
 
-        verify(contextFactory).forToolSubject("acme", "alice");
-        verify(permissionService).enforce(
-                eq(subject),
-                eq(new Resource.Document("acme", "_tenant", "_vance/scheduler/x.yaml")),
-                eq(Action.CREATE));
+        verify(contextFactory)
+                .forToolSubject(org.mockito.ArgumentMatchers.argThat((de.mhus.vance.toolpack.ToolInvocationContext c) ->
+                        java.util.Objects.equals("acme", c.tenantId())
+                                && java.util.Objects.equals("alice", c.userId())));
+        verify(permissionService)
+                .enforce(
+                        eq(subject),
+                        eq(new Resource.Document("acme", "_tenant", "_vance/scheduler/x.yaml")),
+                        eq(Action.CREATE));
     }
 }

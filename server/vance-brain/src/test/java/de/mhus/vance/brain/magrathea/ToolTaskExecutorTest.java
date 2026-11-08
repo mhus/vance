@@ -330,4 +330,41 @@ class ToolTaskExecutorTest {
                 null,
                 null);
     }
+
+    @Test
+    void invocation_context_carries_the_runs_credential_confinement() {
+        when(dispatcher.invoke(any(), any(), any(ToolInvocationContext.class))).thenReturn(Map.of());
+        MagratheaTaskContext base = ctx(toolState("github.merge_pr", Map.of()));
+        MagratheaTaskContext confined = new MagratheaTaskContext(
+                base.tenantId(),
+                base.projectId(),
+                base.workflowRunId(),
+                base.taskId(),
+                base.startedBy(),
+                base.workflow(),
+                base.state(),
+                base.params(),
+                base.vars(),
+                base.sessionId(),
+                base.ownerProcessId(),
+                base.previousState(),
+                "proj");
+
+        executor.execute(confined);
+
+        ArgumentCaptor<ToolInvocationContext> captor = ArgumentCaptor.captor();
+        org.mockito.Mockito.verify(dispatcher).invoke(any(), any(), captor.capture());
+        assertThat(captor.getValue().confinedToProject()).isEqualTo("proj");
+    }
+
+    @Test
+    void an_unconfined_run_leaves_the_context_unconfined() {
+        when(dispatcher.invoke(any(), any(), any(ToolInvocationContext.class))).thenReturn(Map.of());
+
+        executor.execute(ctx(toolState("github.merge_pr", Map.of())));
+
+        ArgumentCaptor<ToolInvocationContext> captor = ArgumentCaptor.captor();
+        org.mockito.Mockito.verify(dispatcher).invoke(any(), any(), captor.capture());
+        assertThat(captor.getValue().confinedToProject()).isNull();
+    }
 }

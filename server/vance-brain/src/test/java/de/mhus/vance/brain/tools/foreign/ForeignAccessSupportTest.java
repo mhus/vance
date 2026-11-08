@@ -40,9 +40,14 @@ class ForeignAccessSupportTest {
     private static final String CURRENT = "research";
     private static final String USER = "alice";
 
-    @Mock ProjectService projectService;
-    @Mock PermissionService permissionService;
-    @Mock SecurityContextFactory contextFactory;
+    @Mock
+    ProjectService projectService;
+
+    @Mock
+    PermissionService permissionService;
+
+    @Mock
+    SecurityContextFactory contextFactory;
 
     private ForeignAccessSupport support;
     private final SecurityContext subject = SecurityContext.user(USER, TENANT, List.of());
@@ -77,8 +82,11 @@ class ForeignAccessSupportTest {
         assertThatThrownBy(() -> support.resolveForeign("ghost", ctx(), Action.READ))
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("not found");
-        verify(permissionService, never()).enforce(org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+        verify(permissionService, never())
+                .enforce(
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any());
     }
 
     @Test
@@ -89,42 +97,57 @@ class ForeignAccessSupportTest {
         assertThatThrownBy(() -> support.resolveForeign("_tenant", ctx(), Action.READ))
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("SYSTEM");
-        verify(permissionService, never()).enforce(org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+        verify(permissionService, never())
+                .enforce(
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any());
     }
 
     @Test
     void resolveForeign_regularProject_enforcesRequestedActionAndReturns() {
         ProjectDocument other = project("marketing", ProjectKind.NORMAL);
         when(projectService.findByTenantAndName(TENANT, "marketing")).thenReturn(Optional.of(other));
-        when(contextFactory.forToolSubject(TENANT, USER)).thenReturn(subject);
+        when(contextFactory.forToolSubject(
+                        org.mockito.ArgumentMatchers.argThat((de.mhus.vance.toolpack.ToolInvocationContext c) ->
+                                java.util.Objects.equals(TENANT, c.tenantId())
+                                        && java.util.Objects.equals(USER, c.userId()))))
+                .thenReturn(subject);
 
         ProjectDocument resolved = support.resolveForeign("marketing", ctx(), Action.READ);
 
         assertThat(resolved).isSameAs(other);
-        verify(permissionService).enforce(
-                eq(subject), eq(new Resource.Project(TENANT, "marketing")), eq(Action.READ));
+        verify(permissionService).enforce(eq(subject), eq(new Resource.Project(TENANT, "marketing")), eq(Action.READ));
     }
 
     @Test
     void resolveForeign_forwardsTheGivenAction_notAlwaysRead() {
         when(projectService.findByTenantAndName(TENANT, "marketing"))
                 .thenReturn(Optional.of(project("marketing", ProjectKind.NORMAL)));
-        when(contextFactory.forToolSubject(TENANT, USER)).thenReturn(subject);
+        when(contextFactory.forToolSubject(
+                        org.mockito.ArgumentMatchers.argThat((de.mhus.vance.toolpack.ToolInvocationContext c) ->
+                                java.util.Objects.equals(TENANT, c.tenantId())
+                                        && java.util.Objects.equals(USER, c.userId()))))
+                .thenReturn(subject);
 
         support.resolveForeign("marketing", ctx(), Action.DELETE);
 
-        verify(permissionService).enforce(
-                eq(subject), eq(new Resource.Project(TENANT, "marketing")), eq(Action.DELETE));
+        verify(permissionService)
+                .enforce(eq(subject), eq(new Resource.Project(TENANT, "marketing")), eq(Action.DELETE));
     }
 
     @Test
     void resolveForeign_permissionDenied_propagates() {
         when(projectService.findByTenantAndName(TENANT, "marketing"))
                 .thenReturn(Optional.of(project("marketing", ProjectKind.NORMAL)));
-        when(contextFactory.forToolSubject(TENANT, USER)).thenReturn(subject);
-        doThrow(new RuntimeException("denied")).when(permissionService).enforce(
-                eq(subject), eq(new Resource.Project(TENANT, "marketing")), eq(Action.READ));
+        when(contextFactory.forToolSubject(
+                        org.mockito.ArgumentMatchers.argThat((de.mhus.vance.toolpack.ToolInvocationContext c) ->
+                                java.util.Objects.equals(TENANT, c.tenantId())
+                                        && java.util.Objects.equals(USER, c.userId()))))
+                .thenReturn(subject);
+        doThrow(new RuntimeException("denied"))
+                .when(permissionService)
+                .enforce(eq(subject), eq(new Resource.Project(TENANT, "marketing")), eq(Action.READ));
 
         assertThatThrownBy(() -> support.resolveForeign("marketing", ctx(), Action.READ))
                 .isInstanceOf(RuntimeException.class)

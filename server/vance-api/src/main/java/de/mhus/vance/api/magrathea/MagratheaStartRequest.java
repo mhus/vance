@@ -26,14 +26,6 @@ public class MagratheaStartRequest {
     private @Nullable Map<String, Object> params;
 
     /**
-     * Audit hint — user id, scheduler key, or hook origin. Logged in
-     * {@code StartRecord}. Optional: the REST controller defaults this
-     * to the authenticated JWT user when blank, so UI clients don't
-     * need to thread the username through every request.
-     */
-    private @Nullable String startedBy;
-
-    /**
      * Start in debug mode: the run halts before each state and waits to be
      * stepped from the run view. Real calls — debug is not a dry run.
      * Absent means a normal run.

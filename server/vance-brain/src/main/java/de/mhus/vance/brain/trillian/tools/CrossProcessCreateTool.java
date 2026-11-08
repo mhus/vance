@@ -190,7 +190,7 @@ public class CrossProcessCreateTool implements Tool {
         // Cross-project spawn: the caller must be authorized to START work in
         // the *target* project. ToolDispatcher only checked the calling scope.
         permissionService.enforce(
-                contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()),
+                contextFactory.forToolSubject(ctx),
                 new de.mhus.vance.shared.permission.Resource.Project(ctx.tenantId(), project.getName()),
                 de.mhus.vance.shared.permission.Action.START);
 

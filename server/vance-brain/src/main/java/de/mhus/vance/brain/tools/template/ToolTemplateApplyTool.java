@@ -126,9 +126,7 @@ public class ToolTemplateApplyTool implements Tool {
         // Authorize the target project before touching anything — see the
         // class javadoc for why this is ADMIN and not WRITE.
         permissionService.enforce(
-                contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()),
-                new Resource.Project(ctx.tenantId(), projectId),
-                Action.ADMIN);
+                contextFactory.forToolSubject(ctx), new Resource.Project(ctx.tenantId(), projectId), Action.ADMIN);
         Object inputsRaw = params.get("inputs");
         if (!(inputsRaw instanceof Map<?, ?> inputsMap)) {
             throw new ToolException("'inputs' must be an object");

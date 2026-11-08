@@ -228,7 +228,15 @@ public class RunSourceRegistry {
         if (!source.visibleTo(subject, tenantId, projectId, id.nativeId())) {
             throw new IllegalArgumentException("No such run: " + composite);
         }
-        String created = source.restart(tenantId, projectId, id.nativeId(), fromState, startedBy, debug, breakpoints);
+        String created = source.restart(
+                tenantId,
+                projectId,
+                id.nativeId(),
+                fromState,
+                startedBy,
+                debug,
+                breakpoints,
+                subject.restrictedToProject());
         return RunId.of(id.source(), created).composite();
     }
 

@@ -6,5 +6,4 @@
 export interface MagratheaWorkflowStartRequest {
   name: string;
   params?: Record<string, any>;
-  startedBy?: string;
 }

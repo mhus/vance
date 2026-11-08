@@ -228,7 +228,7 @@ public class ReportFromMarkdownTool implements Tool {
                 projectName,
                 fm.theme(),
                 fm.css(),
-                contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()));
+                contextFactory.forToolSubject(ctx));
 
         MarkdownReportService.RenderedReport rendered;
         long started = System.currentTimeMillis();
@@ -256,7 +256,7 @@ public class ReportFromMarkdownTool implements Tool {
                     rendered.mimeType(),
                     in,
                     ctx.userId(),
-                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), finalPath));
+                    contextFactory.writeActor(ctx, finalPath));
         } catch (IOException e) {
             throw new ToolException("Could not store rendered report: " + e.getMessage(), e);
         }

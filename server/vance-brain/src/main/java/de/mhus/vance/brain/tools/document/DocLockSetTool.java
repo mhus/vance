@@ -99,8 +99,8 @@ public class DocLockSetTool implements Tool {
                 support.loadDocument(de.mhus.vance.brain.tools.kinds.KindToolSupport.withIdAlias(params), ctx);
         String documentId = doc.getId();
 
-        DocumentDocument saved = documentService.setLockedFor(
-                documentId, requested, contextFactory.writeActor(ctx.tenantId(), ctx.userId(), doc.getPath()));
+        DocumentDocument saved =
+                documentService.setLockedFor(documentId, requested, contextFactory.writeActor(ctx, doc.getPath()));
         log.info("DocLockSetTool tenant='{}' id='{}' lockedFor={}", ctx.tenantId(), documentId, requested);
 
         Map<String, Object> out = new LinkedHashMap<>();

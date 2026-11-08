@@ -299,7 +299,7 @@ public class RScriptTool implements Tool {
                         mime,
                         in,
                         ctx.userId(),
-                        contextFactory.writeActor(ctx.tenantId(), ctx.userId(), docPath));
+                        contextFactory.writeActor(ctx, docPath));
                 String vanceUri = DocumentLinkBuilder.buildVanceUri(
                         null, created.getPath(), kind, DocumentLinkBuilder.defaultModeForKind(kind));
                 String markdownLink = linkBuilder.linkFor(created, null);

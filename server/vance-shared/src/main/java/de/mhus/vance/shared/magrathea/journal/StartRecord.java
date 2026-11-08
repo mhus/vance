@@ -128,4 +128,11 @@ public class StartRecord implements JournalRecord {
 
     /** The state a restart began in; absent for a rerun from the start state. */
     private @Nullable String restartFrom;
+
+    /**
+     * Project the credential that started the run was pinned to, or absent for an unconfined start. Frozen at
+     * start and inherited by sub-runs and restarts: it is folded into the permission subject of every tool the
+     * run calls, so the run never does more than the pinned credential could have done directly.
+     */
+    private @Nullable String confinedToProject;
 }

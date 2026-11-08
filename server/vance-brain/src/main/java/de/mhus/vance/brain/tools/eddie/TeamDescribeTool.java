@@ -79,7 +79,7 @@ public class TeamDescribeTool implements Tool {
         // tenant user could dump another team's usernames by guessing its name
         // (the leak team_list deliberately reduces to memberCount).
         boolean admin = permissionService.check(
-                contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()),
+                contextFactory.forToolSubject(ctx),
                 new de.mhus.vance.shared.permission.Resource.Tenant(ctx.tenantId()),
                 de.mhus.vance.shared.permission.Action.WRITE);
         boolean member = ctx.userId() != null

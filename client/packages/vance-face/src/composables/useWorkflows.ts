@@ -125,7 +125,7 @@ export function useWorkflows(): {
   ): Promise<WorkflowStartResult> {
     return post(
       `project/${encodeURIComponent(projectId)}/workflows/${encodeURIComponent(name)}/start`,
-      { params: params ?? {}, startedBy: null, ...debugFields(debug) },
+      { params: params ?? {}, ...debugFields(debug) },
     );
   }
 

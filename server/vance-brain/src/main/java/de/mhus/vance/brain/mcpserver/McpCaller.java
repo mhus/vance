@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.mcpserver;
 
+import de.mhus.vance.brain.permission.SecurityContextFactory;
 import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.jwt.TokenType;
 import de.mhus.vance.shared.jwt.VanceJwtClaims;
@@ -14,9 +15,18 @@ import org.jspecify.annotations.Nullable;
  * @param kind     credential kind
  * @param tokenId  {@code jti} of an integration token or the grant id of an OAuth token, else {@code null}
  * @param username the account behind the credential
+ * @param confinedToProject the project the credential is pinned to, or {@code null} — carried into every tool
+ *                 call on the door so a tool cannot reach further than the token itself
  */
 public record McpCaller(
-        Kind kind, @Nullable String tokenId, @Nullable String username) {
+        Kind kind,
+        @Nullable String tokenId,
+        @Nullable String username,
+        @Nullable String confinedToProject) {
+
+    public McpCaller(Kind kind, @Nullable String tokenId, @Nullable String username) {
+        this(kind, tokenId, username, null);
+    }
 
     public enum Kind {
         /** A full-account login token (ACCESS, or OAuth {@code account} scope). */
@@ -41,6 +51,15 @@ public record McpCaller(
 
     /** The caller of an authenticated request, read from the attributes the access filter set. */
     public static McpCaller from(HttpServletRequest request) {
+        McpCaller caller = unconfinedFrom(request);
+        return new McpCaller(
+                caller.kind(),
+                caller.tokenId(),
+                caller.username(),
+                SecurityContextFactory.credentialProjectConfinement(request));
+    }
+
+    private static McpCaller unconfinedFrom(HttpServletRequest request) {
         String username = AccessFilterBase.usernameOrNull(request);
         if (!(request.getAttribute(AccessFilterBase.ATTR_CLAIMS) instanceof VanceJwtClaims claims)) {
             return account(username);

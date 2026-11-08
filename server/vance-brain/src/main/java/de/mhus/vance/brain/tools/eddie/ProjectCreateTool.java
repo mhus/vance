@@ -156,9 +156,7 @@ public class ProjectCreateTool implements Tool {
         // Creating a project is the tenant role CREATOR — the same gate as the
         // project dialog's REST endpoint. The creator becomes its project ADMIN.
         permissionService.enforce(
-                contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()),
-                new Resource.Tenant(ctx.tenantId()),
-                Action.CREATE);
+                contextFactory.forToolSubject(ctx), new Resource.Tenant(ctx.tenantId()), Action.CREATE);
         String projectName = stringOrThrow(params, "name");
         String title = optString(params, "title");
         String projectGroupId = optString(params, "projectGroupId");

@@ -222,13 +222,20 @@ public class MagratheaRunSource implements RunSource {
             @Nullable String fromState,
             @Nullable String startedBy,
             boolean debug,
-            @Nullable Collection<String> breakpoints) {
+            @Nullable Collection<String> breakpoints,
+            @Nullable String confinedToProject) {
         projector
                 .project(tenantId, projectId, nativeId)
                 .filter(r -> tenantId.equals(r.getTenantId()) && projectId.equals(r.getProjectId()))
                 .orElseThrow(() -> new IllegalArgumentException("No such run: " + nativeId));
         return workflowService.restartRun(
-                tenantId, projectId, nativeId, fromState, startedBy, MagratheaDebugSetup.of(debug, breakpoints));
+                tenantId,
+                projectId,
+                nativeId,
+                fromState,
+                startedBy,
+                MagratheaDebugSetup.of(debug, breakpoints),
+                confinedToProject);
     }
 
     @Override

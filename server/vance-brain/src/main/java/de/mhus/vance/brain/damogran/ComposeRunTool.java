@@ -118,7 +118,7 @@ public class ComposeRunTool implements Tool {
                     yaml,
                     baseDir,
                     stateKey,
-                    contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()));
+                    contextFactory.forToolSubject(ctx));
         } catch (DamogranException e) {
             throw new ToolException(e.getMessage(), e);
         }

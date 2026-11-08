@@ -272,7 +272,7 @@ public class InboxPostTool implements Tool {
         // findById/findByPath above are raw reads, so without this a project-A
         // caller could leak project-B document metadata (title/path/mime).
         permissionService.enforce(
-                contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()),
+                contextFactory.forToolSubject(ctx),
                 new de.mhus.vance.shared.permission.Resource.Document(
                         ctx.tenantId(), doc.getProjectId(), doc.getPath()),
                 de.mhus.vance.shared.permission.Action.READ);

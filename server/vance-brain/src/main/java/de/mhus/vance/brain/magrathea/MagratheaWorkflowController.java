@@ -7,6 +7,7 @@ import de.mhus.vance.api.magrathea.MagratheaStartRequest;
 import de.mhus.vance.api.magrathea.MagratheaWorkflowDto;
 import de.mhus.vance.api.magrathea.MagratheaWorkflowSummary;
 import de.mhus.vance.brain.permission.RequestAuthority;
+import de.mhus.vance.brain.permission.SecurityContextFactory;
 import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.magrathea.MagratheaDebugSetup;
 import de.mhus.vance.shared.magrathea.MagratheaJournalService;
@@ -113,18 +114,8 @@ public class MagratheaWorkflowController {
             HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, project), Action.WRITE);
 
-        // startedBy is an audit hint that lands in StartRecord. UI
-        // clients (web-face, foot) rarely care about it — fall back to
-        // the JWT-authenticated username so callers don't have to thread
-        // it through every request, and the audit trail still names a
-        // real principal.
-        String startedBy = body == null ? null : body.getStartedBy();
-        if (startedBy == null || startedBy.isBlank()) {
-            Object u = request.getAttribute(AccessFilterBase.ATTR_USERNAME);
-            if (u instanceof String s && !s.isBlank()) {
-                startedBy = s;
-            }
-        }
+        String startedBy = authenticatedUser(request);
+        String confinement = SecurityContextFactory.credentialProjectConfinement(request);
 
         String runId;
         try {
@@ -136,7 +127,7 @@ public class MagratheaWorkflowController {
                     startedBy,
                     /* parent */ null, /* parentState */
                     null,
-                    MagratheaRunBinding.headless(),
+                    MagratheaRunBinding.headless().confinedTo(confinement),
                     body == null
                             ? MagratheaDebugSetup.OFF
                             : MagratheaDebugSetup.of(body.getDebug(), body.getBreakpoints()));
@@ -171,13 +162,8 @@ public class MagratheaWorkflowController {
             HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, project), Action.WRITE);
 
-        String startedBy = body.getStartedBy();
-        if (startedBy == null || startedBy.isBlank()) {
-            Object u = request.getAttribute(AccessFilterBase.ATTR_USERNAME);
-            if (u instanceof String s && !s.isBlank()) {
-                startedBy = s;
-            }
-        }
+        String startedBy = authenticatedUser(request);
+        String confinement = SecurityContextFactory.credentialProjectConfinement(request);
 
         String runId;
         try {
@@ -187,7 +173,7 @@ public class MagratheaWorkflowController {
                     body.getPath(),
                     body.getParams(),
                     startedBy,
-                    MagratheaRunBinding.headless(),
+                    MagratheaRunBinding.headless().confinedTo(confinement),
                     MagratheaDebugSetup.of(body.getDebug(), body.getBreakpoints()));
         } catch (MagratheaWorkflowService.MagratheaWorkflowException ex) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, ex.getMessage(), ex);
@@ -248,6 +234,21 @@ public class MagratheaWorkflowController {
             if (out.size() >= LIST_LIMIT) break;
         }
         return out;
+    }
+
+    /**
+     * The run's execution identity. It is always the authenticated caller and
+     * never taken from the request body: {@code startedBy} decides which
+     * {@code SecurityContext} the run's tools, scripts and commands act under,
+     * so a client-supplied value would be impersonation (cf. permission-system
+     * §5.2).
+     */
+    private static String authenticatedUser(HttpServletRequest request) {
+        Object u = request.getAttribute(AccessFilterBase.ATTR_USERNAME);
+        if (u instanceof String s && !s.isBlank()) {
+            return s;
+        }
+        throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "No authenticated user");
     }
 
     // ─── Mappers ──────────────────────────────────────────────────────────

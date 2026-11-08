@@ -234,7 +234,7 @@ public class EddieContext {
         // SYSTEM (headless/internal passes); the resolver decides (R3/R7).
         // (permission-system finding #9/#11 — read path)
         permissionService.enforce(
-                contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()),
+                contextFactory.forToolSubject(ctx),
                 new de.mhus.vance.shared.permission.Resource.Project(ctx.tenantId(), project.getName()),
                 requiredAction);
         return project;
@@ -301,7 +301,7 @@ public class EddieContext {
             throw new ToolException("Document with id '" + id + "' is outside this process's project");
         }
         permissionService.enforce(
-                contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()),
+                contextFactory.forToolSubject(ctx),
                 new de.mhus.vance.shared.permission.Resource.Document(
                         ctx.tenantId(), doc.getProjectId(), doc.getPath()),
                 de.mhus.vance.shared.permission.Action.READ);

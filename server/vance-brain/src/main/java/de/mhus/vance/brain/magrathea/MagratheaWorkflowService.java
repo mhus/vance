@@ -440,9 +440,19 @@ public class MagratheaWorkflowService {
             @Nullable String startedBy,
             @Nullable String parentMagratheaProcessId,
             @Nullable String parentState,
-            MagratheaRunBinding binding,
+            MagratheaRunBinding requested,
             MagratheaDebugSetup debug,
             @Nullable Restart restart) {
+        MagratheaRunBinding binding =
+                bindingWithInheritedConfinement(tenantId, projectId, parentMagratheaProcessId, requested);
+        requireConfinable(workflow, binding);
+        // A run always has an identity. startedBy decides which SecurityContext its tools, scripts and
+        // commands act under, and the dispatcher maps a missing user to SecurityContext.SYSTEM — a run
+        // without one would silently execute with system trust. Fail closed instead.
+        if (startedBy == null || startedBy.isBlank()) {
+            throw new MagratheaWorkflowException(
+                    "Refusing to start workflow '" + workflow.name() + "': the run has no identity (startedBy)");
+        }
         Map<String, Object> resolvedParams = applyDefaultsAndValidate(workflow, callerParams);
         requireCapabilities(workflow, binding);
         requireLogins(tenantId, projectId, workflow, startedBy);
@@ -484,6 +494,44 @@ public class MagratheaWorkflowService {
 
         metricService.counter(METRIC_STARTS, "workflow", workflow.name()).increment();
         return runId;
+    }
+
+    /**
+     * A sub-run is confined like the run that starts it, whatever its own binding says: the pin lives on the
+     * parent's {@code StartRecord}, so a caller cannot drop it by starting the child some other way.
+     */
+    private MagratheaRunBinding bindingWithInheritedConfinement(
+            String tenantId, String projectId, @Nullable String parentRunId, MagratheaRunBinding binding) {
+        if (parentRunId == null) return binding;
+        return journalService
+                .readLast(tenantId, projectId, parentRunId, StartRecord.class)
+                .map(parent -> binding.confinedTo(parent.getConfinedToProject()))
+                .orElse(binding);
+    }
+
+    /**
+     * Task types a confined run cannot contain: the confinement is folded into the permission subject of the
+     * tools a {@code tool_task} calls, but an agent, a script or a shell command acts through a session, a
+     * script token or the runner, where it does not arrive. Refused at start, over all states, rather than
+     * run with the pin silently gone.
+     */
+    private void requireConfinable(ResolvedMagratheaWorkflow workflow, MagratheaRunBinding binding) {
+        if (binding.confinedToProject() == null) return;
+        List<String> problems = new ArrayList<>();
+        for (Map.Entry<String, MagratheaStateSpec> entry : workflow.states().entrySet()) {
+            MagratheaTaskType type = entry.getValue().type();
+            if (type == MagratheaTaskType.AGENT_TASK
+                    || type == MagratheaTaskType.SCRIPT_TASK
+                    || type == MagratheaTaskType.SHELL_TASK) {
+                problems.add(
+                        "state '" + entry.getKey() + "' is a " + type.name().toLowerCase(Locale.ROOT));
+            }
+        }
+        if (!problems.isEmpty()) {
+            throw new MagratheaWorkflowException("Workflow '" + workflow.name()
+                    + "' cannot run under a project-pinned credential: " + String.join("; ", problems)
+                    + ". Only tool, condition, gate, timer, workflow and for-each states carry the pin.");
+        }
     }
 
     /**
@@ -823,7 +871,8 @@ public class MagratheaWorkflowService {
             String workflowRunId,
             @Nullable String fromState,
             @Nullable String startedBy,
-            MagratheaDebugSetup debug) {
+            MagratheaDebugSetup debug,
+            @Nullable String callerConfinedToProject) {
         StartRecord old = journalService
                 .readLast(tenantId, projectId, workflowRunId, StartRecord.class)
                 .orElseThrow(() -> new IllegalArgumentException("No such run: " + workflowRunId));
@@ -846,7 +895,10 @@ public class MagratheaWorkflowService {
                 startedBy,
                 null,
                 null,
-                MagratheaRunBinding.headless(),
+                // Never less confined than the run it repeats, nor than whoever repeats it.
+                MagratheaRunBinding.headless()
+                        .confinedTo(old.getConfinedToProject())
+                        .confinedTo(callerConfinedToProject),
                 debug,
                 new Restart(workflowRunId, from, vars));
         log.info(
@@ -1477,6 +1529,7 @@ public class MagratheaWorkflowService {
                         .subBreakpoints(debug.workflowBreakpoints().isEmpty() ? null : debug.workflowBreakpoints())
                         .restartOf(restart == null ? null : restart.of())
                         .restartFrom(restart == null ? null : restart.from())
+                        .confinedToProject(binding.confinedToProject())
                         .build());
 
         // A restart begins with the variables the old run had on entering its state.

@@ -28,7 +28,4 @@ public class MagratheaWorkflowStartRequest {
     private String name;
 
     private @Nullable Map<String, Object> params;
-
-    /** Audit hint; defaults to the WS session's bound user. */
-    private @Nullable String startedBy;
 }

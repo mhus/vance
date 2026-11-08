@@ -104,8 +104,7 @@ public class ProjectListTool implements Tool {
         String spot = ctx.workingProjectId();
         // Authorized list from the source — ProjectService owns the READ
         // check; the tool only supplies the caller identity.
-        List<ProjectDocument> all = projectService.listReadableBy(
-                ctx.tenantId(), contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()));
+        List<ProjectDocument> all = projectService.listReadableBy(ctx.tenantId(), contextFactory.forToolSubject(ctx));
         List<Map<String, Object>> rows = new ArrayList<>(all.size());
         for (ProjectDocument p : all) {
             if (!includeSystem && p.getKind() == ProjectKind.SYSTEM) {

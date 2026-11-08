@@ -116,11 +116,12 @@ public class ToolTaskExecutor implements MagratheaTypeExecutor {
         Map<String, Object> toolParams = readParamsMap(state);
 
         ToolInvocationContext invocationCtx = new ToolInvocationContext(
-                context.tenantId(),
-                context.projectId(),
-                /* sessionId */ null,
-                /* processId */ null,
-                context.startedBy());
+                        context.tenantId(),
+                        context.projectId(),
+                        /* sessionId */ null,
+                        /* processId */ null,
+                        context.startedBy())
+                .confinedTo(context.confinedToProject());
 
         // A workflow tool_task runs the raw dispatcher without an engine
         // identity (no processId → no ContextToolsApi gate). Engine-role-

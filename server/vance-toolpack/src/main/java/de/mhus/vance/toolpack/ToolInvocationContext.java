@@ -20,6 +20,15 @@ import org.jspecify.annotations.Nullable;
  * {@code project_chat_send}) read this; home-bound tools
  * ({@code doc_*}, {@code scratch_*}) keep using {@link #projectId}.
  *
+ * <p>{@code confinedToProject} is the project an attenuated credential (a
+ * project-pinned integration or OAuth token) confines the caller to, or
+ * {@code null} for the normal, unconfined caller. It is an attenuation, never a
+ * grant: whatever builds a permission subject from this context must fold it
+ * in, so a confined call can only ever be allowed <em>less</em> than the
+ * account behind it. It travels with the call because the credential is gone
+ * by the time a tool — or a workflow run started under it — decides what the
+ * caller may touch.
+ *
  * <p>On the foot client side, where there is one user and one session
  * per process, the foot adapter passes a context whose
  * {@code tenantId} reflects the bound tenant and the rest can be
@@ -32,7 +41,22 @@ public record ToolInvocationContext(
         @Nullable String sessionId,
         @Nullable String processId,
         @Nullable String userId,
-        @Nullable String workingProjectId) {
+        @Nullable String workingProjectId,
+        @Nullable String confinedToProject) {
+
+    /**
+     * Constructor for call-sites that carry an Eddie spot pointer but no
+     * credential confinement — the confinement defaults to {@code null}.
+     */
+    public ToolInvocationContext(
+            String tenantId,
+            @Nullable String projectId,
+            @Nullable String sessionId,
+            @Nullable String processId,
+            @Nullable String userId,
+            @Nullable String workingProjectId) {
+        this(tenantId, projectId, sessionId, processId, userId, workingProjectId, null);
+    }
 
     /**
      * Backwards-compatible 5-arg constructor — workingProjectId
@@ -49,6 +73,11 @@ public record ToolInvocationContext(
         this(tenantId, projectId, sessionId, processId, userId, null);
     }
 
+    /** The same call, confined to {@code project} — {@code null} lifts nothing, it just records no confinement. */
+    public ToolInvocationContext confinedTo(@Nullable String project) {
+        return new ToolInvocationContext(tenantId, projectId, sessionId, processId, userId, workingProjectId, project);
+    }
+
     /**
      * Tool's authoritative project for home-bound operations
      * ({@code doc_*}, {@code scratch_*}, {@code rag_*}, …). Returns the
@@ -63,8 +92,7 @@ public record ToolInvocationContext(
      */
     public String resolveLocalProjectId() {
         if (projectId == null || projectId.isBlank()) {
-            throw new IllegalStateException(
-                    "Tool requires a projectId-bound context but none was provided");
+            throw new IllegalStateException("Tool requires a projectId-bound context but none was provided");
         }
         return projectId;
     }
@@ -81,8 +109,7 @@ public record ToolInvocationContext(
      */
     public String requireWorkingProjectId() {
         if (workingProjectId == null || workingProjectId.isBlank()) {
-            throw new IllegalStateException(
-                    "No working project selected — emit SWITCH_PROJECT before using this tool");
+            throw new IllegalStateException("No working project selected — emit SWITCH_PROJECT before using this tool");
         }
         return workingProjectId;
     }

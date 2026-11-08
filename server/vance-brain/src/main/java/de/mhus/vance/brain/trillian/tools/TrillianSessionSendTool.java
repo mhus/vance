@@ -111,7 +111,7 @@ public class TrillianSessionSendTool implements Tool {
         // authorized: EXECUTE on the target session (inherits from its
         // project). ToolDispatcher only checked the calling scope.
         permissionService.enforce(
-                contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()),
+                contextFactory.forToolSubject(ctx),
                 new de.mhus.vance.shared.permission.Resource.Session(ctx.tenantId(), session.getProjectId(), sessionId),
                 de.mhus.vance.shared.permission.Action.EXECUTE);
         if (session.getChatProcessId() == null) {

@@ -241,10 +241,19 @@ public class ToolDispatcher {
      * effective role.
      */
     private SecurityContext securityContextOf(ToolInvocationContext ctx) {
+        String confinedTo = ctx.confinedToProject();
         if (ctx.userId() == null || ctx.userId().isBlank()) {
+            if (confinedTo != null) {
+                // A confinement is an attenuation of a user's rights; without a user there is nothing to
+                // attenuate, and SYSTEM must never come out of a confined call.
+                throw new IllegalStateException("A credential-confined tool call needs a user");
+            }
             return SecurityContext.SYSTEM;
         }
-        return SecurityContext.user(ctx.userId(), ctx.tenantId(), teamsOf(ctx.tenantId(), ctx.userId()));
+        List<String> teams = teamsOf(ctx.tenantId(), ctx.userId());
+        return confinedTo == null
+                ? SecurityContext.user(ctx.userId(), ctx.tenantId(), teams)
+                : SecurityContext.restrictedUser(ctx.userId(), ctx.tenantId(), teams, confinedTo);
     }
 
     private List<String> teamsOf(String tenantId, String userId) {

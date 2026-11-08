@@ -310,8 +310,7 @@ public class DocImportUrlTool implements Tool {
                     new ByteArrayInputStream(body),
                     contentType,
                     DocumentService.TOOL_IDENTITY,
-                    contextFactory.writeActor(
-                            ctx.tenantId(), ctx.userId(), existing.get().getPath()));
+                    contextFactory.writeActor(ctx, existing.get().getPath()));
             updated = true;
         } else {
             try {
@@ -324,7 +323,7 @@ public class DocImportUrlTool implements Tool {
                         contentType,
                         new ByteArrayInputStream(body),
                         ctx.userId(),
-                        contextFactory.writeActor(ctx.tenantId(), ctx.userId(), path));
+                        contextFactory.writeActor(ctx, path));
             } catch (DocumentService.DocumentAlreadyExistsException e) {
                 // Race with a concurrent import on the same path. The
                 // fetched body is discarded — falling back to reuse is
@@ -347,8 +346,7 @@ public class DocImportUrlTool implements Tool {
         // (images, PDFs) where the auto-summary scheduler doesn't run.
         String summary = paramString(params, "summary");
         if (summary != null) {
-            documentService.setSummary(
-                    result.getId(), summary, contextFactory.writeActor(ctx.tenantId(), ctx.userId(), result.getPath()));
+            documentService.setSummary(result.getId(), summary, contextFactory.writeActor(ctx, result.getPath()));
         }
 
         log.info(

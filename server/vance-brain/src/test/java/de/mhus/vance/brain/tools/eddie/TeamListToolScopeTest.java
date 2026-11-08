@@ -33,7 +33,11 @@ class TeamListToolScopeTest {
     @Test
     void tenantWide_nonAdmin_sees_only_own_teams() {
         SecurityContext bob = SecurityContext.user("bob", "acme", List.of());
-        when(contextFactory.forToolSubject("acme", "bob")).thenReturn(bob);
+        when(contextFactory.forToolSubject(
+                        org.mockito.ArgumentMatchers.argThat((de.mhus.vance.toolpack.ToolInvocationContext c) ->
+                                java.util.Objects.equals("acme", c.tenantId())
+                                        && java.util.Objects.equals("bob", c.userId()))))
+                .thenReturn(bob);
         when(teamService.all("acme")).thenReturn(List.of(team("rd"), team("qa"), team("ops")));
         when(permissionService.check(eq(bob), eq(new Resource.Tenant("acme")), eq(Action.WRITE)))
                 .thenReturn(false);
@@ -50,7 +54,11 @@ class TeamListToolScopeTest {
     @Test
     void tenantWide_admin_sees_all_teams() {
         SecurityContext admin = SecurityContext.user("root", "acme", List.of());
-        when(contextFactory.forToolSubject("acme", "root")).thenReturn(admin);
+        when(contextFactory.forToolSubject(
+                        org.mockito.ArgumentMatchers.argThat((de.mhus.vance.toolpack.ToolInvocationContext c) ->
+                                java.util.Objects.equals("acme", c.tenantId())
+                                        && java.util.Objects.equals("root", c.userId()))))
+                .thenReturn(admin);
         when(teamService.all("acme")).thenReturn(List.of(team("rd"), team("qa")));
         when(permissionService.check(eq(admin), eq(new Resource.Tenant("acme")), eq(Action.WRITE)))
                 .thenReturn(true);

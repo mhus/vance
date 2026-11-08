@@ -134,7 +134,7 @@ class MagratheaRestartTest {
     void aRerunBeginsAtTheStartWithTheSameParametersAndPointsBack() {
         endedRun("old", Map.of("p", "1"), MagratheaRunStatus.FAILED, List.of("a", "b"), List.of());
 
-        String fresh = service.restartRun("acme", "proj", "old", null, "bob", MagratheaDebugSetup.OFF);
+        String fresh = service.restartRun("acme", "proj", "old", null, "bob", MagratheaDebugSetup.OFF, null);
 
         StartRecord start = start(fresh);
         assertThat(start.getRestartOf()).isEqualTo("old");
@@ -158,7 +158,7 @@ class MagratheaRestartTest {
                 List.of("a", "b"),
                 List.of(new Var(1, "x", 1), new Var(2, "y", 2)));
 
-        String fresh = service.restartRun("acme", "proj", "old", "b", "bob", MagratheaDebugSetup.OFF);
+        String fresh = service.restartRun("acme", "proj", "old", "b", "bob", MagratheaDebugSetup.OFF, null);
 
         assertThat(start(fresh).getRestartFrom()).isEqualTo("b");
         assertThat(inserted)
@@ -176,7 +176,7 @@ class MagratheaRestartTest {
                 List.of("a", "b", "b"),
                 List.of(new Var(1, "x", 1), new Var(2, "round", 1), new Var(3, "round", 2)));
 
-        String fresh = service.restartRun("acme", "proj", "old", "b", "bob", MagratheaDebugSetup.OFF);
+        String fresh = service.restartRun("acme", "proj", "old", "b", "bob", MagratheaDebugSetup.OFF, null);
 
         // Entries: a(0) b(1) b(2); vars land before the entry with their index.
         assertThat(varKeys(fresh)).containsExactly("x", "round");
@@ -186,7 +186,7 @@ class MagratheaRestartTest {
     void aRunThatStillGoesIsNotRestarted() {
         endedRun("old", Map.of(), MagratheaRunStatus.RUNNING, List.of("a"), List.of());
 
-        assertThatThrownBy(() -> service.restartRun("acme", "proj", "old", null, "bob", MagratheaDebugSetup.OFF))
+        assertThatThrownBy(() -> service.restartRun("acme", "proj", "old", null, "bob", MagratheaDebugSetup.OFF, null))
                 .isInstanceOf(IllegalStateException.class);
         assertThat(service.restartableStates("acme", "proj", "old")).isEmpty();
     }
@@ -196,9 +196,10 @@ class MagratheaRestartTest {
         endedRun("old", Map.of(), MagratheaRunStatus.DONE, List.of("a", "b", "c"), List.of());
 
         assertThat(service.restartableStates("acme", "proj", "old")).hasValue(List.of("a", "b"));
-        assertThatThrownBy(() -> service.restartRun("acme", "proj", "old", "c", "bob", MagratheaDebugSetup.OFF))
+        assertThatThrownBy(() -> service.restartRun("acme", "proj", "old", "c", "bob", MagratheaDebugSetup.OFF, null))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> service.restartRun("acme", "proj", "old", "nope", "bob", MagratheaDebugSetup.OFF))
+        assertThatThrownBy(
+                        () -> service.restartRun("acme", "proj", "old", "nope", "bob", MagratheaDebugSetup.OFF, null))
                 .isInstanceOf(IllegalArgumentException.class);
         assertThat(inserted).isEmpty();
     }
@@ -208,7 +209,7 @@ class MagratheaRestartTest {
         endedRun("old", Map.of(), MagratheaRunStatus.DONE, List.of("a", "b"), List.of());
 
         String fresh = service.restartRun(
-                "acme", "proj", "old", "b", "bob", new MagratheaDebugSetup(true, java.util.Set.of()));
+                "acme", "proj", "old", "b", "bob", new MagratheaDebugSetup(true, java.util.Set.of()), null);
 
         assertThat(start(fresh).isDebug()).isTrue();
         assertThat(service.currentStatus("acme", "proj", fresh)).isEqualTo(MagratheaRunStatus.PAUSED);
@@ -216,7 +217,8 @@ class MagratheaRestartTest {
 
     @Test
     void anUnknownRunIsRefused() {
-        assertThatThrownBy(() -> service.restartRun("acme", "proj", "ghost", null, "bob", MagratheaDebugSetup.OFF))
+        assertThatThrownBy(
+                        () -> service.restartRun("acme", "proj", "ghost", null, "bob", MagratheaDebugSetup.OFF, null))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 

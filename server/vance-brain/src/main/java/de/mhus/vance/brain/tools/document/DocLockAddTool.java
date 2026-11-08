@@ -97,8 +97,8 @@ public class DocLockAddTool implements Tool {
                 doc.getLockedFor() == null ? EnumSet.noneOf(WriterRole.class) : EnumSet.copyOf(doc.getLockedFor());
         next.add(role);
 
-        DocumentDocument saved = documentService.setLockedFor(
-                documentId, next, contextFactory.writeActor(ctx.tenantId(), ctx.userId(), doc.getPath()));
+        DocumentDocument saved =
+                documentService.setLockedFor(documentId, next, contextFactory.writeActor(ctx, doc.getPath()));
         log.info("DocLockAddTool tenant='{}' id='{}' added={} now={}", ctx.tenantId(), documentId, role, next);
 
         Map<String, Object> out = new LinkedHashMap<>();

@@ -211,7 +211,7 @@ public class TransformDocumentTool implements Tool {
                     transformer.targetMimeType(),
                     in,
                     ctx.userId(),
-                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), finalPath));
+                    contextFactory.writeActor(ctx, finalPath));
         } catch (IOException e) {
             throw new ToolException("Could not store transformed document: " + e.getMessage(), e);
         }

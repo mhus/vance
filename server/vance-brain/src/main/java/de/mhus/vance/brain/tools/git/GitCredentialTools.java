@@ -45,9 +45,7 @@ class GitCredentialTools {
             throw new ToolException("git credentials need a project scope");
         }
         permissionService.enforce(
-                contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()),
-                new Resource.Project(ctx.tenantId(), project),
-                action);
+                contextFactory.forToolSubject(ctx), new Resource.Project(ctx.tenantId(), project), action);
         return project;
     }
 

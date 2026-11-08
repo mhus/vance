@@ -34,9 +34,7 @@ class VaultToolSupport {
     VaultScope enforceAndScope(ToolInvocationContext ctx) {
         String project = requireProject(ctx);
         permissionService.enforce(
-                contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()),
-                new Resource.Project(ctx.tenantId(), project),
-                Action.WRITE);
+                contextFactory.forToolSubject(ctx), new Resource.Project(ctx.tenantId(), project), Action.WRITE);
         return new VaultScope(ctx.tenantId(), ctx.userId(), project);
     }
 

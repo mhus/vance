@@ -61,9 +61,7 @@ public class ForeignAccessSupport {
                     + "foreign_* tools operate on regular projects only");
         }
         permissionService.enforce(
-                contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()),
-                new Resource.Project(ctx.tenantId(), project.getName()),
-                action);
+                contextFactory.forToolSubject(ctx), new Resource.Project(ctx.tenantId(), project.getName()), action);
         return project;
     }
 
@@ -96,20 +94,17 @@ public class ForeignAccessSupport {
     /** Document-level authorization for a mutation target (copy/move destination). */
     public void enforceDoc(ToolInvocationContext ctx, String projectName, String path, Action action) {
         permissionService.enforce(
-                contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()),
-                new Resource.Document(ctx.tenantId(), projectName, path),
-                action);
+                contextFactory.forToolSubject(ctx), new Resource.Document(ctx.tenantId(), projectName, path), action);
     }
 
     /** The write actor for a tool-driven DocumentService write (audit-carrying, reason by path). */
     public WriteActor writeActor(ToolInvocationContext ctx, String path) {
-        return contextFactory.writeActor(ctx.tenantId(), ctx.userId(), path);
+        return contextFactory.writeActor(ctx, path);
     }
 
     /** All projects the caller may READ — the authoritative visibility gate ({@code listReadableBy}). */
     public List<ProjectDocument> listReadable(ToolInvocationContext ctx) {
-        return projectService.listReadableBy(
-                ctx.tenantId(), contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()));
+        return projectService.listReadableBy(ctx.tenantId(), contextFactory.forToolSubject(ctx));
     }
 
     public DocumentService documents() {

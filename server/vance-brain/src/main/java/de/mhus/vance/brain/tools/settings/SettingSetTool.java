@@ -166,7 +166,7 @@ public class SettingSetTool implements Tool {
         Resource resource = HomeBootstrapService.TENANT_PROJECT_NAME.equals(projectId)
                 ? new Resource.Setting(ctx.tenantId(), SettingService.SCOPE_TENANT, ctx.tenantId(), key)
                 : new Resource.Setting(ctx.tenantId(), SettingService.SCOPE_PROJECT, projectId, key);
-        permissionService.enforce(contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()), resource, Action.ADMIN);
+        permissionService.enforce(contextFactory.forToolSubject(ctx), resource, Action.ADMIN);
 
         // W1 — what an agent may not read back it may not overwrite.
         Optional<SettingDocument> existing =

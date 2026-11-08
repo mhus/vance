@@ -58,7 +58,11 @@ class SettingSetToolTest {
         settingService = mock(SettingService.class);
         permissionService = mock(PermissionService.class);
         SecurityContextFactory contextFactory = mock(SecurityContextFactory.class);
-        when(contextFactory.forToolSubject(TENANT, USER)).thenReturn(SecurityContext.user(USER, TENANT, List.of()));
+        when(contextFactory.forToolSubject(
+                        org.mockito.ArgumentMatchers.argThat((de.mhus.vance.toolpack.ToolInvocationContext c) ->
+                                java.util.Objects.equals(TENANT, c.tenantId())
+                                        && java.util.Objects.equals(USER, c.userId()))))
+                .thenReturn(SecurityContext.user(USER, TENANT, List.of()));
         thinkProcessService = mock(ThinkProcessService.class);
         // The real policy with its shipped default patterns — the tool must
         // refuse what the operator denies, not what a test substitutes in.

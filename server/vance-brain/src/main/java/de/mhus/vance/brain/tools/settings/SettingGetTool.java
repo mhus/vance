@@ -142,7 +142,7 @@ public class SettingGetTool implements Tool {
                 ? new Resource.Setting(ctx.tenantId(), SettingService.SCOPE_TENANT, ctx.tenantId(), key)
                 : new Resource.Setting(ctx.tenantId(), SettingService.SCOPE_PROJECT, projectId, key);
         permissionService.enforce(
-                contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()),
+                contextFactory.forToolSubject(ctx),
                 resource,
                 HomeBootstrapService.TENANT_PROJECT_NAME.equals(projectId) ? Action.ADMIN : Action.READ);
 

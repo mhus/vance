@@ -429,8 +429,7 @@ public class TimelineCreateTool implements Tool {
                     null,
                     YAML_MIME,
                     DocumentService.TOOL_IDENTITY,
-                    contextFactory.writeActor(
-                            ctx.tenantId(), ctx.userId(), existing.get().getPath()));
+                    contextFactory.writeActor(ctx, existing.get().getPath()));
         } else {
             try (InputStream in = new ByteArrayInputStream(bytes)) {
                 stored = documentService.create(
@@ -442,7 +441,7 @@ public class TimelineCreateTool implements Tool {
                         YAML_MIME,
                         in,
                         ctx.userId(),
-                        contextFactory.writeActor(ctx.tenantId(), ctx.userId(), finalPath));
+                        contextFactory.writeActor(ctx, finalPath));
             } catch (IOException e) {
                 throw new ToolException("Could not store timeline: " + e.getMessage(), e);
             }

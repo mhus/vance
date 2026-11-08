@@ -237,7 +237,7 @@ public class IcsToCalendarTool implements Tool {
                     YAML_MIME,
                     in,
                     ctx.userId(),
-                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), finalPath));
+                    contextFactory.writeActor(ctx, finalPath));
         } catch (IOException e) {
             throw new ToolException("Could not store imported calendar: " + e.getMessage(), e);
         }

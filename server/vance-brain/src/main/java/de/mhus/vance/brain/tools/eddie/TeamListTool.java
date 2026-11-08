@@ -55,7 +55,7 @@ public class TeamListTool implements Tool {
      */
     private List<TeamDocument> tenantWideVisibleTo(ToolInvocationContext ctx, List<TeamDocument> all) {
         if (permissionService.check(
-                contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()),
+                contextFactory.forToolSubject(ctx),
                 new de.mhus.vance.shared.permission.Resource.Tenant(ctx.tenantId()),
                 de.mhus.vance.shared.permission.Action.WRITE)) {
             return all;

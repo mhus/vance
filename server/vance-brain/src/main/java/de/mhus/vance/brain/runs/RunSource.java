@@ -112,6 +112,8 @@ public interface RunSource {
      *
      * @param fromState the state to begin in; {@code null} for a rerun from the start
      * @param startedBy who restarts; the new run belongs to them, not to the old owner
+     * @param confinedToProject project the restarting caller's credential is pinned to, or null; the new run is
+     *                          never less confined than this
      * @return the native id of the new run
      * @throws IllegalArgumentException when the run is unknown or {@code fromState} is not one it entered
      * @throws IllegalStateException when the run still goes
@@ -123,7 +125,8 @@ public interface RunSource {
             @org.jspecify.annotations.Nullable String fromState,
             @org.jspecify.annotations.Nullable String startedBy,
             boolean debug,
-            @org.jspecify.annotations.Nullable Collection<String> breakpoints) {
+            @org.jspecify.annotations.Nullable Collection<String> breakpoints,
+            @org.jspecify.annotations.Nullable String confinedToProject) {
         throw new UnsupportedOperationException(sourceId() + " runs cannot be restarted");
     }
 

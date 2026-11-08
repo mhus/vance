@@ -121,7 +121,7 @@ public class AppRebuildTool implements Tool {
         // (projectId override), which ToolDispatcher's scope EXECUTE check
         // does not cover — enforce WRITE on the resolved target project.
         permissionService.enforce(
-                contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()),
+                contextFactory.forToolSubject(ctx),
                 new de.mhus.vance.shared.permission.Resource.Project(ctx.tenantId(), projectName),
                 de.mhus.vance.shared.permission.Action.WRITE);
 

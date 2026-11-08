@@ -27,26 +27,40 @@ import org.jspecify.annotations.Nullable;
  *                       did something surprising cannot be explained: the
  *                       parameters are on record, but not that one of them was
  *                       an interpretation.
+ * @param confinedToProject project the credential that started the run is
+ *                       pinned to, or null for an unconfined start. An
+ *                       attenuation that travels with the run: it is frozen
+ *                       into the {@code StartRecord}, handed to every sub-run
+ *                       and restart, and folded into the permission subject of
+ *                       every tool the run calls, so the run can never do more
+ *                       than the pinned credential that started it.
  */
 public record MagratheaRunBinding(
         @Nullable String sessionId,
         @Nullable String ownerProcessId,
         Set<RunCapability> capabilities,
-        Set<String> derivedParamKeys) {
+        Set<String> derivedParamKeys,
+        @Nullable String confinedToProject) {
 
-    private static final MagratheaRunBinding HEADLESS =
-            new MagratheaRunBinding(null, null, Set.of(), Set.of());
+    private static final MagratheaRunBinding HEADLESS = new MagratheaRunBinding(null, null, Set.of(), Set.of(), null);
 
     public MagratheaRunBinding {
         capabilities = capabilities == null ? Set.of() : Set.copyOf(capabilities);
         derivedParamKeys = derivedParamKeys == null ? Set.of() : Set.copyOf(derivedParamKeys);
     }
 
-    /** Bound run, nothing interpreted — the common case. */
+    /** A binding without credential confinement. */
     public MagratheaRunBinding(
             @Nullable String sessionId,
             @Nullable String ownerProcessId,
-            Set<RunCapability> capabilities) {
+            Set<RunCapability> capabilities,
+            Set<String> derivedParamKeys) {
+        this(sessionId, ownerProcessId, capabilities, derivedParamKeys, null);
+    }
+
+    /** Bound run, nothing interpreted — the common case. */
+    public MagratheaRunBinding(
+            @Nullable String sessionId, @Nullable String ownerProcessId, Set<RunCapability> capabilities) {
         this(sessionId, ownerProcessId, capabilities, Set.of());
     }
 
@@ -57,7 +71,16 @@ public record MagratheaRunBinding(
 
     /** Same binding, recording which parameters were interpreted rather than given. */
     public MagratheaRunBinding withDerivedParams(Set<String> keys) {
-        return new MagratheaRunBinding(sessionId, ownerProcessId, capabilities, keys);
+        return new MagratheaRunBinding(sessionId, ownerProcessId, capabilities, keys, confinedToProject);
+    }
+
+    /**
+     * Same binding, confined to {@code project}. A {@code null} project leaves the binding as it is — a
+     * confinement can be added, never lifted.
+     */
+    public MagratheaRunBinding confinedTo(@Nullable String project) {
+        if (project == null || project.isBlank()) return this;
+        return new MagratheaRunBinding(sessionId, ownerProcessId, capabilities, derivedParamKeys, project);
     }
 
     public boolean has(RunCapability capability) {

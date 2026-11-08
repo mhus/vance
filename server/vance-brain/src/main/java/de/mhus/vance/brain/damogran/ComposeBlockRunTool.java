@@ -142,7 +142,7 @@ public class ComposeBlockRunTool implements Tool {
                     target.manifest(),
                     baseDir,
                     stateKey,
-                    contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()));
+                    contextFactory.forToolSubject(ctx));
         } catch (DamogranException e) {
             throw new ToolException(e.getMessage(), e);
         }

@@ -103,8 +103,7 @@ public class DocSetSummaryTool implements Tool {
                 support.loadDocument(de.mhus.vance.brain.tools.kinds.KindToolSupport.withIdAlias(params), ctx);
         String documentId = doc.getId();
 
-        documentService.setSummary(
-                documentId, summary, contextFactory.writeActor(ctx.tenantId(), ctx.userId(), doc.getPath()));
+        documentService.setSummary(documentId, summary, contextFactory.writeActor(ctx, doc.getPath()));
         log.info("DocSetSummaryTool tenant='{}' id='{}' cleared={}", ctx.tenantId(), documentId, summary.isBlank());
 
         Map<String, Object> out = new LinkedHashMap<>();

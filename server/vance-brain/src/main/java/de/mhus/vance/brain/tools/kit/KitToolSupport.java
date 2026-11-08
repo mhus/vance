@@ -39,10 +39,7 @@ final class KitToolSupport {
             throw new ToolException(
                     "kit tools require a project — pass `project` or " + "invoke from within a project scope");
         }
-        permissionService.enforce(
-                contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()),
-                new Resource.Project(ctx.tenantId(), p),
-                action);
+        permissionService.enforce(contextFactory.forToolSubject(ctx), new Resource.Project(ctx.tenantId(), p), action);
         return p;
     }
 

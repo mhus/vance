@@ -309,7 +309,11 @@ class EddieContextTest {
         void resolveProject_enforces_project_read_on_the_target() {
             arrangeProject("proj-x", ProjectKind.NORMAL);
             var subject = de.mhus.vance.shared.permission.SecurityContext.user("alice", TENANT, java.util.List.of());
-            when(contextFactory.forToolSubject(TENANT, "alice")).thenReturn(subject);
+            when(contextFactory.forToolSubject(
+                            org.mockito.ArgumentMatchers.argThat((de.mhus.vance.toolpack.ToolInvocationContext c) ->
+                                    java.util.Objects.equals(TENANT, c.tenantId())
+                                            && java.util.Objects.equals("alice", c.userId()))))
+                    .thenReturn(subject);
             ToolInvocationContext c = new ToolInvocationContext(TENANT, "proj-x", SESSION, "p2", "alice");
 
             eddieContext.resolveProject(Map.of("projectId", "proj-x"), c, false);

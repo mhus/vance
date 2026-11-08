@@ -97,9 +97,7 @@ public class AiModelsDiscoverTool implements Tool {
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         permissionService.enforce(
-                contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()),
-                new Resource.Tenant(ctx.tenantId()),
-                Action.ADMIN);
+                contextFactory.forToolSubject(ctx), new Resource.Tenant(ctx.tenantId()), Action.ADMIN);
         log.info("AI-model discovery requested via tool by tenant='{}' user='{}'", ctx.tenantId(), ctx.userId());
         try {
             ModelDiscoveryService.DiscoveryResult result = discoveryService.discoverForTenant(ctx.tenantId());

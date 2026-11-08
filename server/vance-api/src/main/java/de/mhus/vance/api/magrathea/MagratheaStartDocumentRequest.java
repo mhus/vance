@@ -42,9 +42,6 @@ public class MagratheaStartDocumentRequest {
     /** Caller-supplied parameters, validated against the workflow's {@code parameters:} block. */
     private @Nullable Map<String, Object> params;
 
-    /** Audit hint; the controller defaults it to the authenticated user when blank. */
-    private @Nullable String startedBy;
-
     /** Start in debug mode — see {@link MagratheaStartRequest#getDebug()}. */
     private @Nullable Boolean debug;
 

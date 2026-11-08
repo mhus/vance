@@ -177,7 +177,7 @@ public class KanbanCardCreateTool implements Tool {
                     null,
                     MD_MIME,
                     DocumentService.TOOL_IDENTITY,
-                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), path));
+                    contextFactory.writeActor(ctx, path));
         } else {
             try (ByteArrayInputStream in = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))) {
                 stored = documentService.create(
@@ -189,7 +189,7 @@ public class KanbanCardCreateTool implements Tool {
                         MD_MIME,
                         in,
                         ctx.userId(),
-                        contextFactory.writeActor(ctx.tenantId(), ctx.userId(), path));
+                        contextFactory.writeActor(ctx, path));
             } catch (IOException e) {
                 throw new ToolException("Could not write card '" + path + "': " + e.getMessage(), e);
             }

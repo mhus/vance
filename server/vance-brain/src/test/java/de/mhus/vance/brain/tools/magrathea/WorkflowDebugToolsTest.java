@@ -47,7 +47,8 @@ class WorkflowDebugToolsTest {
 
     @BeforeEach
     void subject() {
-        when(contexts.forToolSubject("acme", "alice")).thenReturn(subject);
+        when(contexts.forToolSubject(any(de.mhus.vance.toolpack.ToolInvocationContext.class)))
+                .thenReturn(subject);
     }
 
     private static RunDetailDto run(

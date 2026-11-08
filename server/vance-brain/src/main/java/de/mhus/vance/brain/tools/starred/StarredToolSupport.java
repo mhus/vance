@@ -48,7 +48,7 @@ public class StarredToolSupport {
     }
 
     public SecurityContext subject(ToolInvocationContext ctx) {
-        return contextFactory.forToolSubject(ctx.tenantId(), ctx.userId());
+        return contextFactory.forToolSubject(ctx);
     }
 
     /**

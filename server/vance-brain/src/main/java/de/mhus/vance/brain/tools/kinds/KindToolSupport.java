@@ -70,7 +70,7 @@ public class KindToolSupport {
     public void enforceDocWrite(
             ToolInvocationContext ctx, String projectName, String path, de.mhus.vance.shared.permission.Action action) {
         permissionService.enforce(
-                contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()),
+                contextFactory.forToolSubject(ctx),
                 new de.mhus.vance.shared.permission.Resource.Document(ctx.tenantId(), projectName, path),
                 action);
     }
@@ -93,7 +93,7 @@ public class KindToolSupport {
      * transitional default. (F1)
      */
     public de.mhus.vance.shared.permission.WriteActor writeActor(ToolInvocationContext ctx, String path) {
-        return contextFactory.writeActor(ctx.tenantId(), ctx.userId(), path);
+        return contextFactory.writeActor(ctx, path);
     }
 
     /** Overload for an already-loaded document. */
@@ -116,8 +116,7 @@ public class KindToolSupport {
      * {@code _vance/} (where the trash path itself is reserved).
      */
     public boolean canPurgeTrash(ToolInvocationContext ctx, DocumentDocument doc) {
-        de.mhus.vance.shared.permission.SecurityContext subject =
-                contextFactory.forToolSubject(ctx.tenantId(), ctx.userId());
+        de.mhus.vance.shared.permission.SecurityContext subject = contextFactory.forToolSubject(ctx);
         boolean admin = permissionService.check(
                 subject,
                 new de.mhus.vance.shared.permission.Resource.Project(ctx.tenantId(), doc.getProjectId()),
@@ -133,8 +132,7 @@ public class KindToolSupport {
      * to a write path that has not run its own authorization first.
      */
     public de.mhus.vance.shared.permission.WriteActor systemWriteActor(ToolInvocationContext ctx) {
-        return de.mhus.vance.shared.permission.WriteActor.system(
-                contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()));
+        return de.mhus.vance.shared.permission.WriteActor.system(contextFactory.forToolSubject(ctx));
     }
 
     /**

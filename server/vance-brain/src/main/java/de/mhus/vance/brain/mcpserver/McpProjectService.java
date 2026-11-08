@@ -144,7 +144,7 @@ public class McpProjectService {
                             + "')",
                     true);
         }
-        String forbidden = executeGateDenial(catalogEntry, tenant, project, username);
+        String forbidden = executeGateDenial(catalogEntry, tenant, project, username, caller.confinedToProject());
         if (forbidden != null) {
             log.debug("MCP project tools/call '{}' denied: {}", call.name(), forbidden);
             return McpProtocol.callContent(forbidden, true);
@@ -154,7 +154,7 @@ public class McpProjectService {
             log.debug("MCP project tools/call '{}' denied by surface: {}", call.name(), violation);
             return McpProtocol.callContent(violation, true);
         }
-        return invoke(catalogEntry, call, tenant, project, username);
+        return invoke(catalogEntry, call, tenant, project, username, caller.confinedToProject());
     }
 
     // ──────────────────── invocation ────────────────────
@@ -164,8 +164,10 @@ public class McpProjectService {
             McpProtocol.ToolCall call,
             String tenant,
             String project,
-            @Nullable String username) {
-        ToolInvocationContext ctx = new ToolInvocationContext(tenant, project, null, null, username);
+            @Nullable String username,
+            @Nullable String confinedToProject) {
+        ToolInvocationContext ctx =
+                new ToolInvocationContext(tenant, project, null, null, username).confinedTo(confinedToProject);
         try {
             Map<String, Object> result = catalogEntry.tool().invoke(call.arguments(), ctx);
             return McpProtocol.callContent(json(result), false);
@@ -269,10 +271,17 @@ public class McpProjectService {
      * recipe, and this door has no process (see the class comment).
      */
     private @Nullable String executeGateDenial(
-            McpProjectToolCatalog.CatalogEntry catalogEntry, String tenant, String project, @Nullable String username) {
+            McpProjectToolCatalog.CatalogEntry catalogEntry,
+            String tenant,
+            String project,
+            @Nullable String username,
+            @Nullable String confinedToProject) {
         if (!catalogEntry.capability().requiresExecute()) return null;
         boolean allowed = permissionService.check(
-                contextFactory.forToolSubject(tenant, username), new Resource.Project(tenant, project), Action.EXECUTE);
+                contextFactory.forToolSubject(
+                        new ToolInvocationContext(tenant, project, null, null, username).confinedTo(confinedToProject)),
+                new Resource.Project(tenant, project),
+                Action.EXECUTE);
         return allowed
                 ? null
                 : "this account may not use workspace files or commands in project '" + project

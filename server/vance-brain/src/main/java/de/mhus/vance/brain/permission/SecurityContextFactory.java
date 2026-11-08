@@ -7,6 +7,7 @@ import de.mhus.vance.shared.jwt.VanceJwtClaims;
 import de.mhus.vance.shared.permission.SecurityContext;
 import de.mhus.vance.shared.team.TeamDocument;
 import de.mhus.vance.shared.team.TeamService;
+import de.mhus.vance.toolpack.ToolInvocationContext;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -73,7 +74,7 @@ public class SecurityContextFactory {
      * account scope) come out unconfined, like their integration-token
      * counterparts.
      */
-    private static @org.jspecify.annotations.Nullable String credentialProjectConfinement(HttpServletRequest request) {
+    public static @org.jspecify.annotations.Nullable String credentialProjectConfinement(HttpServletRequest request) {
         if (!(request.getAttribute(AccessFilterBase.ATTR_CLAIMS) instanceof VanceJwtClaims claims)) {
             return null;
         }
@@ -114,6 +115,37 @@ public class SecurityContextFactory {
             return SecurityContext.SYSTEM;
         }
         return SecurityContext.user(userId, tenantId, resolveTeams(tenantId, userId));
+    }
+
+    /**
+     * The {@link SecurityContext} a tool invocation acts under: the calling
+     * user, and — when the call carries a credential confinement
+     * ({@link ToolInvocationContext#confinedToProject()}) — confined to that
+     * project, so a project-pinned token cannot reach further through a tool
+     * than it could directly. Use this, not {@link #forToolSubject(String,
+     * String)}, wherever a tool decides what its <em>caller</em> may do; the
+     * two-argument form is for acting on behalf of someone else (an inbox
+     * owner, a decider), where the caller's credential is not the subject.
+     *
+     * <p>A confinement without a user is refused: nothing to attenuate, and
+     * SYSTEM must not come out of a confined call.
+     */
+    public SecurityContext forToolSubject(ToolInvocationContext ctx) {
+        String confinedTo = ctx.confinedToProject();
+        String userId = ctx.userId();
+        if (confinedTo == null) {
+            return forToolSubject(ctx.tenantId(), userId);
+        }
+        if (userId == null || userId.isBlank()) {
+            throw new IllegalStateException("A credential-confined tool call needs a user");
+        }
+        return SecurityContext.restrictedUser(userId, ctx.tenantId(), resolveTeams(ctx.tenantId(), userId), confinedTo);
+    }
+
+    /** {@link #writeActor(String, String, String)} for a tool call — honours the call's credential confinement. */
+    public de.mhus.vance.shared.permission.WriteActor writeActor(
+            ToolInvocationContext ctx, @org.jspecify.annotations.Nullable String path) {
+        return de.mhus.vance.shared.permission.WriteActor.user(forToolSubject(ctx));
     }
 
     /**

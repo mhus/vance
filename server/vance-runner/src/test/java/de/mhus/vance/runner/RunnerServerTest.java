@@ -22,6 +22,7 @@ import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.spec.ECGenParameterSpec;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Date;
 import java.util.List;
@@ -103,9 +104,20 @@ class RunnerServerTest {
         return token(jti, TENANT, RUNNER_ID, 60);
     }
 
+    /**
+     * A call that gets no answer fails the test after this long. {@code HttpClient.send} waits forever
+     * without a request timeout, and one hung call used to hold the whole build for nearly an hour.
+     */
+    private static final Duration CALL_TIMEOUT = Duration.ofSeconds(30);
+
+    /** A request to the runner under test, bounded by {@link #CALL_TIMEOUT}. */
+    private HttpRequest.Builder request(String path) {
+        return HttpRequest.newBuilder(uri(path)).timeout(CALL_TIMEOUT);
+    }
+
     private HttpResponse<byte[]> post(byte[] body) throws Exception {
         return http.send(
-                HttpRequest.newBuilder(uri("/v1/call"))
+                request("/v1/call")
                         .POST(HttpRequest.BodyPublishers.ofByteArray(body))
                         .build(),
                 HttpResponse.BodyHandlers.ofByteArray());
@@ -145,12 +157,9 @@ class RunnerServerTest {
 
     @Test
     void health_isABareOk_andOnlyForGet() throws Exception {
-        HttpResponse<String> ok =
-                http.send(HttpRequest.newBuilder(uri("/v1/health")).build(), HttpResponse.BodyHandlers.ofString());
+        HttpResponse<String> ok = http.send(request("/v1/health").build(), HttpResponse.BodyHandlers.ofString());
         HttpResponse<String> post = http.send(
-                HttpRequest.newBuilder(uri("/v1/health"))
-                        .POST(HttpRequest.BodyPublishers.noBody())
-                        .build(),
+                request("/v1/health").POST(HttpRequest.BodyPublishers.noBody()).build(),
                 HttpResponse.BodyHandlers.ofString());
 
         assertThat(ok.statusCode()).isEqualTo(200);
@@ -262,8 +271,7 @@ class RunnerServerTest {
 
     @Test
     void getOnTheCallRoute_isNotAllowed() throws Exception {
-        HttpResponse<String> response =
-                http.send(HttpRequest.newBuilder(uri("/v1/call")).build(), HttpResponse.BodyHandlers.ofString());
+        HttpResponse<String> response = http.send(request("/v1/call").build(), HttpResponse.BodyHandlers.ofString());
 
         assertThat(response.statusCode()).isEqualTo(405);
     }

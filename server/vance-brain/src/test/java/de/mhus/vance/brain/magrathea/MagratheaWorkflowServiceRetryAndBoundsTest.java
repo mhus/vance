@@ -182,7 +182,7 @@ class MagratheaWorkflowServiceRetryAndBoundsTest {
                 .build();
         when(journalService.readLast(any(), any(), any(), eq(StartRecord.class)))
                 .thenReturn(Optional.of(start));
-        String runId = workflowService.start("acme", "proj", "flaky-wf", Map.of(), null);
+        String runId = workflowService.start("acme", "proj", "flaky-wf", Map.of(), "alice");
         MagratheaTaskDocument firstTask = insertedTasks.get(0);
         appendedRecords.clear();
 
@@ -216,7 +216,7 @@ class MagratheaWorkflowServiceRetryAndBoundsTest {
                 .build();
         when(journalService.readLast(any(), any(), any(), eq(StartRecord.class)))
                 .thenReturn(Optional.of(start));
-        String runId = workflowService.start("acme", "proj", "flaky-wf", Map.of(), null);
+        String runId = workflowService.start("acme", "proj", "flaky-wf", Map.of(), "alice");
         MagratheaTaskDocument firstTask = insertedTasks.get(0);
         firstTask.setRetryNotBefore(java.time.Instant.now().plusSeconds(600));
 
@@ -265,7 +265,7 @@ class MagratheaWorkflowServiceRetryAndBoundsTest {
                 .build();
         when(journalService.readLast(any(), any(), any(), eq(StartRecord.class)))
                 .thenReturn(Optional.of(start));
-        String runId = workflowService.start("acme", "proj", "flaky-wf", Map.of(), null);
+        String runId = workflowService.start("acme", "proj", "flaky-wf", Map.of(), "alice");
         MagratheaTaskDocument firstTask = insertedTasks.get(0);
         // Force the task to look like it's already at the retry limit.
         firstTask.setRetryCount(2); // next retry would be 3 == maxAttempts → fall through
@@ -301,7 +301,7 @@ class MagratheaWorkflowServiceRetryAndBoundsTest {
                 .build();
         when(journalService.readLast(any(), any(), any(), eq(StartRecord.class)))
                 .thenReturn(Optional.of(start));
-        String runId = workflowService.start("acme", "proj", "flaky-wf", Map.of(), null);
+        String runId = workflowService.start("acme", "proj", "flaky-wf", Map.of(), "alice");
         MagratheaTaskDocument firstTask = insertedTasks.get(0);
         appendedRecords.clear();
 
@@ -336,7 +336,7 @@ class MagratheaWorkflowServiceRetryAndBoundsTest {
                 .build();
         when(journalService.readLast(any(), any(), any(), eq(StartRecord.class)))
                 .thenReturn(Optional.of(start));
-        String runId = workflowService.start("acme", "proj", "flaky-wf", Map.of(), null);
+        String runId = workflowService.start("acme", "proj", "flaky-wf", Map.of(), "alice");
         MagratheaTaskDocument firstTask = insertedTasks.get(0);
         appendedRecords.clear();
 
@@ -372,7 +372,7 @@ class MagratheaWorkflowServiceRetryAndBoundsTest {
         when(journalService.count(any(), any(), any(), eq(TaskStartedRecord.class)))
                 .thenReturn(3L);
 
-        String runId = workflowService.start("acme", "proj", "bounded-wf", Map.of(), null);
+        String runId = workflowService.start("acme", "proj", "bounded-wf", Map.of(), "alice");
         MagratheaTaskDocument firstTask = insertedTasks.get(0);
         appendedRecords.clear();
 
@@ -429,7 +429,7 @@ class MagratheaWorkflowServiceRetryAndBoundsTest {
         when(journalService.readLast(any(), any(), any(), eq(StartRecord.class)))
                 .thenReturn(Optional.of(start));
         when(runCost.of(any(), any(), any())).thenReturn(usd(1.6));
-        String runId = workflowService.start("acme", "proj", "costly-wf", Map.of(), null);
+        String runId = workflowService.start("acme", "proj", "costly-wf", Map.of(), "alice");
         MagratheaTaskDocument firstTask = insertedTasks.get(0);
         appendedRecords.clear();
 
@@ -452,7 +452,7 @@ class MagratheaWorkflowServiceRetryAndBoundsTest {
         when(journalService.readLast(any(), any(), any(), eq(StartRecord.class)))
                 .thenReturn(Optional.of(start));
         when(runCost.of(any(), any(), any())).thenReturn(usd(0.4));
-        String runId = workflowService.start("acme", "proj", "costly-wf", Map.of(), null);
+        String runId = workflowService.start("acme", "proj", "costly-wf", Map.of(), "alice");
         MagratheaTaskDocument firstTask = insertedTasks.get(0);
 
         workflowService.handleCompletion(loopDone(runId, firstTask.getId()));
@@ -475,7 +475,7 @@ class MagratheaWorkflowServiceRetryAndBoundsTest {
         when(journalService.count(any(), any(), any(), eq(TaskStartedRecord.class)))
                 .thenReturn(3L);
 
-        String runId = workflowService.start("acme", "proj", "bounded-wf", Map.of(), null);
+        String runId = workflowService.start("acme", "proj", "bounded-wf", Map.of(), "alice");
         MagratheaTaskDocument firstTask = insertedTasks.get(0);
 
         workflowService.handleCompletion(new TaskCompletedEvent(
@@ -526,7 +526,7 @@ class MagratheaWorkflowServiceRetryAndBoundsTest {
                 .thenAnswer(
                         inv -> new MagratheaWorkflowLoader(null).validateYaml(inv.getArgument(0), inv.getArgument(1)));
 
-        String runId = workflowService.start("acme", "proj", "bounded-wf", Map.of(), null);
+        String runId = workflowService.start("acme", "proj", "bounded-wf", Map.of(), "alice");
         MagratheaTaskDocument firstTask = insertedTasks.get(0);
         appendedRecords.clear();
 
@@ -570,7 +570,7 @@ class MagratheaWorkflowServiceRetryAndBoundsTest {
         when(journalService.count(any(), any(), any(), eq(TaskStartedRecord.class)))
                 .thenReturn(3L);
 
-        String runId = workflowService.start("acme", "proj", "bounded-wf", Map.of(), null);
+        String runId = workflowService.start("acme", "proj", "bounded-wf", Map.of(), "alice");
         MagratheaTaskDocument firstTask = insertedTasks.get(0);
         appendedRecords.clear();
 
@@ -610,7 +610,7 @@ class MagratheaWorkflowServiceRetryAndBoundsTest {
         when(journalService.count(any(), any(), any(), eq(TaskStartedRecord.class)))
                 .thenReturn(1L);
 
-        String runId = workflowService.start("acme", "proj", "bounded-wf", Map.of(), null);
+        String runId = workflowService.start("acme", "proj", "bounded-wf", Map.of(), "alice");
         MagratheaTaskDocument firstTask = insertedTasks.get(0);
         appendedRecords.clear();
 

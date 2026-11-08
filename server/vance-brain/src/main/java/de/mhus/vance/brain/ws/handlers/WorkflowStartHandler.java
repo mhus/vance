@@ -26,10 +26,7 @@ import tools.jackson.databind.ObjectMapper;
  * as the REST and the {@code workflow_start} agent tool.
  */
 @Component
-@ConditionalOnProperty(
-        value = "vance.services.magrathea",
-        havingValue = "true",
-        matchIfMissing = false)
+@ConditionalOnProperty(value = "vance.services.magrathea", havingValue = "true", matchIfMissing = false)
 @RequiredArgsConstructor
 @Slf4j
 public class WorkflowStartHandler implements WsHandler {
@@ -51,8 +48,7 @@ public class WorkflowStartHandler implements WsHandler {
         try {
             request = objectMapper.convertValue(envelope.getData(), MagratheaWorkflowStartRequest.class);
         } catch (IllegalArgumentException e) {
-            sender.sendError(wsSession, envelope, 400,
-                    "Invalid workflow-start payload: " + e.getMessage());
+            sender.sendError(wsSession, envelope, 400, "Invalid workflow-start payload: " + e.getMessage());
             return;
         }
         if (request == null || request.getName() == null || request.getName().isBlank()) {
@@ -61,36 +57,27 @@ public class WorkflowStartHandler implements WsHandler {
         }
         String projectId = ctx.getProjectId();
         if (projectId == null) {
-            sender.sendError(wsSession, envelope, 400,
-                    "workflow-start requires a session bound to a project");
+            sender.sendError(wsSession, envelope, 400, "workflow-start requires a session bound to a project");
             return;
         }
-        authority.enforce(ctx,
-                new Resource.Project(ctx.getTenantId(), projectId), Action.WRITE);
+        authority.enforce(ctx, new Resource.Project(ctx.getTenantId(), projectId), Action.WRITE);
 
-        String startedBy = request.getStartedBy() != null && !request.getStartedBy().isBlank()
-                ? request.getStartedBy()
-                : ctx.getUserId();
+        // Identity is the session's user, never client-supplied (impersonation).
+        String startedBy = ctx.getUserId();
 
         String runId;
         try {
             runId = workflowService.start(
-                    ctx.getTenantId(),
-                    projectId,
-                    request.getName(),
-                    request.getParams(),
-                    startedBy);
+                    ctx.getTenantId(), projectId, request.getName(), request.getParams(), startedBy);
         } catch (MagratheaWorkflowService.MagratheaWorkflowException e) {
             sender.sendError(wsSession, envelope, 404, e.getMessage());
             return;
         } catch (MagratheaWorkflowParseException e) {
-            sender.sendError(wsSession, envelope, 400,
-                    "Workflow YAML invalid: " + e.getMessage());
+            sender.sendError(wsSession, envelope, 400, "Workflow YAML invalid: " + e.getMessage());
             return;
         } catch (RuntimeException e) {
             log.warn("workflow-start failed name='{}': {}", request.getName(), e.toString());
-            sender.sendError(wsSession, envelope, 500,
-                    "Workflow start failed: " + e.getMessage());
+            sender.sendError(wsSession, envelope, 500, "Workflow start failed: " + e.getMessage());
             return;
         }
 

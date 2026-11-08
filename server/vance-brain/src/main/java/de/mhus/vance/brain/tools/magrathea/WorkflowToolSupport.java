@@ -76,7 +76,7 @@ class WorkflowToolSupport {
         if (tenantId == null || tenantId.isBlank() || projectId == null || projectId.isBlank()) {
             throw new ToolException(toolName + " requires a project context");
         }
-        SecurityContext subject = contextFactory.forToolSubject(tenantId, ctx.userId());
+        SecurityContext subject = contextFactory.forToolSubject(ctx);
         permissionService.enforce(subject, new Resource.Project(tenantId, projectId), action);
         return new Scope(tenantId, projectId, subject);
     }

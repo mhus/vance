@@ -80,7 +80,7 @@ public class RoleListTool implements Tool {
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         RoleScopeType scopeType = RoleToolSupport.scopeType(params);
         String scopeId = RoleToolSupport.scopeId(scopeType, ctx, params);
-        SecurityContext actor = contextFactory.forToolSubject(ctx.tenantId(), ctx.userId());
+        SecurityContext actor = contextFactory.forToolSubject(ctx);
         List<RoleAssignmentDocument> rows = scopeType == RoleScopeType.TENANT
                 ? administration.listTenantRoles(actor, ctx.tenantId())
                 : administration.listProjectMembers(actor, ctx.tenantId(), scopeId);

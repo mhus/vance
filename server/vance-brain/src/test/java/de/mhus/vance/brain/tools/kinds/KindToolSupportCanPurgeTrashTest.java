@@ -33,15 +33,17 @@ class KindToolSupportCanPurgeTrashTest {
     private static final String PROJECT = "research";
     private static final String OWNER = "alice";
 
-    @Mock PermissionService permissionService;
-    @Mock SecurityContextFactory contextFactory;
+    @Mock
+    PermissionService permissionService;
+
+    @Mock
+    SecurityContextFactory contextFactory;
 
     private KindToolSupport support;
 
     @BeforeEach
     void setUp() {
-        support = new KindToolSupport(null, null, null, null,
-                permissionService, contextFactory, null);
+        support = new KindToolSupport(null, null, null, null, permissionService, contextFactory, null);
     }
 
     private ToolInvocationContext ctx(String userId) {
@@ -58,15 +60,19 @@ class KindToolSupportCanPurgeTrashTest {
 
     private void stubSubject(String userId, GrantAdmin admin) {
         SecurityContext subject = SecurityContext.user(userId, TENANT, List.of());
-        when(contextFactory.forToolSubject(TENANT, userId)).thenReturn(subject);
-        when(permissionService.check(
-                eq(subject),
-                any(Resource.Project.class),
-                eq(Action.ADMIN)))
+        when(contextFactory.forToolSubject(
+                        org.mockito.ArgumentMatchers.argThat((de.mhus.vance.toolpack.ToolInvocationContext c) ->
+                                java.util.Objects.equals(TENANT, c.tenantId())
+                                        && java.util.Objects.equals(userId, c.userId()))))
+                .thenReturn(subject);
+        when(permissionService.check(eq(subject), any(Resource.Project.class), eq(Action.ADMIN)))
                 .thenReturn(admin == GrantAdmin.YES);
     }
 
-    private enum GrantAdmin { YES, NO }
+    private enum GrantAdmin {
+        YES,
+        NO
+    }
 
     @Test
     void canPurgeTrash_projectAdmin_purgesAnyEntry() {

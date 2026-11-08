@@ -64,7 +64,11 @@ class ContactToolsTest {
         eddieContext = mock(EddieContext.class);
         SecurityContextFactory contextFactory = mock(SecurityContextFactory.class);
         contactService = mock(ContactService.class);
-        when(contextFactory.forToolSubject(TENANT, USER)).thenReturn(subject);
+        when(contextFactory.forToolSubject(
+                        org.mockito.ArgumentMatchers.argThat((de.mhus.vance.toolpack.ToolInvocationContext c) ->
+                                java.util.Objects.equals(TENANT, c.tenantId())
+                                        && java.util.Objects.equals(USER, c.userId()))))
+                .thenReturn(subject);
         when(eddieContext.resolveProject(any(), eq(ctx), eq(false))).thenReturn(project(PROJECT));
         when(contactService.resolveMembers(any(), any())).thenReturn(Map.of());
         when(contactService.groupsContaining(any(), any())).thenReturn(List.of());

@@ -16,6 +16,7 @@ import de.mhus.vance.api.magrathea.MagratheaTaskType;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.magrathea.MagratheaJournalEntry;
 import de.mhus.vance.shared.magrathea.MagratheaJournalService;
+import de.mhus.vance.shared.magrathea.MagratheaRunBinding;
 import de.mhus.vance.shared.magrathea.MagratheaTaskDocument;
 import de.mhus.vance.shared.magrathea.MagratheaTaskService;
 import de.mhus.vance.shared.magrathea.MagratheaWorkflowLoader;
@@ -239,7 +240,7 @@ class MagratheaWorkflowServiceTest {
     void start_throws_when_workflow_not_found() {
         when(workflowLoader.load(any(), any(), eq("missing"))).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> workflowService.start("acme", "proj", "missing", Map.of(), null))
+        assertThatThrownBy(() -> workflowService.start("acme", "proj", "missing", Map.of(), "alice"))
                 .isInstanceOf(MagratheaWorkflowService.MagratheaWorkflowException.class)
                 .hasMessageContaining("not found");
     }
@@ -252,7 +253,7 @@ class MagratheaWorkflowServiceTest {
         when(journalService.append(any(), any(), any(), any(StartRecord.class)))
                 .thenThrow(new RuntimeException("mongo down"));
 
-        assertThatThrownBy(() -> workflowService.start("acme", "proj", "demo", Map.of(), null))
+        assertThatThrownBy(() -> workflowService.start("acme", "proj", "demo", Map.of(), "alice"))
                 .isInstanceOf(MagratheaWorkflowService.MagratheaWorkflowException.class)
                 .hasMessageContaining("Failed to start");
     }
@@ -265,7 +266,7 @@ class MagratheaWorkflowServiceTest {
         when(journalService.readLast(any(), any(), any(), eq(StartRecord.class)))
                 .thenReturn(Optional.of(start));
 
-        String runId = workflowService.start("acme", "proj", "demo", Map.of(), null);
+        String runId = workflowService.start("acme", "proj", "demo", Map.of(), "alice");
         MagratheaTaskDocument firstTask = insertedTasks.get(0);
         appendedRecords.clear();
 
@@ -299,7 +300,7 @@ class MagratheaWorkflowServiceTest {
         when(journalService.readLast(any(), any(), any(), eq(StartRecord.class)))
                 .thenReturn(Optional.of(start));
 
-        String runId = workflowService.start("acme", "proj", "demo", Map.of(), null);
+        String runId = workflowService.start("acme", "proj", "demo", Map.of(), "alice");
         MagratheaTaskDocument okTask = MagratheaTaskDocument.builder()
                 .id("t-ok")
                 .workflowRunId(runId)
@@ -343,7 +344,7 @@ class MagratheaWorkflowServiceTest {
         when(journalService.readLast(any(), any(), any(), eq(StartRecord.class)))
                 .thenReturn(Optional.of(start));
 
-        String runId = workflowService.start("acme", "proj", "demo", Map.of(), null);
+        String runId = workflowService.start("acme", "proj", "demo", Map.of(), "alice");
         MagratheaTaskDocument badTask = MagratheaTaskDocument.builder()
                 .id("t-bad")
                 .workflowRunId(runId)
@@ -384,7 +385,7 @@ class MagratheaWorkflowServiceTest {
         when(journalService.readLast(any(), any(), any(), eq(StartRecord.class)))
                 .thenReturn(Optional.of(start));
 
-        String runId = workflowService.start("acme", "proj", "demo", Map.of(), null);
+        String runId = workflowService.start("acme", "proj", "demo", Map.of(), "alice");
         MagratheaTaskDocument firstTask = insertedTasks.get(0);
 
         // First completion advances normally.
@@ -438,7 +439,7 @@ class MagratheaWorkflowServiceTest {
         when(journalService.readLast(any(), any(), any(), eq(StartRecord.class)))
                 .thenReturn(Optional.of(start));
 
-        String runId = workflowService.start("acme", "proj", "withstore", Map.of(), null);
+        String runId = workflowService.start("acme", "proj", "withstore", Map.of(), "alice");
         MagratheaTaskDocument firstTask = insertedTasks.get(0);
         appendedRecords.clear();
 
@@ -481,9 +482,116 @@ class MagratheaWorkflowServiceTest {
         when(workflowLoader.load(any(), any(), eq("req")))
                 .thenReturn(Optional.of(realLoader.validateYaml("req", yamlWithReq)));
 
-        assertThatThrownBy(() -> workflowService.start("acme", "proj", "req", Map.of(), null))
+        assertThatThrownBy(() -> workflowService.start("acme", "proj", "req", Map.of(), "alice"))
                 .isInstanceOf(MagratheaWorkflowService.MagratheaWorkflowException.class)
                 .hasMessageContaining("Required parameter");
         verify(taskService, never()).insert(any());
+    }
+
+    @Test
+    void a_run_without_identity_is_refused_instead_of_running_as_system() {
+        assertThatThrownBy(() -> workflowService.start("acme", "proj", "demo", Map.of(), null))
+                .isInstanceOf(MagratheaWorkflowService.MagratheaWorkflowException.class)
+                .hasMessageContaining("no identity");
+        assertThatThrownBy(() -> workflowService.start("acme", "proj", "demo", Map.of(), "  "))
+                .isInstanceOf(MagratheaWorkflowService.MagratheaWorkflowException.class)
+                .hasMessageContaining("no identity");
+        verify(taskService, never()).insert(any());
+    }
+
+    private static final String SHELL_YAML = """
+            description: runs a command
+            start: run
+            states:
+              run:
+                type: shell_task
+                command: echo hi
+                on: { success: ok }
+              ok:
+                type: terminal
+                outcome: success
+            """;
+
+    @Test
+    void a_confined_run_records_its_confinement_in_the_StartRecord() {
+        workflowService.start(
+                "acme",
+                "proj",
+                "demo",
+                Map.of(),
+                "alice",
+                null,
+                null,
+                MagratheaRunBinding.headless().confinedTo("proj"));
+
+        StartRecord start = appendedRecords.stream()
+                .filter(StartRecord.class::isInstance)
+                .map(StartRecord.class::cast)
+                .findFirst()
+                .orElseThrow();
+        assertThat(start.getConfinedToProject()).isEqualTo("proj");
+    }
+
+    @Test
+    void an_unconfined_run_records_no_confinement() {
+        workflowService.start("acme", "proj", "demo", Map.of(), "alice");
+
+        StartRecord start = appendedRecords.stream()
+                .filter(StartRecord.class::isInstance)
+                .map(StartRecord.class::cast)
+                .findFirst()
+                .orElseThrow();
+        assertThat(start.getConfinedToProject()).isNull();
+    }
+
+    @Test
+    void a_confined_run_refuses_states_that_cannot_carry_the_confinement() {
+        MagratheaWorkflowLoader realLoader = new MagratheaWorkflowLoader(null);
+        when(workflowLoader.load(any(), any(), eq("shelly")))
+                .thenAnswer(inv -> Optional.of(realLoader.validateYaml("shelly", SHELL_YAML)));
+
+        assertThatThrownBy(() -> workflowService.start(
+                        "acme",
+                        "proj",
+                        "shelly",
+                        Map.of(),
+                        "alice",
+                        null,
+                        null,
+                        MagratheaRunBinding.headless().confinedTo("proj")))
+                .isInstanceOf(MagratheaWorkflowService.MagratheaWorkflowException.class)
+                .hasMessageContaining("project-pinned")
+                .hasMessageContaining("shell_task");
+        verify(taskService, never()).insert(any());
+    }
+
+    @Test
+    void the_same_plan_runs_for_an_unconfined_caller() {
+        MagratheaWorkflowLoader realLoader = new MagratheaWorkflowLoader(null);
+        when(workflowLoader.load(any(), any(), eq("shelly")))
+                .thenAnswer(inv -> Optional.of(realLoader.validateYaml("shelly", SHELL_YAML)));
+
+        String runId = workflowService.start("acme", "proj", "shelly", Map.of(), "alice");
+
+        assertThat(runId).isNotBlank();
+    }
+
+    @Test
+    void a_sub_run_inherits_the_confinement_of_its_parent_whatever_its_own_binding_says() {
+        when(journalService.readLast(eq("acme"), eq("proj"), eq("parent"), eq(StartRecord.class)))
+                .thenReturn(Optional.of(StartRecord.builder()
+                        .workflowName("p")
+                        .confinedToProject("proj")
+                        .build()));
+
+        workflowService.start(
+                "acme", "proj", "demo", Map.of(), "alice", "parent", "state", MagratheaRunBinding.headless());
+
+        StartRecord child = appendedRecords.stream()
+                .filter(StartRecord.class::isInstance)
+                .map(StartRecord.class::cast)
+                .findFirst()
+                .orElseThrow();
+        assertThat(child.getConfinedToProject()).isEqualTo("proj");
     }
 }

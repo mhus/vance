@@ -34,51 +34,55 @@ import org.junit.jupiter.api.Test;
  */
 class ToolTemplateApplyToolAuthzTest {
 
-    private static final ToolInvocationContext CTX =
-            new ToolInvocationContext("acme", "home", "sess", "proc", "alice");
-    private static final SecurityContext SUBJECT =
-            SecurityContext.user("alice", "acme", List.of());
+    private static final ToolInvocationContext CTX = new ToolInvocationContext("acme", "home", "sess", "proc", "alice");
+    private static final SecurityContext SUBJECT = SecurityContext.user("alice", "acme", List.of());
 
     private final ToolTemplateCatalogService catalogService = mock(ToolTemplateCatalogService.class);
     private final KitService kitService = mock(KitService.class);
     private final PermissionService permissionService = mock(PermissionService.class);
     private final SecurityContextFactory contextFactory = mock(SecurityContextFactory.class);
 
-    private final ToolTemplateApplyTool tool = new ToolTemplateApplyTool(
-            catalogService, kitService, permissionService, contextFactory);
+    private final ToolTemplateApplyTool tool =
+            new ToolTemplateApplyTool(catalogService, kitService, permissionService, contextFactory);
 
     /** Target project deliberately differs from the caller's scope ("home"). */
     private static Map<String, Object> params() {
-        return Map.of("name", "jira", "projectId", "other-project",
-                "inputs", Map.of("url", "https://example.tld"));
+        return Map.of("name", "jira", "projectId", "other-project", "inputs", Map.of("url", "https://example.tld"));
     }
 
     @Test
     void apply_enforces_admin_on_the_target_project_not_on_the_caller_scope() {
-        when(contextFactory.forToolSubject("acme", "alice")).thenReturn(SUBJECT);
-        when(catalogService.findByName("acme", "jira"))
-                .thenReturn(mock(ToolTemplateCatalogEntry.class));
+        when(contextFactory.forToolSubject(
+                        org.mockito.ArgumentMatchers.argThat((de.mhus.vance.toolpack.ToolInvocationContext c) ->
+                                java.util.Objects.equals("acme", c.tenantId())
+                                        && java.util.Objects.equals("alice", c.userId()))))
+                .thenReturn(SUBJECT);
+        when(catalogService.findByName("acme", "jira")).thenReturn(mock(ToolTemplateCatalogEntry.class));
         when(kitService.applyTemplate(any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(new TemplateApplier.ApplyResult(null, null, "jira"));
 
         tool.invoke(params(), CTX);
 
-        verify(contextFactory).forToolSubject("acme", "alice");
-        verify(permissionService).enforce(
-                eq(SUBJECT),
-                eq(new Resource.Project("acme", "other-project")),
-                eq(Action.ADMIN));
+        verify(contextFactory)
+                .forToolSubject(org.mockito.ArgumentMatchers.argThat((de.mhus.vance.toolpack.ToolInvocationContext c) ->
+                        java.util.Objects.equals("acme", c.tenantId())
+                                && java.util.Objects.equals("alice", c.userId())));
+        verify(permissionService)
+                .enforce(eq(SUBJECT), eq(new Resource.Project("acme", "other-project")), eq(Action.ADMIN));
     }
 
     @Test
     void apply_touches_neither_catalog_nor_applier_when_authorization_fails() {
-        when(contextFactory.forToolSubject("acme", "alice")).thenReturn(SUBJECT);
-        doThrow(new PermissionDeniedException(
-                SUBJECT, new Resource.Project("acme", "other-project"), Action.ADMIN))
-                .when(permissionService).enforce(any(), any(), any());
+        when(contextFactory.forToolSubject(
+                        org.mockito.ArgumentMatchers.argThat((de.mhus.vance.toolpack.ToolInvocationContext c) ->
+                                java.util.Objects.equals("acme", c.tenantId())
+                                        && java.util.Objects.equals("alice", c.userId()))))
+                .thenReturn(SUBJECT);
+        doThrow(new PermissionDeniedException(SUBJECT, new Resource.Project("acme", "other-project"), Action.ADMIN))
+                .when(permissionService)
+                .enforce(any(), any(), any());
 
-        assertThatThrownBy(() -> tool.invoke(params(), CTX))
-                .isInstanceOf(PermissionDeniedException.class);
+        assertThatThrownBy(() -> tool.invoke(params(), CTX)).isInstanceOf(PermissionDeniedException.class);
 
         verifyNoInteractions(catalogService);
         verify(kitService, never()).applyTemplate(any(), any(), any(), any(), any(), any(), any());
@@ -86,8 +90,7 @@ class ToolTemplateApplyToolAuthzTest {
 
     @Test
     void apply_requires_a_tenant_scope() {
-        ToolInvocationContext noTenant =
-                new ToolInvocationContext(null, "home", "sess", "proc", "alice");
+        ToolInvocationContext noTenant = new ToolInvocationContext(null, "home", "sess", "proc", "alice");
 
         assertThatThrownBy(() -> tool.invoke(params(), noTenant))
                 .isInstanceOf(ToolException.class)

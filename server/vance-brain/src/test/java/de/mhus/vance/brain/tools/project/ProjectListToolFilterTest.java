@@ -28,13 +28,16 @@ class ProjectListToolFilterTest {
     @Test
     void lists_only_what_the_authorized_source_returns() {
         SecurityContext subject = SecurityContext.user("alice", "acme", List.of());
-        when(contextFactory.forToolSubject("acme", "alice")).thenReturn(subject);
+        when(contextFactory.forToolSubject(
+                        org.mockito.ArgumentMatchers.argThat((de.mhus.vance.toolpack.ToolInvocationContext c) ->
+                                java.util.Objects.equals("acme", c.tenantId())
+                                        && java.util.Objects.equals("alice", c.userId()))))
+                .thenReturn(subject);
         // Source already filtered by READ — the tool must not re-list all().
-        when(projectService.listReadableBy(eq("acme"), eq(subject)))
-                .thenReturn(List.of(project("mine")));
+        when(projectService.listReadableBy(eq("acme"), eq(subject))).thenReturn(List.of(project("mine")));
 
-        Map<String, Object> out = tool.invoke(Map.of(),
-                new ToolInvocationContext("acme", "mine", "sess", "proc", "alice"));
+        Map<String, Object> out =
+                tool.invoke(Map.of(), new ToolInvocationContext("acme", "mine", "sess", "proc", "alice"));
 
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> rows = (List<Map<String, Object>>) out.get("projects");
@@ -44,12 +47,15 @@ class ProjectListToolFilterTest {
     @Test
     void result_saysItIsPermissionFiltered() {
         SecurityContext subject = SecurityContext.user("alice", "acme", List.of());
-        when(contextFactory.forToolSubject("acme", "alice")).thenReturn(subject);
-        when(projectService.listReadableBy(eq("acme"), eq(subject)))
-                .thenReturn(List.of(project("mine")));
+        when(contextFactory.forToolSubject(
+                        org.mockito.ArgumentMatchers.argThat((de.mhus.vance.toolpack.ToolInvocationContext c) ->
+                                java.util.Objects.equals("acme", c.tenantId())
+                                        && java.util.Objects.equals("alice", c.userId()))))
+                .thenReturn(subject);
+        when(projectService.listReadableBy(eq("acme"), eq(subject))).thenReturn(List.of(project("mine")));
 
-        Map<String, Object> out = tool.invoke(Map.of(),
-                new ToolInvocationContext("acme", "mine", "sess", "proc", "alice"));
+        Map<String, Object> out =
+                tool.invoke(Map.of(), new ToolInvocationContext("acme", "mine", "sess", "proc", "alice"));
 
         // Without this, "not in the list" reads as "does not exist" — which
         // is what agents concluded and then reported upwards as fact,
@@ -63,11 +69,15 @@ class ProjectListToolFilterTest {
     @Test
     void note_isPresentEvenWhenNothingIsVisible() {
         SecurityContext subject = SecurityContext.user("alice", "acme", List.of());
-        when(contextFactory.forToolSubject("acme", "alice")).thenReturn(subject);
+        when(contextFactory.forToolSubject(
+                        org.mockito.ArgumentMatchers.argThat((de.mhus.vance.toolpack.ToolInvocationContext c) ->
+                                java.util.Objects.equals("acme", c.tenantId())
+                                        && java.util.Objects.equals("alice", c.userId()))))
+                .thenReturn(subject);
         when(projectService.listReadableBy(eq("acme"), eq(subject))).thenReturn(List.of());
 
-        Map<String, Object> out = tool.invoke(Map.of(),
-                new ToolInvocationContext("acme", "mine", "sess", "proc", "alice"));
+        Map<String, Object> out =
+                tool.invoke(Map.of(), new ToolInvocationContext("acme", "mine", "sess", "proc", "alice"));
 
         // The empty result is exactly when the wrong inference is most
         // tempting.

@@ -173,7 +173,7 @@ public class DocConcatTool implements Tool {
                     tags,
                     body.toString(),
                     /*createdBy*/ ctx.userId(),
-                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), target));
+                    contextFactory.writeActor(ctx, target));
         } catch (DocumentService.DocumentAlreadyExistsException e) {
             throw new ToolException(e.getMessage(), e);
         }

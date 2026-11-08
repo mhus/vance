@@ -235,7 +235,8 @@ public class MagratheaTaskExecutor {
                 vars,
                 start.getSessionId(),
                 start.getOwnerProcessId(),
-                state.type() == MagratheaTaskType.FOR_EACH_TASK ? previousStateOf(task) : null);
+                state.type() == MagratheaTaskType.FOR_EACH_TASK ? previousStateOf(task) : null,
+                start.getConfinedToProject());
 
         long started = System.currentTimeMillis();
         Optional<TaskOutcome> outcome;

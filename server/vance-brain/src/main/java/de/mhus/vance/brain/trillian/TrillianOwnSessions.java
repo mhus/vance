@@ -131,7 +131,7 @@ public class TrillianOwnSessions {
                     + " only those can be used here");
         }
         permissionService.enforce(
-                contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()),
+                contextFactory.forToolSubject(ctx),
                 new Resource.Session(ctx.tenantId(), session.getProjectId(), session.getSessionId()),
                 action);
         return session;

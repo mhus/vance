@@ -155,4 +155,38 @@ class SecurityContextFactoryTest {
         assertThat(actor.subject().subjectType()).isEqualTo(SubjectType.SYSTEM);
         assertThat(actor.reason()).isEqualTo(WriteReason.USER);
     }
+
+    @Test
+    void forToolSubject_foldsTheCallsCredentialConfinementIntoTheSubject() {
+        when(teamService.byMember("acme", "alice")).thenReturn(List.of());
+        de.mhus.vance.toolpack.ToolInvocationContext ctx = new de.mhus.vance.toolpack.ToolInvocationContext(
+                        "acme", "proj", null, null, "alice")
+                .confinedTo("proj");
+
+        SecurityContext subject = factory.forToolSubject(ctx);
+
+        assertThat(subject.subjectId()).isEqualTo("alice");
+        assertThat(subject.restrictedToProject()).isEqualTo("proj");
+        assertThat(factory.writeActor(ctx, "docs/x.md").subject().restrictedToProject())
+                .isEqualTo("proj");
+    }
+
+    @Test
+    void forToolSubject_withoutConfinement_isAnOrdinaryUser() {
+        when(teamService.byMember("acme", "alice")).thenReturn(List.of());
+
+        SecurityContext subject = factory.forToolSubject(
+                new de.mhus.vance.toolpack.ToolInvocationContext("acme", "proj", null, null, "alice"));
+
+        assertThat(subject.restrictedToProject()).isNull();
+    }
+
+    @Test
+    void forToolSubject_withConfinementButNoUser_isRefusedNotSystem() {
+        de.mhus.vance.toolpack.ToolInvocationContext ctx =
+                new de.mhus.vance.toolpack.ToolInvocationContext("acme", "proj", null, null, null).confinedTo("proj");
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> factory.forToolSubject(ctx))
+                .isInstanceOf(IllegalStateException.class);
+    }
 }

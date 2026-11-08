@@ -199,7 +199,7 @@ public class WorkflowStartTool implements Tool {
                             path,
                             callerParams,
                             ctx.userId(),
-                            MagratheaRunBinding.headless(),
+                            MagratheaRunBinding.headless().confinedTo(ctx.confinedToProject()),
                             debug)
                     : workflowService.start(
                             ctx.tenantId(),
@@ -209,7 +209,7 @@ public class WorkflowStartTool implements Tool {
                             ctx.userId(),
                             /* parent */ null,
                             /* parentState */ null,
-                            MagratheaRunBinding.headless(),
+                            MagratheaRunBinding.headless().confinedTo(ctx.confinedToProject()),
                             debug);
         } catch (MagratheaWorkflowService.MagratheaWorkflowException ex) {
             throw new ToolException(ex.getMessage(), ex);

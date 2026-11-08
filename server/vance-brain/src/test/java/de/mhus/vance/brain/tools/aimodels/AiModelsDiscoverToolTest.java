@@ -45,7 +45,11 @@ class AiModelsDiscoverToolTest {
         discoveryService = mock(ModelDiscoveryService.class);
         permissionService = mock(PermissionService.class);
         contextFactory = mock(SecurityContextFactory.class);
-        when(contextFactory.forToolSubject(TENANT, USER)).thenReturn(SecurityContext.user(USER, TENANT, List.of()));
+        when(contextFactory.forToolSubject(
+                        org.mockito.ArgumentMatchers.argThat((de.mhus.vance.toolpack.ToolInvocationContext c) ->
+                                java.util.Objects.equals(TENANT, c.tenantId())
+                                        && java.util.Objects.equals(USER, c.userId()))))
+                .thenReturn(SecurityContext.user(USER, TENANT, List.of()));
         tool = new AiModelsDiscoverTool(discoveryService, permissionService, contextFactory);
         ctx = new ToolInvocationContext(TENANT, "model-acme-coding", "sess1", "proc1", USER);
     }

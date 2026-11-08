@@ -122,4 +122,30 @@ class ToolDispatcherPermissionTest {
         assertThatThrownBy(() -> dispatcher.invoke("fake.tool", Map.of(), ctx))
                 .isInstanceOf(PermissionDeniedException.class);
     }
+
+    @Test
+    void invoke_withCredentialConfinement_checksUnderAConfinedSubject() {
+        ToolInvocationContext ctx = new ToolInvocationContext("acme", "proj", null, null, "alice").confinedTo("proj");
+
+        dispatcher.invoke("fake.tool", Map.of(), ctx);
+
+        assertThat(recorder.lastCheck().subject().restrictedToProject()).isEqualTo("proj");
+    }
+
+    @Test
+    void invoke_withoutConfinement_checksUnderAnUnconfinedSubject() {
+        ToolInvocationContext ctx = new ToolInvocationContext("acme", "proj", null, null, "alice");
+
+        dispatcher.invoke("fake.tool", Map.of(), ctx);
+
+        assertThat(recorder.lastCheck().subject().restrictedToProject()).isNull();
+    }
+
+    @Test
+    void invoke_withConfinementButNoUser_isRefusedInsteadOfBecomingSystem() {
+        ToolInvocationContext ctx = new ToolInvocationContext("acme", "proj", null, null, null).confinedTo("proj");
+
+        assertThatThrownBy(() -> dispatcher.invoke("fake.tool", Map.of(), ctx))
+                .isInstanceOf(IllegalStateException.class);
+    }
 }

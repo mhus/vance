@@ -73,7 +73,11 @@ class ProjectListToolActiveSpotTest {
     @SuppressWarnings("unchecked")
     private void givenProjects(ProjectDocument... projects) {
         SecurityContext subject = SecurityContext.user("alice", "acme", List.of());
-        when(contextFactory.forToolSubject("acme", "alice")).thenReturn(subject);
+        when(contextFactory.forToolSubject(
+                        org.mockito.ArgumentMatchers.argThat((de.mhus.vance.toolpack.ToolInvocationContext c) ->
+                                java.util.Objects.equals("acme", c.tenantId())
+                                        && java.util.Objects.equals("alice", c.userId()))))
+                .thenReturn(subject);
         when(projectService.listReadableBy(eq("acme"), eq(subject))).thenReturn(List.of(projects));
     }
 

@@ -41,7 +41,13 @@ public record MagratheaTaskContext(
          * {@code FOR_EACH_TASK}, which has to tell the next element from a new loop; the dispatcher fills it in
          * for that type alone.
          */
-        @org.jspecify.annotations.Nullable String previousState) {
+        @org.jspecify.annotations.Nullable String previousState,
+        /**
+         * Project the credential that started the run is pinned to, or null. Tasks that call tools build their
+         * {@link de.mhus.vance.toolpack.ToolInvocationContext} with it, so the confinement reaches the
+         * permission subject.
+         */
+        @org.jspecify.annotations.Nullable String confinedToProject) {
 
     /** A context without a previous state — for every type that does not look back. */
     public MagratheaTaskContext(
@@ -68,6 +74,37 @@ public record MagratheaTaskContext(
                 vars,
                 sessionId,
                 ownerProcessId,
+                null,
+                null);
+    }
+
+    /** A context for a run without credential confinement but with a previous state. */
+    public MagratheaTaskContext(
+            String tenantId,
+            String projectId,
+            String workflowRunId,
+            String taskId,
+            @org.jspecify.annotations.Nullable String startedBy,
+            ResolvedMagratheaWorkflow workflow,
+            MagratheaStateSpec state,
+            Map<String, Object> params,
+            Map<String, Object> vars,
+            @org.jspecify.annotations.Nullable String sessionId,
+            @org.jspecify.annotations.Nullable String ownerProcessId,
+            @org.jspecify.annotations.Nullable String previousState) {
+        this(
+                tenantId,
+                projectId,
+                workflowRunId,
+                taskId,
+                startedBy,
+                workflow,
+                state,
+                params,
+                vars,
+                sessionId,
+                ownerProcessId,
+                previousState,
                 null);
     }
 }

@@ -96,8 +96,8 @@ public class DocLockRemoveTool implements Tool {
                 doc.getLockedFor() == null ? EnumSet.noneOf(WriterRole.class) : EnumSet.copyOf(doc.getLockedFor());
         next.remove(role);
 
-        DocumentDocument saved = documentService.setLockedFor(
-                documentId, next, contextFactory.writeActor(ctx.tenantId(), ctx.userId(), doc.getPath()));
+        DocumentDocument saved =
+                documentService.setLockedFor(documentId, next, contextFactory.writeActor(ctx, doc.getPath()));
         log.info("DocLockRemoveTool tenant='{}' id='{}' removed={} now={}", ctx.tenantId(), documentId, role, next);
 
         Map<String, Object> out = new LinkedHashMap<>();

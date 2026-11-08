@@ -59,7 +59,7 @@ public class ContactToolSupport {
      * scopes. A confined process sees only scopes of its own project.
      */
     ContactCaller caller(Map<String, Object> params, ToolInvocationContext ctx) {
-        SecurityContext subject = contextFactory.forToolSubject(ctx.tenantId(), ctx.userId());
+        SecurityContext subject = contextFactory.forToolSubject(ctx);
         String projectId = null;
         try {
             ProjectDocument project = eddieContext.resolveProject(params, ctx, false);
@@ -82,7 +82,7 @@ public class ContactToolSupport {
     }
 
     SecurityContext subject(ToolInvocationContext ctx) {
-        return contextFactory.forToolSubject(ctx.tenantId(), ctx.userId());
+        return contextFactory.forToolSubject(ctx);
     }
 
     ContactService service() {

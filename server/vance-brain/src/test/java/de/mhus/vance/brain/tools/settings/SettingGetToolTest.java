@@ -50,7 +50,11 @@ class SettingGetToolTest {
         settingService = mock(SettingService.class);
         permissionService = mock(PermissionService.class);
         SecurityContextFactory contextFactory = mock(SecurityContextFactory.class);
-        when(contextFactory.forToolSubject(TENANT, USER)).thenReturn(SecurityContext.user(USER, TENANT, List.of()));
+        when(contextFactory.forToolSubject(
+                        org.mockito.ArgumentMatchers.argThat((de.mhus.vance.toolpack.ToolInvocationContext c) ->
+                                java.util.Objects.equals(TENANT, c.tenantId())
+                                        && java.util.Objects.equals(USER, c.userId()))))
+                .thenReturn(SecurityContext.user(USER, TENANT, List.of()));
         tool = new SettingGetTool(settingService, permissionService, contextFactory);
         ctx = new ToolInvocationContext(TENANT, PROJECT, "sess1", PROCESS, USER);
     }

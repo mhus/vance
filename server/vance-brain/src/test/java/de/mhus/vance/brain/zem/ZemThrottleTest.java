@@ -46,13 +46,17 @@ class ZemThrottleTest {
     void rate_limit_spaces_call_starts() throws Exception {
         ZemThrottle throttle = new ZemThrottle();
         List<Long> starts = new ArrayList<>();
+        // Taken before the first acquire: the gate hands out slots at t0, t0+20, +40, +60 ms,
+        // with t0 >= this timestamp. Measuring from the first recorded start instead would let a
+        // stall before that timestamp (cold classes, loaded CPU) shrink the span.
+        long before = System.nanoTime();
         for (int i = 0; i < 4; i++) {
             try (ZemThrottle.Permit ignored = throttle.acquire("t/openrouter", null, 50.0)) {
                 starts.add(System.nanoTime());
             }
         }
-        long spanMillis = TimeUnit.NANOSECONDS.toMillis(starts.get(3) - starts.get(0));
-        assertThat(spanMillis).isGreaterThanOrEqualTo(55); // 3 intervals × 20 ms, minus scheduling slack
+        long spanMillis = TimeUnit.NANOSECONDS.toMillis(starts.get(3) - before);
+        assertThat(spanMillis).isGreaterThanOrEqualTo(60); // 3 intervals × 20 ms
     }
 
     @Test

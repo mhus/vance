@@ -43,6 +43,7 @@ export const INSIGHTS_TOP_TABS = [
   'workspace',
   'executions',
   'workflows',
+  'task-log',
   'events',
   'scheduler',
   'ursahooks',

@@ -33,10 +33,7 @@ import tools.jackson.databind.ObjectMapper;
  * (plan §11.1).
  */
 @Service
-@ConditionalOnProperty(
-        value = "vance.services.magrathea",
-        havingValue = "true",
-        matchIfMissing = false)
+@ConditionalOnProperty(value = "vance.services.magrathea", havingValue = "true", matchIfMissing = false)
 @RequiredArgsConstructor
 @Slf4j
 public class MagratheaJournalService {
@@ -47,18 +44,13 @@ public class MagratheaJournalService {
     // ──────────── append ────────────
 
     /** Append a record that isn't tied to a specific task (status, start, note, …). */
-    public MagratheaJournalEntry append(
-            String tenantId, String projectId, String workflowRunId, JournalRecord record) {
+    public MagratheaJournalEntry append(String tenantId, String projectId, String workflowRunId, JournalRecord record) {
         return append(tenantId, projectId, workflowRunId, null, record);
     }
 
     /** Append a record optionally linked to a task row. */
     public MagratheaJournalEntry append(
-            String tenantId,
-            String projectId,
-            String workflowRunId,
-            @Nullable String taskId,
-            JournalRecord record) {
+            String tenantId, String projectId, String workflowRunId, @Nullable String taskId, JournalRecord record) {
         MagratheaJournalEntry entry = buildEntry(tenantId, projectId, workflowRunId, taskId, record);
         return repository.save(entry);
     }
@@ -73,27 +65,22 @@ public class MagratheaJournalService {
      *         rejected the insert via the partial-unique index.
      */
     public Optional<MagratheaJournalEntry> appendIfAbsent(
-            String tenantId,
-            String projectId,
-            String workflowRunId,
-            String taskId,
-            JournalRecord record) {
+            String tenantId, String projectId, String workflowRunId, String taskId, JournalRecord record) {
         MagratheaJournalEntry entry = buildEntry(tenantId, projectId, workflowRunId, taskId, record);
         try {
             return Optional.of(repository.save(entry));
         } catch (DuplicateKeyException ex) {
-            log.debug("appendIfAbsent: duplicate {} for runId={} taskId={} dropped",
-                    record.getClass().getSimpleName(), workflowRunId, taskId);
+            log.debug(
+                    "appendIfAbsent: duplicate {} for runId={} taskId={} dropped",
+                    record.getClass().getSimpleName(),
+                    workflowRunId,
+                    taskId);
             return Optional.empty();
         }
     }
 
     private MagratheaJournalEntry buildEntry(
-            String tenantId,
-            String projectId,
-            String workflowRunId,
-            @Nullable String taskId,
-            JournalRecord record) {
+            String tenantId, String projectId, String workflowRunId, @Nullable String taskId, JournalRecord record) {
         String data;
         try {
             data = objectMapper.writeValueAsString(record);
@@ -134,11 +121,9 @@ public class MagratheaJournalService {
     }
 
     /** When the run started — the timestamp of its first journal entry. */
-    public Optional<java.time.Instant> firstCreatedAt(
-            String tenantId, String projectId, String workflowRunId) {
+    public Optional<java.time.Instant> firstCreatedAt(String tenantId, String projectId, String workflowRunId) {
         return repository
-                .findFirstByTenantIdAndProjectIdAndWorkflowRunIdOrderByCreatedAtAsc(
-                        tenantId, projectId, workflowRunId)
+                .findFirstByTenantIdAndProjectIdAndWorkflowRunIdOrderByCreatedAtAsc(tenantId, projectId, workflowRunId)
                 .map(MagratheaJournalEntry::getCreatedAt);
     }
 
@@ -168,8 +153,8 @@ public class MagratheaJournalService {
      */
     public <T extends JournalRecord> List<T> readAll(
             String tenantId, String projectId, String workflowRunId, Class<T> recordType) {
-        List<MagratheaJournalEntry> entries = repository
-                .findByTenantIdAndProjectIdAndWorkflowRunIdAndTypeOrderByCreatedAtAsc(
+        List<MagratheaJournalEntry> entries =
+                repository.findByTenantIdAndProjectIdAndWorkflowRunIdAndTypeOrderByCreatedAtAsc(
                         tenantId, projectId, workflowRunId, recordType.getName());
         List<T> out = new ArrayList<>();
         for (MagratheaJournalEntry entry : entries) {
@@ -182,8 +167,7 @@ public class MagratheaJournalService {
     public <T extends JournalRecord> T toRecord(MagratheaJournalEntry entry, Class<T> recordType) {
         if (!recordType.getName().equals(entry.getType())) {
             throw new IllegalArgumentException(
-                    "Journal entry type '" + entry.getType()
-                            + "' does not match requested " + recordType.getName());
+                    "Journal entry type '" + entry.getType() + "' does not match requested " + recordType.getName());
         }
         return deserialize(entry, recordType);
     }
@@ -214,8 +198,7 @@ public class MagratheaJournalService {
             return objectMapper.readValue(entry.getData(), recordType);
         } catch (JacksonException ex) {
             throw new IllegalStateException(
-                    "Cannot deserialise journal entry id=" + entry.getId()
-                            + " as " + recordType.getName(), ex);
+                    "Cannot deserialise journal entry id=" + entry.getId() + " as " + recordType.getName(), ex);
         }
     }
 
@@ -227,8 +210,10 @@ public class MagratheaJournalService {
      * {@code magrathea_journal} collection query in the controller.
      */
     public List<String> listRunIds(String tenantId, String projectId, int limit) {
-        return repository.findByTenantIdAndProjectIdAndTypeOrderByCreatedAtDesc(
-                        tenantId, projectId,
+        return repository
+                .findByTenantIdAndProjectIdAndTypeOrderByCreatedAtDesc(
+                        tenantId,
+                        projectId,
                         de.mhus.vance.shared.magrathea.journal.StartRecord.class.getName(),
                         org.springframework.data.domain.PageRequest.of(0, limit))
                 .stream()
@@ -253,35 +238,130 @@ public class MagratheaJournalService {
     public List<RunStart> listRunStarts(String tenantId, String projectId, int limit) {
         List<RunStart> out = new java.util.ArrayList<>();
         java.util.Set<String> seen = new java.util.HashSet<>();
-        for (MagratheaJournalEntry entry : repository
-                .findByTenantIdAndProjectIdAndTypeOrderByCreatedAtDesc(
-                        tenantId, projectId,
-                        de.mhus.vance.shared.magrathea.journal.StartRecord.class.getName(),
-                        org.springframework.data.domain.PageRequest.of(0, limit))) {
+        for (MagratheaJournalEntry entry : repository.findByTenantIdAndProjectIdAndTypeOrderByCreatedAtDesc(
+                tenantId,
+                projectId,
+                de.mhus.vance.shared.magrathea.journal.StartRecord.class.getName(),
+                org.springframework.data.domain.PageRequest.of(0, limit))) {
             if (!seen.add(entry.getWorkflowRunId())) {
                 continue;
             }
             try {
-                out.add(new RunStart(entry.getWorkflowRunId(), toRecord(entry,
-                        de.mhus.vance.shared.magrathea.journal.StartRecord.class)));
+                out.add(new RunStart(
+                        entry.getWorkflowRunId(),
+                        toRecord(entry, de.mhus.vance.shared.magrathea.journal.StartRecord.class)));
             } catch (RuntimeException ex) {
-                log.warn("Magrathea journal: unreadable StartRecord for run '{}': {}",
-                        entry.getWorkflowRunId(), ex.toString());
+                log.warn(
+                        "Magrathea journal: unreadable StartRecord for run '{}': {}",
+                        entry.getWorkflowRunId(),
+                        ex.toString());
             }
         }
         return out;
     }
 
     /** One run and how it began — see {@link #listRunStarts}. */
-    public record RunStart(
+    public record RunStart(String workflowRunId, de.mhus.vance.shared.magrathea.journal.StartRecord start) {}
+
+    // ──────────── task execution log ────────────
+
+    /** How a task execution reads from the journal; see {@link #recentTaskExecutions}. */
+    public static final String OUTCOME_RUNNING = "running";
+
+    /** A task started more than once (retry or reclaim); only its latest start carries the result. */
+    public static final String OUTCOME_RESTARTED = "restarted";
+
+    /**
+     * What ran in a project, newest start first: every task start still in
+     * the journal window, paired with its result when there is one. This is
+     * the cluster-wide answer to "what ran, where, when and for how long" —
+     * the journal is shared by all pods, and each start records the pod that
+     * claimed the task.
+     *
+     * <p>A start with no result is {@link #OUTCOME_RUNNING}; if the same task
+     * started again later, the earlier start is {@link #OUTCOME_RESTARTED}.
+     * An entry whose body no longer deserialises is skipped.
+     */
+    public List<TaskExecution> recentTaskExecutions(String tenantId, String projectId, int limit) {
+        List<MagratheaJournalEntry> starts = repository.findByTenantIdAndProjectIdAndTypeOrderByCreatedAtDesc(
+                tenantId,
+                projectId,
+                de.mhus.vance.shared.magrathea.journal.TaskStartedRecord.class.getName(),
+                org.springframework.data.domain.PageRequest.of(0, limit));
+        if (starts.isEmpty()) {
+            return List.of();
+        }
+        java.time.Instant oldestStart = starts.get(starts.size() - 1).getCreatedAt();
+        java.util.Map<String, MagratheaJournalEntry> resultsByTask = new java.util.HashMap<>();
+        if (oldestStart != null) {
+            for (MagratheaJournalEntry result :
+                    repository.findByTenantIdAndProjectIdAndTypeAndCreatedAtGreaterThanEqual(
+                            tenantId,
+                            projectId,
+                            de.mhus.vance.shared.magrathea.journal.TaskResultRecord.class.getName(),
+                            oldestStart)) {
+                resultsByTask.put(taskKey(result.getWorkflowRunId(), result.getTaskId()), result);
+            }
+        }
+        java.util.Map<String, String> workflowByRun = new java.util.HashMap<>();
+        for (RunStart run : listRunStarts(tenantId, projectId, RUN_NAME_WINDOW)) {
+            workflowByRun.put(run.workflowRunId(), run.start().getWorkflowName());
+        }
+        List<TaskExecution> out = new java.util.ArrayList<>();
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        for (MagratheaJournalEntry entry : starts) {
+            try {
+                de.mhus.vance.shared.magrathea.journal.TaskStartedRecord started =
+                        toRecord(entry, de.mhus.vance.shared.magrathea.journal.TaskStartedRecord.class);
+                String key = taskKey(entry.getWorkflowRunId(), started.getTaskId());
+                boolean latest = seen.add(key);
+                MagratheaJournalEntry resultEntry = latest ? resultsByTask.get(key) : null;
+                de.mhus.vance.shared.magrathea.journal.TaskResultRecord result = resultEntry == null
+                        ? null
+                        : toRecord(resultEntry, de.mhus.vance.shared.magrathea.journal.TaskResultRecord.class);
+                out.add(new TaskExecution(
+                        entry.getWorkflowRunId(),
+                        workflowByRun.get(entry.getWorkflowRunId()),
+                        started.getState(),
+                        started.getTaskType(),
+                        started.getClaimedBy() != null ? started.getClaimedBy() : entry.getPodId(),
+                        entry.getCreatedAt(),
+                        resultEntry == null ? null : resultEntry.getCreatedAt(),
+                        result == null ? null : result.getDurationMs(),
+                        result != null ? result.getOutcome() : latest ? OUTCOME_RUNNING : OUTCOME_RESTARTED));
+            } catch (RuntimeException ex) {
+                log.warn(
+                        "Magrathea journal: unreadable task record in run '{}': {}",
+                        entry.getWorkflowRunId(),
+                        ex.toString());
+            }
+        }
+        return out;
+    }
+
+    private static String taskKey(String workflowRunId, @Nullable String taskId) {
+        return workflowRunId + '/' + taskId;
+    }
+
+    /** Runs whose workflow name is looked up for {@link #recentTaskExecutions}. */
+    private static final int RUN_NAME_WINDOW = 500;
+
+    /** One task start and, if it has ended, its result — see {@link #recentTaskExecutions}. */
+    public record TaskExecution(
             String workflowRunId,
-            de.mhus.vance.shared.magrathea.journal.StartRecord start) {}
+            @Nullable String workflowName,
+            String state,
+            de.mhus.vance.api.magrathea.MagratheaTaskType taskType,
+            @Nullable String podId,
+            @Nullable Instant startedAt,
+            @Nullable Instant finishedAt,
+            @Nullable Long durationMs,
+            String outcome) {}
 
     // ──────────── admin ────────────
 
     /** Drop the whole journal of a run — admin / test fixture. */
     public long deleteRun(String tenantId, String projectId, String workflowRunId) {
-        return repository.deleteByTenantIdAndProjectIdAndWorkflowRunId(
-                tenantId, projectId, workflowRunId);
+        return repository.deleteByTenantIdAndProjectIdAndWorkflowRunId(tenantId, projectId, workflowRunId);
     }
 }

@@ -274,6 +274,7 @@ export * from './insights/TrillianTaskWorkerInsightsDto';
 export * from './insights/TrillianWorkerInsightsDto';
 export * from './insights/FacetInsightsDto';
 export * from './insights/FacetValueInsightsDto';
+export * from './insights/WorkflowTaskRunInsightsDto';
 export * from './insights/ZarniwoopInsightsDto';
 
 export * from './progress/MetricsPayload';

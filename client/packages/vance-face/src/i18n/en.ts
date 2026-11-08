@@ -2809,6 +2809,22 @@ export default {
       unavailable: 'Help unavailable: {error}',
       empty: 'No help content.',
     },
+    taskLog: {
+      pickProject: 'Pick a project on the left to see which workflow tasks ran in it.',
+      loading: 'Loading tasks…',
+      refresh: 'Refresh',
+      help:
+        'Workflow tasks that ran in this project, newest first: what ran, on which pod, when and for how long. '
+        + 'Read from the run journal, so it covers every pod and survives restarts.',
+      emptyHeadline: 'No tasks yet',
+      emptyBody: 'No workflow task has started in this project.',
+      colWhat: 'Workflow / state',
+      colType: 'Type',
+      colPod: 'Pod',
+      colStarted: 'Started',
+      colDuration: 'Duration',
+      colOutcome: 'Outcome',
+    },
     workflows: {
       pickProject: 'Pick a project on the left to list its workflows.',
       loading: 'Loading workflows…',

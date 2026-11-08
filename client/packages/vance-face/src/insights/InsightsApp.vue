@@ -54,6 +54,7 @@ import EventsTab from './EventsTab.vue';
 import SchedulerTab from './SchedulerTab.vue';
 import UrsahooksTab from './UrsahooksTab.vue';
 import WorkflowsTab from './WorkflowsTab.vue';
+import TaskLogTab from './TaskLogTab.vue';
 import RagTab from './RagTab.vue';
 import UsageCostTab from './UsageCostTab.vue';
 import QuotasTab from './QuotasTab.vue';
@@ -191,6 +192,7 @@ const ALL_TABS: ReadonlyArray<{ key: TopTab; label: string }> = [
   { key: 'workspace', label: 'Workspace' },
   { key: 'executions', label: 'Executions' },
   { key: 'workflows', label: 'Workflows' },
+  { key: 'task-log', label: 'Task Log' },
   { key: 'events', label: 'Events' },
   { key: 'scheduler', label: 'Scheduler' },
   { key: 'ursahooks', label: 'Hooks' },
@@ -985,6 +987,7 @@ function clickProcessByMongoId(id: string | undefined | null): void {
       <WorkspaceTab v-else-if="topTab === 'workspace'" :project-id="effectiveProjectId" />
       <ExecutionsTab v-else-if="topTab === 'executions'" :project-id="effectiveProjectId" />
       <WorkflowsTab v-else-if="topTab === 'workflows'" :project-id="effectiveProjectId" />
+      <TaskLogTab v-else-if="topTab === 'task-log'" :project-id="effectiveProjectId" />
       <EventsTab v-else-if="topTab === 'events'" :project-id="effectiveProjectId" />
       <SchedulerTab v-else-if="topTab === 'scheduler'" :project-id="effectiveProjectId" />
       <UrsahooksTab v-else-if="topTab === 'ursahooks'" :project-id="effectiveProjectId" />

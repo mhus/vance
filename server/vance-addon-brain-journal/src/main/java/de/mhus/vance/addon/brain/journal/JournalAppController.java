@@ -2,6 +2,7 @@ package de.mhus.vance.addon.brain.journal;
 
 import de.mhus.vance.brain.applications.VanceApplication;
 import de.mhus.vance.brain.permission.RequestAuthority;
+import de.mhus.vance.brain.permission.SecurityContextFactory;
 import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
@@ -58,14 +59,20 @@ public class JournalAppController {
         JournalStatsView stats = toStatsView(statsBuilder.build(scanResult, LocalDate.now()));
 
         List<JournalEntryView> recent = new ArrayList<>();
-        for (JournalEntry e : journalService.recent(scanResult, scanResult.config().indexLimit())) {
+        for (JournalEntry e :
+                journalService.recent(scanResult, scanResult.config().indexLimit())) {
             recent.add(toEntryView(e));
         }
-        String title = firstNonBlank(scanResult.config().title(), scanResult.manifest().getTitle());
+        String title =
+                firstNonBlank(scanResult.config().title(), scanResult.manifest().getTitle());
         return new JournalView(
-                normalised, title, scanResult.config().description(),
-                scanResult.config().entriesDir(), scanResult.config().moodPresets(),
-                stats, recent);
+                normalised,
+                title,
+                scanResult.config().description(),
+                scanResult.config().entriesDir(),
+                scanResult.config().moodPresets(),
+                stats,
+                recent);
     }
 
     @GetMapping("/brain/{tenant}/addon/journal/month")
@@ -80,8 +87,7 @@ public class JournalAppController {
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.READ);
         String normalised = JournalFolderReader.normaliseFolder(folder);
         JournalFolderReader.Scan scanResult = folderReader.scan(tenant, projectId, normalised);
-        return new JournalMonthView(year, month,
-                new ArrayList<>(journalService.monthMask(scanResult, year, month)));
+        return new JournalMonthView(year, month, new ArrayList<>(journalService.monthMask(scanResult, year, month)));
     }
 
     @GetMapping("/brain/{tenant}/addon/journal/entry")
@@ -95,13 +101,13 @@ public class JournalAppController {
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.READ);
         String normalised = JournalFolderReader.normaliseFolder(folder);
         JournalConfig config = configOf(tenant, projectId, normalised);
-        DocumentDocument doc = journalService.findEntry(tenant, projectId, normalised, config, date)
+        DocumentDocument doc = journalService
+                .findEntry(tenant, projectId, normalised, config, date)
                 // A day nobody has written yet is the normal case the
                 // editor opens on — 404, not a server fault. The client
                 // reads it as "fresh page"; a ToolException would surface
                 // as a 500 in the console on every empty day.
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND, "No entry for '" + date + "'"));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No entry for '" + date + "'"));
         return toContentView(doc);
     }
 
@@ -116,18 +122,26 @@ public class JournalAppController {
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.WRITE);
         String normalised = JournalFolderReader.normaliseFolder(folder);
         JournalConfig config = configOf(tenant, projectId, normalised);
-        String date = request != null && request.date() != null && !request.date().isBlank()
-                ? request.date().trim()
-                : LocalDate.now().toString();
+        String date =
+                request != null && request.date() != null && !request.date().isBlank()
+                        ? request.date().trim()
+                        : LocalDate.now().toString();
         DocumentDocument stored = journalService.upsertEntry(
-                tenant, projectId, normalised, config, date,
+                tenant,
+                projectId,
+                normalised,
+                config,
+                date,
                 request != null ? request.body() : null,
                 request != null ? request.title() : null,
                 request != null ? request.mood() : null,
                 request != null ? request.tags() : null,
                 currentUser(httpRequest));
-        log.info("JournalAppController.putEntry tenant='{}' folder='{}' path='{}'",
-                tenant, normalised, stored.getPath());
+        log.info(
+                "JournalAppController.putEntry tenant='{}' folder='{}' path='{}'",
+                tenant,
+                normalised,
+                stored.getPath());
         return toContentView(stored);
     }
 
@@ -142,12 +156,14 @@ public class JournalAppController {
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.DELETE);
         String normalised = JournalFolderReader.normaliseFolder(folder);
         JournalConfig config = configOf(tenant, projectId, normalised);
-        Optional<DocumentDocument> doc = journalService.findEntry(
-                tenant, projectId, normalised, config, date);
+        Optional<DocumentDocument> doc = journalService.findEntry(tenant, projectId, normalised, config, date);
         if (doc.isEmpty()) return ResponseEntity.notFound().build();
         documentService.trash(doc.get().getId(), actor(httpRequest));
-        log.info("JournalAppController.deleteEntry tenant='{}' folder='{}' path='{}'",
-                tenant, normalised, doc.get().getPath());
+        log.info(
+                "JournalAppController.deleteEntry tenant='{}' folder='{}' path='{}'",
+                tenant,
+                normalised,
+                doc.get().getPath());
         return ResponseEntity.noContent().build();
     }
 
@@ -177,7 +193,12 @@ public class JournalAppController {
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.WRITE);
         String normalised = JournalFolderReader.normaliseFolder(folder);
         VanceApplication.RefreshContext rc = new VanceApplication.RefreshContext(
-                tenant, projectId, normalised, currentUser(httpRequest), null);
+                tenant,
+                projectId,
+                normalised,
+                currentUser(httpRequest),
+                null,
+                SecurityContextFactory.credentialProjectConfinement(httpRequest));
         VanceApplication.RefreshResult result = application.refresh(rc);
 
         JournalFolderReader.Scan scanResult = folderReader.scan(tenant, projectId, normalised);
@@ -185,8 +206,12 @@ public class JournalAppController {
         String indexPath = artefactPath(result, "index");
         String statsPath = artefactPath(result, "stats");
         return new JournalRebuildResponse(
-                normalised, indexPath, statsPath,
-                scanResult.entries().size(), stats.currentStreak(), stats.longestStreak());
+                normalised,
+                indexPath,
+                statsPath,
+                scanResult.entries().size(),
+                stats.currentStreak(),
+                stats.longestStreak());
     }
 
     @GetMapping("/brain/{tenant}/addon/journal/search")
@@ -203,14 +228,13 @@ public class JournalAppController {
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.READ);
         String normalised = JournalFolderReader.normaliseFolder(folder);
         JournalConfig config = configOf(tenant, projectId, normalised);
-        DocumentService.DocumentMetaListing listing = journalService.search(
-                tenant, projectId, normalised, config, query, mood, tag, size);
+        DocumentService.DocumentMetaListing listing =
+                journalService.search(tenant, projectId, normalised, config, query, mood, tag, size);
         List<JournalHitView> items = new ArrayList<>(listing.items().size());
         for (DocumentService.DocumentMetaMatch m : listing.items()) {
             String leaf = m.path().substring(m.path().lastIndexOf('/') + 1);
             items.add(new JournalHitView(
-                    m.id(), m.path(), JournalFolderReader.dateFromLeaf(leaf),
-                    m.title(), null, m.snippet(), m.score()));
+                    m.id(), m.path(), JournalFolderReader.dateFromLeaf(leaf), m.title(), null, m.snippet(), m.score()));
         }
         return new JournalSearchResponse(items, listing.total());
     }
@@ -222,34 +246,44 @@ public class JournalAppController {
     }
 
     private JournalEntryView toEntryView(JournalEntry e) {
-        return new JournalEntryView(
-                e.doc().getId(), e.doc().getPath(), e.date(), e.title(), e.mood(), e.tags());
+        return new JournalEntryView(e.doc().getId(), e.doc().getPath(), e.date(), e.title(), e.mood(), e.tags());
     }
 
     private JournalEntryContentView toContentView(DocumentDocument doc) {
         JournalEntryDocument entry = journalService.readEntry(doc);
         String date = !entry.date().isEmpty()
                 ? entry.date()
-                : JournalFolderReader.dateFromLeaf(doc.getPath().substring(doc.getPath().lastIndexOf('/') + 1));
+                : JournalFolderReader.dateFromLeaf(
+                        doc.getPath().substring(doc.getPath().lastIndexOf('/') + 1));
         return new JournalEntryContentView(
-                doc.getId(), doc.getPath(),
+                doc.getId(),
+                doc.getPath(),
                 date == null ? "" : date,
-                entry.title(), entry.mood(), entry.tags(), entry.body());
+                entry.title(),
+                entry.mood(),
+                entry.tags(),
+                entry.body());
     }
 
     private static JournalStatsView toStatsView(JournalStatsBuilder.Stats s) {
         return new JournalStatsView(
-                s.totalEntries(), s.firstEntry(), s.lastEntry(),
-                s.currentStreak(), s.longestStreak(),
-                s.entriesThisMonth(), s.entriesThisYear(),
-                s.moodDistribution(), s.tagHistogram());
+                s.totalEntries(),
+                s.firstEntry(),
+                s.lastEntry(),
+                s.currentStreak(),
+                s.longestStreak(),
+                s.entriesThisMonth(),
+                s.entriesThisYear(),
+                s.moodDistribution(),
+                s.tagHistogram());
     }
 
     private static @Nullable String artefactPath(VanceApplication.RefreshResult result, String name) {
         return result.artefacts().stream()
                 .filter(a -> name.equals(a.name()))
                 .map(VanceApplication.ArtefactResult::path)
-                .findFirst().orElse(null);
+                .findFirst()
+                .orElse(null);
     }
 
     private static @Nullable String firstNonBlank(@Nullable String a, @Nullable String b) {

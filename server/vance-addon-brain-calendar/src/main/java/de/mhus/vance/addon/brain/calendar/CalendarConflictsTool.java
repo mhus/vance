@@ -116,7 +116,7 @@ public class CalendarConflictsTool implements Tool {
         LocalDate to = parseDate(paramString(params, "to"));
 
         VanceApplication.RefreshContext rc = new VanceApplication.RefreshContext(
-                ctx.tenantId(), project.getName(), folder, ctx.userId(), ctx.processId());
+                ctx.tenantId(), project.getName(), folder, ctx.userId(), ctx.processId(), ctx.confinedToProject());
 
         VanceApplication.ArtefactResult result = calendarsApplication.refreshConflicts(rc, from, to);
 

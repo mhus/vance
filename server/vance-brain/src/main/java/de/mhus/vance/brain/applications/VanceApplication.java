@@ -72,10 +72,9 @@ public interface VanceApplication {
      * opted into create-flow yet.
      */
     default CreateResult create(CreateContext ctx) {
-        throw new UnsupportedOperationException(
-                "Application '" + appName() + "' has no create() "
-                        + "implementation yet — write the _app.yaml "
-                        + "manifest by hand or pick another app type.");
+        throw new UnsupportedOperationException("Application '" + appName() + "' has no create() "
+                + "implementation yet — write the _app.yaml "
+                + "manifest by hand or pick another app type.");
     }
 
     /**
@@ -236,12 +235,10 @@ public interface VanceApplication {
                 throw new IllegalArgumentException("AppTarget handle must not be blank");
             }
             if (handle.indexOf(RESERVED) >= 0) {
-                throw new IllegalArgumentException(
-                        "AppTarget handle must not contain '" + RESERVED + "': " + handle);
+                throw new IllegalArgumentException("AppTarget handle must not contain '" + RESERVED + "': " + handle);
             }
             if (label == null || label.isBlank()) {
-                throw new IllegalArgumentException(
-                        "AppTarget label must not be blank (handle=" + handle + ")");
+                throw new IllegalArgumentException("AppTarget label must not be blank (handle=" + handle + ")");
             }
         }
 
@@ -260,7 +257,7 @@ public interface VanceApplication {
             String folder,
             @Nullable String userId,
             TargetPurpose purpose,
-            Map<String, Object> config) { }
+            Map<String, Object> config) {}
 
     /**
      * What a share offers an app: a label, a URL, a quote, and whether a
@@ -274,8 +271,7 @@ public interface VanceApplication {
             @Nullable String title,
             @Nullable String link,
             @Nullable String snippet,
-            boolean hasDocument) {
-    }
+            boolean hasDocument) {}
 
     /** Plumbing for {@link #acceptShare} — where it lands and who asked. */
     record ShareIntakeContext(
@@ -302,9 +298,13 @@ public interface VanceApplication {
             @Nullable String target) {
 
         /** Without a chosen place — the app's default intake. */
-        public ShareIntakeContext(String tenantId, String projectName, String folder,
-                                 ShareIntake intake, @Nullable String note,
-                                 @Nullable String userId) {
+        public ShareIntakeContext(
+                String tenantId,
+                String projectName,
+                String folder,
+                ShareIntake intake,
+                @Nullable String note,
+                @Nullable String userId) {
             this(tenantId, projectName, folder, intake, note, userId, null);
         }
 
@@ -333,8 +333,7 @@ public interface VanceApplication {
      * @param created {@code false} when the entry was already there
      * @param label   what to call the app in the message the user reads
      */
-    record ShareIntakeResult(boolean created, String label) {
-    }
+    record ShareIntakeResult(boolean created, String label) {}
 
     /**
      * Plumbing for {@link #refresh} — what tenant, what project,
@@ -347,7 +346,29 @@ public interface VanceApplication {
             String projectName,
             String folder,
             @Nullable String userId,
-            @Nullable String processId) { }
+            @Nullable String processId,
+            @Nullable String confinedToProject) {
+
+        /** A refresh without credential confinement — a caller that is not a pinned credential. */
+        public RefreshContext(
+                String tenantId,
+                String projectName,
+                String folder,
+                @Nullable String userId,
+                @Nullable String processId) {
+            this(tenantId, projectName, folder, userId, processId, null);
+        }
+
+        /**
+         * The tool-call view of this context: what an app builds its permission subject from
+         * ({@code SecurityContextFactory.forToolSubject(ctx.toolContext())}), so the credential confinement the
+         * caller came with is kept.
+         */
+        public de.mhus.vance.toolpack.ToolInvocationContext toolContext() {
+            return new de.mhus.vance.toolpack.ToolInvocationContext(tenantId, projectName, null, processId, userId)
+                    .confinedTo(confinedToProject);
+        }
+    }
 
     /**
      * Plumbing for {@link #promptInject}. Carries the scope the engine
@@ -363,7 +384,7 @@ public interface VanceApplication {
             String folder,
             @Nullable String sessionId,
             @Nullable String processId,
-            @Nullable String selection) { }
+            @Nullable String selection) {}
 
     /**
      * Per-artefact outcome of a refresh. {@code path} is the
@@ -372,10 +393,7 @@ public interface VanceApplication {
      * (and the Web UI) can surface inline.
      */
     record ArtefactResult(
-            String name,
-            String path,
-            @Nullable String markdownLink,
-            Map<String, Object> stats) {
+            String name, String path, @Nullable String markdownLink, Map<String, Object> stats) {
 
         public Map<String, Object> toMap() {
             Map<String, Object> m = new LinkedHashMap<>();
@@ -389,10 +407,7 @@ public interface VanceApplication {
 
     /** Bundle returned by {@link #refresh}. The map form is what
      *  {@code app_rebuild} surfaces to the LLM. */
-    record RefreshResult(
-            String app,
-            String folder,
-            List<ArtefactResult> artefacts) {
+    record RefreshResult(String app, String folder, List<ArtefactResult> artefacts) {
 
         public Map<String, Object> toMap() {
             Map<String, Object> m = new LinkedHashMap<>();
@@ -418,7 +433,7 @@ public interface VanceApplication {
             String projectName,
             String folder,
             @Nullable String userId,
-            Map<String, Object> config) { }
+            Map<String, Object> config) {}
 
     /**
      * Card identity for the Common Desktop. {@code icon} is a string the
@@ -428,9 +443,7 @@ public interface VanceApplication {
      * {@code null} {@code openLink} lets the desktop build a default
      * deep-link from folder + app.
      */
-    record AppCard(
-            String icon,
-            @Nullable String openLink) {
+    record AppCard(String icon, @Nullable String openLink) {
 
         /** Generic launcher icon for apps that don't override describe(). */
         public static AppCard defaults() {
@@ -448,11 +461,13 @@ public interface VanceApplication {
             String folder,
             @Nullable String userId,
             @Nullable String processId,
-            Map<String, Object> config) { }
+            Map<String, Object> config) {}
 
     /** Severity of an app status or item — drives the desktop card accent. */
     enum StatusSeverity {
-        OK, ATTENTION, BLOCKED;
+        OK,
+        ATTENTION,
+        BLOCKED;
 
         public String wireName() {
             return name().toLowerCase(java.util.Locale.ROOT);
@@ -498,9 +513,7 @@ public interface VanceApplication {
             List<StatusItem> items,
             @Nullable Instant updatedAt) {
 
-        public static AppStatus of(@Nullable String headline,
-                                   StatusSeverity severity,
-                                   List<StatusItem> items) {
+        public static AppStatus of(@Nullable String headline, StatusSeverity severity, List<StatusItem> items) {
             return new AppStatus(headline, severity, List.of(), items, null);
         }
     }
@@ -520,7 +533,27 @@ public interface VanceApplication {
             @Nullable String userId,
             @Nullable String processId,
             boolean overwrite,
-            Map<String, Object> params) { }
+            Map<String, Object> params,
+            @Nullable String confinedToProject) {
+
+        /** A create without credential confinement — a caller that is not a pinned credential. */
+        public CreateContext(
+                String tenantId,
+                String projectName,
+                String folder,
+                @Nullable String userId,
+                @Nullable String processId,
+                boolean overwrite,
+                Map<String, Object> params) {
+            this(tenantId, projectName, folder, userId, processId, overwrite, params, null);
+        }
+
+        /** The tool-call view of this context — see {@link RefreshContext#toolContext()}. */
+        public de.mhus.vance.toolpack.ToolInvocationContext toolContext() {
+            return new de.mhus.vance.toolpack.ToolInvocationContext(tenantId, projectName, null, processId, userId)
+                    .confinedTo(confinedToProject);
+        }
+    }
 
     /**
      * Description of one configured lane/section/column the create
@@ -531,10 +564,7 @@ public interface VanceApplication {
      * convention.
      */
     record CreateLane(
-            String name,
-            @Nullable String title,
-            @Nullable String color,
-            String suggestedFilePath) {
+            String name, @Nullable String title, @Nullable String color, String suggestedFilePath) {
 
         public Map<String, Object> toMap() {
             Map<String, Object> m = new LinkedHashMap<>();

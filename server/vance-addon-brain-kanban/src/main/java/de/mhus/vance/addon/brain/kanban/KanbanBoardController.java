@@ -3,6 +3,7 @@ package de.mhus.vance.addon.brain.kanban;
 import de.mhus.vance.api.common.AccentColor;
 import de.mhus.vance.brain.applications.VanceApplication;
 import de.mhus.vance.brain.permission.RequestAuthority;
+import de.mhus.vance.brain.permission.SecurityContextFactory;
 import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
@@ -90,8 +91,13 @@ public class KanbanBoardController {
 
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.WRITE);
         String normalised = normaliseFolder(folder);
-        VanceApplication.RefreshContext rc =
-                new VanceApplication.RefreshContext(tenant, projectId, normalised, currentUser(httpRequest), null);
+        VanceApplication.RefreshContext rc = new VanceApplication.RefreshContext(
+                tenant,
+                projectId,
+                normalised,
+                currentUser(httpRequest),
+                null,
+                SecurityContextFactory.credentialProjectConfinement(httpRequest));
 
         KanbanApplication.MoveResult mv =
                 kanbanApplication.moveCard(rc, normalised, request.getCard(), request.getToColumn());
@@ -295,8 +301,13 @@ public class KanbanBoardController {
 
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.WRITE);
         String normalised = normaliseFolder(folder);
-        VanceApplication.RefreshContext rc =
-                new VanceApplication.RefreshContext(tenant, projectId, normalised, currentUser(httpRequest), null);
+        VanceApplication.RefreshContext rc = new VanceApplication.RefreshContext(
+                tenant,
+                projectId,
+                normalised,
+                currentUser(httpRequest),
+                null,
+                SecurityContextFactory.credentialProjectConfinement(httpRequest));
         VanceApplication.RefreshResult result = kanbanApplication.refresh(rc);
 
         List<KanbanArtefactSummary> arts = new ArrayList<>();

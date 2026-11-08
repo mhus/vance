@@ -128,7 +128,7 @@ public class KanbanMoveTool implements Tool {
         String normalisedFolder = normaliseFolder(folder);
 
         VanceApplication.RefreshContext rc = new VanceApplication.RefreshContext(
-                tenantId, projectName, normalisedFolder, ctx.userId(), ctx.processId());
+                tenantId, projectName, normalisedFolder, ctx.userId(), ctx.processId(), ctx.confinedToProject());
 
         KanbanApplication.MoveResult mv = kanbanApplication.moveCard(rc, normalisedFolder, cardRef, toColumnRaw);
 

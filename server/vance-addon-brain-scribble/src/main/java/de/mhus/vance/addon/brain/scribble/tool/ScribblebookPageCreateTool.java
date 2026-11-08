@@ -95,7 +95,7 @@ public class ScribblebookPageCreateTool implements Tool {
                 scribbleService.create(ctx.tenantId(), project.getName(), normalised + "/" + slug, title, ctx.userId());
 
         application.refresh(new VanceApplication.RefreshContext(
-                ctx.tenantId(), project.getName(), normalised, ctx.userId(), ctx.processId()));
+                ctx.tenantId(), project.getName(), normalised, ctx.userId(), ctx.processId(), ctx.confinedToProject()));
 
         log.info("ScribblebookPageCreateTool folder='{}' path='{}'", normalised, stored.getPath());
 

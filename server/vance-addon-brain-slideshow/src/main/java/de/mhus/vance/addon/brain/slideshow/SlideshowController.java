@@ -2,6 +2,7 @@ package de.mhus.vance.addon.brain.slideshow;
 
 import de.mhus.vance.brain.applications.VanceApplication;
 import de.mhus.vance.brain.permission.RequestAuthority;
+import de.mhus.vance.brain.permission.SecurityContextFactory;
 import de.mhus.vance.brain.tools.document.DocumentLinkBuilder;
 import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.permission.Action;
@@ -82,11 +83,16 @@ public class SlideshowController {
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.WRITE);
         String normalised = normaliseFolder(folder);
         VanceApplication.RefreshContext rc = new VanceApplication.RefreshContext(
-                tenant, projectId, normalised, currentUser(httpRequest), null);
+                tenant,
+                projectId,
+                normalised,
+                currentUser(httpRequest),
+                null,
+                SecurityContextFactory.credentialProjectConfinement(httpRequest));
         VanceApplication.RefreshResult result = slideshowApplication.refresh(rc);
 
-        VanceApplication.ArtefactResult art = result.artefacts().isEmpty()
-                ? null : result.artefacts().get(0);
+        VanceApplication.ArtefactResult art =
+                result.artefacts().isEmpty() ? null : result.artefacts().get(0);
         int slideCount = 0;
         if (art != null && art.stats().get("slideCount") instanceof Number n) {
             slideCount = n.intValue();
@@ -104,15 +110,13 @@ public class SlideshowController {
 
     private static String normaliseFolder(@Nullable String folder) {
         if (folder == null || folder.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "folder must be provided");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "folder must be provided");
         }
         String f = folder.trim();
         while (f.endsWith("/")) f = f.substring(0, f.length() - 1);
         while (f.startsWith("/")) f = f.substring(1);
         if (f.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "folder must not be empty");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "folder must not be empty");
         }
         return f;
     }

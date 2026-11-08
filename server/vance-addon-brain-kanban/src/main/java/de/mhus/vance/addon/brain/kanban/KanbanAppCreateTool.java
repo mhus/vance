@@ -256,7 +256,8 @@ public class KanbanAppCreateTool implements Tool {
                 ctx.userId(),
                 ctx.processId(),
                 paramBoolean(params, "overwrite"),
-                createParams);
+                createParams,
+                ctx.confinedToProject());
 
         VanceApplication.CreateResult result = kanbanApplication.create(cc);
 

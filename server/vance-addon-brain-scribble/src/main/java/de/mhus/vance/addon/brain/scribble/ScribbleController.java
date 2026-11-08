@@ -2,6 +2,7 @@ package de.mhus.vance.addon.brain.scribble;
 
 import de.mhus.vance.brain.applications.VanceApplication;
 import de.mhus.vance.brain.permission.RequestAuthority;
+import de.mhus.vance.brain.permission.SecurityContextFactory;
 import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
@@ -139,8 +140,13 @@ public class ScribbleController {
 
         DocumentDocument stored =
                 scribbleService.create(tenant, projectId, normalised + "/" + slug, title, currentUser(request));
-        application.refresh(
-                new VanceApplication.RefreshContext(tenant, projectId, normalised, currentUser(request), null));
+        application.refresh(new VanceApplication.RefreshContext(
+                tenant,
+                projectId,
+                normalised,
+                currentUser(request),
+                null,
+                SecurityContextFactory.credentialProjectConfinement(request)));
 
         String rel = stored.getPath().startsWith(normalised + "/")
                 ? stored.getPath().substring(normalised.length() + 1)
@@ -156,8 +162,13 @@ public class ScribbleController {
             @RequestParam String folder,
             HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.WRITE);
-        VanceApplication.RefreshResult result = application.refresh(
-                new VanceApplication.RefreshContext(tenant, projectId, folder, currentUser(request), null));
+        VanceApplication.RefreshResult result = application.refresh(new VanceApplication.RefreshContext(
+                tenant,
+                projectId,
+                folder,
+                currentUser(request),
+                null,
+                SecurityContextFactory.credentialProjectConfinement(request)));
         VanceApplication.ArtefactResult index =
                 result.artefacts().isEmpty() ? null : result.artefacts().get(0);
         int pageCount = index != null ? ((Number) index.stats().getOrDefault("pageCount", 0)).intValue() : 0;

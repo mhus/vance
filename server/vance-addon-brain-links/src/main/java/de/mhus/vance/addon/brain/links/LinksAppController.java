@@ -3,6 +3,7 @@ package de.mhus.vance.addon.brain.links;
 import de.mhus.vance.brain.applications.VanceApplication;
 import de.mhus.vance.brain.applications.VanceApplication.ArtefactResult;
 import de.mhus.vance.brain.permission.RequestAuthority;
+import de.mhus.vance.brain.permission.SecurityContextFactory;
 import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
@@ -262,8 +263,13 @@ public class LinksAppController {
             @RequestParam String folder,
             HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.WRITE);
-        VanceApplication.RefreshResult result = application.refresh(
-                new VanceApplication.RefreshContext(tenant, projectId, folder, currentUser(request), null));
+        VanceApplication.RefreshResult result = application.refresh(new VanceApplication.RefreshContext(
+                tenant,
+                projectId,
+                folder,
+                currentUser(request),
+                null,
+                SecurityContextFactory.credentialProjectConfinement(request)));
         ArtefactResult index =
                 result.artefacts().isEmpty() ? null : result.artefacts().getFirst();
         return new LinksRebuildResponse(

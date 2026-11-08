@@ -2,6 +2,7 @@ package de.mhus.vance.addon.brain.gtd;
 
 import de.mhus.vance.brain.applications.VanceApplication;
 import de.mhus.vance.brain.permission.RequestAuthority;
+import de.mhus.vance.brain.permission.SecurityContextFactory;
 import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
@@ -14,7 +15,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -74,8 +74,8 @@ public class GtdAppController {
         }
         String normalised = GtdFolderReader.normaliseFolder(folder);
         GtdConfig config = configOf(tenant, projectId, normalised);
-        DocumentDocument doc = gtdService.capture(tenant, projectId, normalised, config,
-                request.title(), request.note(), currentUser(httpRequest));
+        DocumentDocument doc = gtdService.capture(
+                tenant, projectId, normalised, config, request.title(), request.note(), currentUser(httpRequest));
         log.info("GtdAppController.capture tenant='{}' path='{}'", tenant, doc.getPath());
         return toContentView(doc);
     }
@@ -88,7 +88,8 @@ public class GtdAppController {
             HttpServletRequest httpRequest) {
 
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.READ);
-        DocumentDocument doc = documentService.findByPath(tenant, projectId, path)
+        DocumentDocument doc = documentService
+                .findByPath(tenant, projectId, path)
                 .orElseThrow(() -> new ToolException("No action at '" + path + "'"));
         return toContentView(doc);
     }
@@ -107,9 +108,18 @@ public class GtdAppController {
         }
         String normalised = GtdFolderReader.normaliseFolder(folder);
         GtdConfig config = configOf(tenant, projectId, normalised);
-        DocumentDocument doc = gtdService.createAction(tenant, projectId, normalised, config,
-                request.title(), request.when(), request.deadline(), request.contexts(),
-                request.project(), request.body(), currentUser(httpRequest));
+        DocumentDocument doc = gtdService.createAction(
+                tenant,
+                projectId,
+                normalised,
+                config,
+                request.title(),
+                request.when(),
+                request.deadline(),
+                request.contexts(),
+                request.project(),
+                request.body(),
+                currentUser(httpRequest));
         return toContentView(doc);
     }
 
@@ -122,7 +132,10 @@ public class GtdAppController {
             HttpServletRequest httpRequest) {
 
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.WRITE);
-        DocumentDocument doc = gtdService.updateAction(tenant, projectId, path,
+        DocumentDocument doc = gtdService.updateAction(
+                tenant,
+                projectId,
+                path,
                 request != null ? request.when() : null,
                 request != null ? request.deadline() : null,
                 request != null ? request.contexts() : null,
@@ -143,11 +156,12 @@ public class GtdAppController {
 
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.WRITE);
         GtdBucket bucket = GtdBucket.fromWire(request != null ? request.bucket() : null);
-        if (bucket == null) throw new ToolException("Unknown bucket '" + (request != null ? request.bucket() : null) + "'");
+        if (bucket == null)
+            throw new ToolException("Unknown bucket '" + (request != null ? request.bucket() : null) + "'");
         String normalised = GtdFolderReader.normaliseFolder(folder);
         GtdConfig config = configOf(tenant, projectId, normalised);
-        DocumentDocument doc = gtdService.move(tenant, projectId, normalised, config, path,
-                bucket, request.date(), currentUser(httpRequest));
+        DocumentDocument doc = gtdService.move(
+                tenant, projectId, normalised, config, path, bucket, request.date(), currentUser(httpRequest));
         return toContentView(doc);
     }
 
@@ -163,8 +177,14 @@ public class GtdAppController {
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.WRITE);
         String normalised = GtdFolderReader.normaliseFolder(folder);
         GtdConfig config = configOf(tenant, projectId, normalised);
-        DocumentDocument doc = gtdService.assignProject(tenant, projectId, normalised, config,
-                path, request != null ? request.project() : null, currentUser(httpRequest));
+        DocumentDocument doc = gtdService.assignProject(
+                tenant,
+                projectId,
+                normalised,
+                config,
+                path,
+                request != null ? request.project() : null,
+                currentUser(httpRequest));
         return toContentView(doc);
     }
 
@@ -185,10 +205,9 @@ public class GtdAppController {
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.DELETE);
         String normalised = GtdFolderReader.normaliseFolder(folder);
         GtdConfig config = configOf(tenant, projectId, normalised);
-        GtdService.DeleteOutcome outcome = gtdService.deleteAction(
-                tenant, projectId, normalised, config, path, currentUser(httpRequest));
-        log.info("GtdAppController.deleteAction tenant='{}' path='{}' outcome={}",
-                tenant, path, outcome);
+        GtdService.DeleteOutcome outcome =
+                gtdService.deleteAction(tenant, projectId, normalised, config, path, currentUser(httpRequest));
+        log.info("GtdAppController.deleteAction tenant='{}' path='{}' outcome={}", tenant, path, outcome);
         return ResponseEntity.noContent().build();
     }
 
@@ -204,8 +223,8 @@ public class GtdAppController {
 
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.READ);
         String normalised = GtdFolderReader.normaliseFolder(folder);
-        DocumentService.DocumentMetaListing listing = gtdService.search(
-                tenant, projectId, normalised, query, context, size);
+        DocumentService.DocumentMetaListing listing =
+                gtdService.search(tenant, projectId, normalised, query, context, size);
         List<GtdHitView> items = new ArrayList<>(listing.items().size());
         for (DocumentService.DocumentMetaMatch m : listing.items()) {
             items.add(new GtdHitView(m.id(), m.path(), m.title(), m.snippet(), m.score()));
@@ -237,8 +256,8 @@ public class GtdAppController {
         }
         String normalised = GtdFolderReader.normaliseFolder(folder);
         LocalDate today = LocalDate.now();
-        GtdFolderReader.Scan scan = manifestOps.reorderBucket(tenant, projectId, normalised,
-                bucket, request.orderedIds(), today, currentUser(httpRequest));
+        GtdFolderReader.Scan scan = manifestOps.reorderBucket(
+                tenant, projectId, normalised, bucket, request.orderedIds(), today, currentUser(httpRequest));
         return toView(normalised, scan, today);
     }
 
@@ -252,15 +271,23 @@ public class GtdAppController {
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.WRITE);
         String normalised = GtdFolderReader.normaliseFolder(folder);
         VanceApplication.RefreshContext rc = new VanceApplication.RefreshContext(
-                tenant, projectId, normalised, currentUser(httpRequest), null);
+                tenant,
+                projectId,
+                normalised,
+                currentUser(httpRequest),
+                null,
+                SecurityContextFactory.credentialProjectConfinement(httpRequest));
         VanceApplication.RefreshResult result = application.refresh(rc);
 
         GtdFolderReader.Scan scan = folderReader.scan(tenant, projectId, normalised);
         GtdStatsBuilder.Stats stats = statsBuilder.build(scan, LocalDate.now());
-        return new GtdRebuildResponse(normalised,
-                artefactPath(result, "today"), artefactPath(result, "upcoming"),
+        return new GtdRebuildResponse(
+                normalised,
+                artefactPath(result, "today"),
+                artefactPath(result, "upcoming"),
                 artefactPath(result, "stats"),
-                stats.totalOpen(), stats.bucketCounts().getOrDefault("inbox", 0));
+                stats.totalOpen(),
+                stats.bucketCounts().getOrDefault("inbox", 0));
     }
 
     // ── Helpers ───────────────────────────────────────────────────
@@ -286,8 +313,14 @@ public class GtdAppController {
         contexts.addAll(stats.contextCounts().keySet());
 
         String title = firstNonBlank(scan.config().title(), scan.manifest().getTitle());
-        return new GtdView(folder, title, scan.config().description(),
-                new ArrayList<>(contexts), buckets, projects, toStatsView(stats));
+        return new GtdView(
+                folder,
+                title,
+                scan.config().description(),
+                new ArrayList<>(contexts),
+                buckets,
+                projects,
+                toStatsView(stats));
     }
 
     private GtdConfig configOf(String tenant, String projectId, String folder) {
@@ -295,18 +328,33 @@ public class GtdAppController {
     }
 
     private GtdActionView toActionView(GtdAction a, GtdBucket bucket, LocalDate today) {
-        boolean overdue = !a.inInbox()
-                && gtdService.bucketResolver().isOverdue(a.when(), a.deadline(), today);
-        return new GtdActionView(a.doc().getId(), a.doc().getPath(), a.title(), a.when(),
-                a.deadline(), a.contexts(), a.done(), bucket.wireName(), a.project(), overdue);
+        boolean overdue = !a.inInbox() && gtdService.bucketResolver().isOverdue(a.when(), a.deadline(), today);
+        return new GtdActionView(
+                a.doc().getId(),
+                a.doc().getPath(),
+                a.title(),
+                a.when(),
+                a.deadline(),
+                a.contexts(),
+                a.done(),
+                bucket.wireName(),
+                a.project(),
+                overdue);
     }
 
     private GtdActionContentView toContentView(DocumentDocument doc) {
         GtdActionDocument action = gtdService.readAction(doc);
         String project = projectOf(doc.getPath());
-        return new GtdActionContentView(doc.getId(), doc.getPath(), action.title(),
-                action.when(), action.deadline(), action.contexts(), action.done(),
-                project, action.body());
+        return new GtdActionContentView(
+                doc.getId(),
+                doc.getPath(),
+                action.title(),
+                action.when(),
+                action.deadline(),
+                action.contexts(),
+                action.done(),
+                project,
+                action.body());
     }
 
     private static @Nullable String projectOf(String path) {
@@ -318,8 +366,8 @@ public class GtdAppController {
     }
 
     private static GtdStatsView toStatsView(GtdStatsBuilder.Stats s) {
-        return new GtdStatsView(s.totalOpen(), s.done(), s.overdue(),
-                s.bucketCounts(), s.contextCounts(), s.projectCounts());
+        return new GtdStatsView(
+                s.totalOpen(), s.done(), s.overdue(), s.bucketCounts(), s.contextCounts(), s.projectCounts());
     }
 
     private static String bucketTitle(GtdBucket b) {
@@ -337,7 +385,8 @@ public class GtdAppController {
         return result.artefacts().stream()
                 .filter(a -> name.equals(a.name()))
                 .map(VanceApplication.ArtefactResult::path)
-                .findFirst().orElse(null);
+                .findFirst()
+                .orElse(null);
     }
 
     private static @Nullable String firstNonBlank(@Nullable String a, @Nullable String b) {

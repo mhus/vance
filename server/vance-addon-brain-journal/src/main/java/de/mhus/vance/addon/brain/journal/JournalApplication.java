@@ -125,7 +125,7 @@ public class JournalApplication implements VanceApplication {
                     null,
                     YAML_MIME,
                     DocumentService.TOOL_IDENTITY,
-                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), manifestPath));
+                    contextFactory.writeActor(ctx.toolContext(), manifestPath));
         } else {
             try (InputStream in = new ByteArrayInputStream(manifestBody.getBytes(StandardCharsets.UTF_8))) {
                 stored = documentService.create(
@@ -137,14 +137,14 @@ public class JournalApplication implements VanceApplication {
                         YAML_MIME,
                         in,
                         ctx.userId(),
-                        contextFactory.writeActor(ctx.tenantId(), ctx.userId(), manifestPath));
+                        contextFactory.writeActor(ctx.toolContext(), manifestPath));
             } catch (IOException e) {
                 throw new ToolException("Could not write manifest '" + manifestPath + "': " + e.getMessage(), e);
             }
         }
 
-        RefreshContext rc =
-                new RefreshContext(ctx.tenantId(), ctx.projectName(), folder, ctx.userId(), ctx.processId());
+        RefreshContext rc = new RefreshContext(
+                ctx.tenantId(), ctx.projectName(), folder, ctx.userId(), ctx.processId(), ctx.confinedToProject());
         RefreshResult refresh = refresh(rc);
 
         log.info("JournalApplication.create tenant='{}' folder='{}'", ctx.tenantId(), folder);
@@ -233,7 +233,7 @@ public class JournalApplication implements VanceApplication {
                     null,
                     mime,
                     DocumentService.TOOL_IDENTITY,
-                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), outputPath));
+                    contextFactory.writeActor(ctx.toolContext(), outputPath));
         }
         try (InputStream in = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))) {
             return documentService.create(
@@ -245,7 +245,7 @@ public class JournalApplication implements VanceApplication {
                     mime,
                     in,
                     ctx.userId(),
-                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), outputPath));
+                    contextFactory.writeActor(ctx.toolContext(), outputPath));
         } catch (IOException e) {
             throw new ToolException("Could not write artefact '" + outputPath + "': " + e.getMessage(), e);
         }

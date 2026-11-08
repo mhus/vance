@@ -134,7 +134,7 @@ public class AppRebuildTool implements Tool {
 
         VanceApplication app = registry.require(manifest.app());
         VanceApplication.RefreshContext rc = new VanceApplication.RefreshContext(
-                ctx.tenantId(), projectName, normalisedFolder, ctx.userId(), ctx.processId());
+                ctx.tenantId(), projectName, normalisedFolder, ctx.userId(), ctx.processId(), ctx.confinedToProject());
 
         VanceApplication.RefreshResult result = app.refresh(rc);
         log.info(

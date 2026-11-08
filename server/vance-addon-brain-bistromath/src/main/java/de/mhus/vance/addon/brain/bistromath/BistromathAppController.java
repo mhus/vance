@@ -2,6 +2,7 @@ package de.mhus.vance.addon.brain.bistromath;
 
 import de.mhus.vance.brain.applications.VanceApplication.RefreshContext;
 import de.mhus.vance.brain.permission.RequestAuthority;
+import de.mhus.vance.brain.permission.SecurityContextFactory;
 import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
@@ -10,11 +11,11 @@ import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -54,10 +55,11 @@ public class BistromathAppController {
     private final RequestAuthority authority;
 
     @GetMapping("/brain/{tenant}/addon/bistromath/scan")
-    public AppScan scan(@PathVariable String tenant,
-                        @RequestParam String projectId,
-                        @RequestParam String folder,
-                        HttpServletRequest request) {
+    public AppScan scan(
+            @PathVariable String tenant,
+            @RequestParam String projectId,
+            @RequestParam String folder,
+            HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.READ);
         return refuseIfForbidden(viewService.scan(tenant, projectId, folder));
     }
@@ -83,7 +85,8 @@ public class BistromathAppController {
 
     private static void refuseIfForbidden(AppPolicy policy) {
         if (policy.forbids()) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
                     "Custom applications are not permitted here."
                             + " A tenant admin decides this in _vance/config/applications.yaml"
                             + " (in the _tenant project).");
@@ -98,12 +101,13 @@ public class BistromathAppController {
      * has a handle, and from the Cortex, where a document has a path.
      */
     @GetMapping("/brain/{tenant}/addon/bistromath/view")
-    public RenderedView view(@PathVariable String tenant,
-                             @RequestParam String projectId,
-                             @RequestParam(required = false) @Nullable String folder,
-                             @RequestParam(required = false) @Nullable String handle,
-                             @RequestParam(required = false) @Nullable String path,
-                             HttpServletRequest request) {
+    public RenderedView view(
+            @PathVariable String tenant,
+            @RequestParam String projectId,
+            @RequestParam(required = false) @Nullable String folder,
+            @RequestParam(required = false) @Nullable String handle,
+            @RequestParam(required = false) @Nullable String path,
+            HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.READ);
         if (path != null && !path.isBlank()) {
             // A view opened by its own path in the Cortex — the same policy has
@@ -116,8 +120,7 @@ public class BistromathAppController {
             return viewService.viewByPath(tenant, projectId, path.trim());
         }
         if (folder == null || folder.isBlank()) {
-            throw new ToolException("Name the view: either `folder` (and optionally `handle`)"
-                    + " or `path`.");
+            throw new ToolException("Name the view: either `folder` (and optionally `handle`)" + " or `path`.");
         }
         refuseIfForbidden(viewService.scan(tenant, projectId, folder));
         return viewService.view(tenant, projectId, folder, handle);
@@ -162,8 +165,7 @@ public class BistromathAppController {
             // A request has to have an asker: the item is assigned to a decider
             // and shows who wants it, and "somebody" is not an answer they can
             // act on.
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "Only a signed-in user can request a release.");
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a signed-in user can request a release.");
         }
         try {
             return releaseRequests.request(tenant, projectId, folder, user, reason);
@@ -187,12 +189,12 @@ public class BistromathAppController {
      *
      * <p>Plain text, not JSON: it is source code on its way into an evaluator.
      */
-    @GetMapping(value = "/brain/{tenant}/addon/bistromath/script",
-                produces = "text/plain; charset=utf-8")
-    public String script(@PathVariable String tenant,
-                         @RequestParam String projectId,
-                         @RequestParam String path,
-                         HttpServletRequest request) {
+    @GetMapping(value = "/brain/{tenant}/addon/bistromath/script", produces = "text/plain; charset=utf-8")
+    public String script(
+            @PathVariable String tenant,
+            @RequestParam String projectId,
+            @RequestParam String path,
+            HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.READ);
         return requireResolver.read(tenant, projectId, path);
     }
@@ -205,16 +207,22 @@ public class BistromathAppController {
      * regenerated index for anybody who wants it.
      */
     @PostMapping("/brain/{tenant}/addon/bistromath/rebuild")
-    public AppScan rebuild(@PathVariable String tenant,
-                           @RequestParam String projectId,
-                           @RequestParam String folder,
-                           HttpServletRequest request) {
+    public AppScan rebuild(
+            @PathVariable String tenant,
+            @RequestParam String projectId,
+            @RequestParam String folder,
+            HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.WRITE);
         // The policy is checked *before* the rebuild: a forbidden app should
         // not have its index rewritten as a side effect of asking about it.
         refuseIfForbidden(viewService.scan(tenant, projectId, folder));
-        application.refresh(new RefreshContext(tenant, projectId, folder,
-                currentUser(request), null));
+        application.refresh(new RefreshContext(
+                tenant,
+                projectId,
+                folder,
+                currentUser(request),
+                null,
+                SecurityContextFactory.credentialProjectConfinement(request)));
         return viewService.scan(tenant, projectId, folder);
     }
 

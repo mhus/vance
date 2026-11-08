@@ -136,7 +136,7 @@ public class SlideshowApplication implements VanceApplication {
                     null,
                     YAML_MIME,
                     de.mhus.vance.shared.document.DocumentService.TOOL_IDENTITY,
-                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), manifestPath));
+                    contextFactory.writeActor(ctx.toolContext(), manifestPath));
         } else {
             try (InputStream in = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))) {
                 stored = documentService.create(
@@ -148,7 +148,7 @@ public class SlideshowApplication implements VanceApplication {
                         YAML_MIME,
                         in,
                         ctx.userId(),
-                        contextFactory.writeActor(ctx.tenantId(), ctx.userId(), manifestPath));
+                        contextFactory.writeActor(ctx.toolContext(), manifestPath));
             } catch (IOException e) {
                 throw new ToolException("Could not write manifest '" + manifestPath + "': " + e.getMessage(), e);
             }
@@ -157,8 +157,8 @@ public class SlideshowApplication implements VanceApplication {
         // Run refresh so the index is ready immediately. Slideshow
         // apps almost always have images already in the folder when
         // the manifest is created.
-        RefreshContext rc =
-                new RefreshContext(ctx.tenantId(), ctx.projectName(), folder, ctx.userId(), ctx.processId());
+        RefreshContext rc = new RefreshContext(
+                ctx.tenantId(), ctx.projectName(), folder, ctx.userId(), ctx.processId(), ctx.confinedToProject());
         RefreshResult refresh = refresh(rc);
 
         log.info(
@@ -296,7 +296,7 @@ public class SlideshowApplication implements VanceApplication {
                     null,
                     mime,
                     de.mhus.vance.shared.document.DocumentService.TOOL_IDENTITY,
-                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), outputPath));
+                    contextFactory.writeActor(ctx.toolContext(), outputPath));
         }
         try (InputStream in = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))) {
             return documentService.create(
@@ -308,7 +308,7 @@ public class SlideshowApplication implements VanceApplication {
                     mime,
                     in,
                     ctx.userId(),
-                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), outputPath));
+                    contextFactory.writeActor(ctx.toolContext(), outputPath));
         } catch (IOException e) {
             throw new ToolException("Could not write artefact '" + outputPath + "': " + e.getMessage(), e);
         }

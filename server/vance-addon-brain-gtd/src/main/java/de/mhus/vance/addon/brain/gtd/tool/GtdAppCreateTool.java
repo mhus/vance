@@ -90,7 +90,14 @@ public class GtdAppCreateTool implements Tool {
         appParams.remove("overwrite");
         appParams.remove("projectId");
         VanceApplication.CreateContext cc = new VanceApplication.CreateContext(
-                ctx.tenantId(), project.getName(), folder, ctx.userId(), ctx.processId(), overwrite, appParams);
+                ctx.tenantId(),
+                project.getName(),
+                folder,
+                ctx.userId(),
+                ctx.processId(),
+                overwrite,
+                appParams,
+                ctx.confinedToProject());
         return application.create(cc).toMap();
     }
 

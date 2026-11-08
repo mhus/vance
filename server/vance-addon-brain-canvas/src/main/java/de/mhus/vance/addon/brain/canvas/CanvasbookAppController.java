@@ -2,6 +2,7 @@ package de.mhus.vance.addon.brain.canvas;
 
 import de.mhus.vance.brain.applications.VanceApplication;
 import de.mhus.vance.brain.permission.RequestAuthority;
+import de.mhus.vance.brain.permission.SecurityContextFactory;
 import de.mhus.vance.brain.tools.document.DocumentLinkBuilder;
 import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.document.DocumentDocument;
@@ -48,39 +49,39 @@ public class CanvasbookAppController {
     // ── Canvasbook (app) ──────────────────────────────────────────
 
     @GetMapping("/brain/{tenant}/addon/canvas/scan")
-    public CanvasbookView scan(@PathVariable String tenant,
-                               @RequestParam String projectId,
-                               @RequestParam String folder,
-                               HttpServletRequest request) {
+    public CanvasbookView scan(
+            @PathVariable String tenant,
+            @RequestParam String projectId,
+            @RequestParam String folder,
+            HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.READ);
         CanvasbookFolderReader.Scan scan = folderReader.scan(tenant, projectId, folder);
 
         List<CanvasbookPageView> pages = new ArrayList<>();
         for (CanvasbookFolderReader.Page p : scan.pages()) {
             pages.add(new CanvasbookPageView(
-                    p.doc().getId(), p.doc().getPath(), p.relativePath(),
-                    p.title(), p.description()));
+                    p.doc().getId(), p.doc().getPath(), p.relativePath(), p.title(), p.description()));
         }
 
         String landingPath = null;
         String landingId = null;
         if (scan.landingPage() != null) {
             landingPath = scan.folder() + "/" + scan.landingPage();
-            Optional<DocumentDocument> lp =
-                    documentService.findByPath(tenant, projectId, landingPath);
+            Optional<DocumentDocument> lp = documentService.findByPath(tenant, projectId, landingPath);
             if (lp.isPresent()) landingId = lp.get().getId();
         }
 
-        return new CanvasbookView(scan.folder(), scan.config().title(),
-                scan.config().description(), landingPath, landingId, pages);
+        return new CanvasbookView(
+                scan.folder(), scan.config().title(), scan.config().description(), landingPath, landingId, pages);
     }
 
     @PostMapping("/brain/{tenant}/addon/canvas/page")
-    public CanvasbookPageView createPage(@PathVariable String tenant,
-                                         @RequestParam String projectId,
-                                         @RequestParam String folder,
-                                         @RequestBody CanvasbookCreatePageRequest req,
-                                         HttpServletRequest request) {
+    public CanvasbookPageView createPage(
+            @PathVariable String tenant,
+            @RequestParam String projectId,
+            @RequestParam String folder,
+            @RequestBody CanvasbookCreatePageRequest req,
+            HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.CREATE);
         String normalised = CanvasbookFolderReader.normaliseFolder(folder);
         String title = req.title();
@@ -89,53 +90,66 @@ public class CanvasbookAppController {
                 : CanvasbookApplication.slugify(title != null ? title : "canvas");
 
         DocumentDocument stored = canvasService.create(
-                tenant, projectId, normalised + "/" + slug, title, req.description(),
-                currentUser(request));
+                tenant, projectId, normalised + "/" + slug, title, req.description(), currentUser(request));
         application.refresh(new VanceApplication.RefreshContext(
-                tenant, projectId, normalised, currentUser(request), null));
+                tenant,
+                projectId,
+                normalised,
+                currentUser(request),
+                null,
+                SecurityContextFactory.credentialProjectConfinement(request)));
 
         String rel = stored.getPath().startsWith(normalised + "/")
-                ? stored.getPath().substring(normalised.length() + 1) : stored.getPath();
-        return new CanvasbookPageView(stored.getId(), stored.getPath(), rel,
-                title != null ? title : slug, req.description());
+                ? stored.getPath().substring(normalised.length() + 1)
+                : stored.getPath();
+        return new CanvasbookPageView(
+                stored.getId(), stored.getPath(), rel, title != null ? title : slug, req.description());
     }
 
     @PostMapping("/brain/{tenant}/addon/canvas/rebuild")
-    public CanvasbookRebuildResponse rebuild(@PathVariable String tenant,
-                                             @RequestParam String projectId,
-                                             @RequestParam String folder,
-                                             HttpServletRequest request) {
+    public CanvasbookRebuildResponse rebuild(
+            @PathVariable String tenant,
+            @RequestParam String projectId,
+            @RequestParam String folder,
+            HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.WRITE);
-        VanceApplication.RefreshResult result = application.refresh(
-                new VanceApplication.RefreshContext(
-                        tenant, projectId, folder, currentUser(request), null));
-        VanceApplication.ArtefactResult index = result.artefacts().isEmpty()
-                ? null : result.artefacts().get(0);
-        int pageCount = index != null
-                ? ((Number) index.stats().getOrDefault("pageCount", 0)).intValue() : 0;
-        return new CanvasbookRebuildResponse(result.folder(),
+        VanceApplication.RefreshResult result = application.refresh(new VanceApplication.RefreshContext(
+                tenant,
+                projectId,
+                folder,
+                currentUser(request),
+                null,
+                SecurityContextFactory.credentialProjectConfinement(request)));
+        VanceApplication.ArtefactResult index =
+                result.artefacts().isEmpty() ? null : result.artefacts().get(0);
+        int pageCount = index != null ? ((Number) index.stats().getOrDefault("pageCount", 0)).intValue() : 0;
+        return new CanvasbookRebuildResponse(
+                result.folder(),
                 index != null ? index.path() : "",
-                index != null ? index.markdownLink() : null, pageCount);
+                index != null ? index.markdownLink() : null,
+                pageCount);
     }
 
     // ── Canvas page graph (kind: canvas) ──────────────────────────
 
     @GetMapping("/brain/{tenant}/addon/canvas/graph")
-    public CanvasGraphDto getGraph(@PathVariable String tenant,
-                                   @RequestParam String projectId,
-                                   @RequestParam String path,
-                                   HttpServletRequest request) {
+    public CanvasGraphDto getGraph(
+            @PathVariable String tenant,
+            @RequestParam String projectId,
+            @RequestParam String path,
+            HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.READ);
         DocumentDocument doc = requireCanvas(tenant, projectId, path);
         return CanvasDtoMapper.toDto(canvasService.readDocument(doc));
     }
 
     @PutMapping("/brain/{tenant}/addon/canvas/graph")
-    public CanvasGraphDto putGraph(@PathVariable String tenant,
-                                   @RequestParam String projectId,
-                                   @RequestParam String path,
-                                   @RequestBody CanvasGraphDto body,
-                                   HttpServletRequest request) {
+    public CanvasGraphDto putGraph(
+            @PathVariable String tenant,
+            @RequestParam String projectId,
+            @RequestParam String path,
+            @RequestBody CanvasGraphDto body,
+            HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.WRITE);
         DocumentDocument doc = requireCanvas(tenant, projectId, path);
         DocumentDocument saved = canvasService.writeDocument(doc, CanvasDtoMapper.fromDto(body), currentUser(request));
@@ -145,11 +159,12 @@ public class CanvasbookAppController {
     // ── Document picker / embed resolution ───────────────────────
 
     @GetMapping("/brain/{tenant}/addon/canvas/documents/search")
-    public CanvasDocSearchResponse searchDocuments(@PathVariable String tenant,
-                                                   @RequestParam String projectId,
-                                                   @RequestParam(required = false) @Nullable String query,
-                                                   @RequestParam(defaultValue = "40") int size,
-                                                   HttpServletRequest request) {
+    public CanvasDocSearchResponse searchDocuments(
+            @PathVariable String tenant,
+            @RequestParam String projectId,
+            @RequestParam(required = false) @Nullable String query,
+            @RequestParam(defaultValue = "40") int size,
+            HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.READ);
         int limit = Math.min(Math.max(size, 1), 200);
         DocumentService.DocumentListing listing =
@@ -162,25 +177,26 @@ public class CanvasbookAppController {
     }
 
     @GetMapping("/brain/{tenant}/addon/canvas/document")
-    public CanvasDocItem resolveDocument(@PathVariable String tenant,
-                                         @RequestParam String projectId,
-                                         @RequestParam String path,
-                                         HttpServletRequest request) {
+    public CanvasDocItem resolveDocument(
+            @PathVariable String tenant,
+            @RequestParam String projectId,
+            @RequestParam String path,
+            HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.READ);
-        DocumentDocument doc = documentService.findByPath(tenant, projectId, path)
+        DocumentDocument doc = documentService
+                .findByPath(tenant, projectId, path)
                 .orElseThrow(() -> new ToolException("No document at '" + path + "'."));
-        return new CanvasDocItem(doc.getId(), doc.getPath(), doc.getTitle(),
-                doc.getKind(), doc.getMimeType());
+        return new CanvasDocItem(doc.getId(), doc.getPath(), doc.getTitle(), doc.getKind(), doc.getMimeType());
     }
 
     // ── Helpers ───────────────────────────────────────────────────
 
     private DocumentDocument requireCanvas(String tenant, String projectId, String path) {
-        DocumentDocument doc = documentService.findByPath(tenant, projectId, path)
+        DocumentDocument doc = documentService
+                .findByPath(tenant, projectId, path)
                 .orElseThrow(() -> new ToolException("No canvas at '" + path + "'."));
         if (!CanvasService.KIND.equals(doc.getKind())) {
-            throw new ToolException("Document '" + path + "' is not a canvas (kind="
-                    + doc.getKind() + ").");
+            throw new ToolException("Document '" + path + "' is not a canvas (kind=" + doc.getKind() + ").");
         }
         return doc;
     }

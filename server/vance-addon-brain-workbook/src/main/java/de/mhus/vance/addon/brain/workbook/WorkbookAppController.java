@@ -6,6 +6,7 @@ import de.mhus.vance.addon.brain.workbook.action.WorkbookButtonService;
 import de.mhus.vance.addon.brain.workpage.WorkPageService;
 import de.mhus.vance.brain.applications.VanceApplication;
 import de.mhus.vance.brain.permission.RequestAuthority;
+import de.mhus.vance.brain.permission.SecurityContextFactory;
 import de.mhus.vance.brain.tools.document.DocumentLinkBuilder;
 import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.document.DocumentDocument;
@@ -814,8 +815,13 @@ public class WorkbookAppController {
 
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.WRITE);
         String normalised = WorkbookFolderReader.normaliseFolder(folder);
-        VanceApplication.RefreshContext rc =
-                new VanceApplication.RefreshContext(tenant, projectId, normalised, null, null);
+        VanceApplication.RefreshContext rc = new VanceApplication.RefreshContext(
+                tenant,
+                projectId,
+                normalised,
+                null,
+                null,
+                SecurityContextFactory.credentialProjectConfinement(httpRequest));
         VanceApplication.RefreshResult result = application.refresh(rc);
 
         VanceApplication.ArtefactResult index =

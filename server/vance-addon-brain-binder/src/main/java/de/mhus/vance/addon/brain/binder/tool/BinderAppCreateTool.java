@@ -106,7 +106,14 @@ public class BinderAppCreateTool implements Tool {
         appParams.remove("projectId");
 
         VanceApplication.CreateContext cc = new VanceApplication.CreateContext(
-                ctx.tenantId(), project.getName(), folder, ctx.userId(), ctx.processId(), overwrite, appParams);
+                ctx.tenantId(),
+                project.getName(),
+                folder,
+                ctx.userId(),
+                ctx.processId(),
+                overwrite,
+                appParams,
+                ctx.confinedToProject());
         VanceApplication.CreateResult result = application.create(cc);
 
         log.info("BinderAppCreateTool folder='{}' title='{}'", folder, BinderToolSupport.paramString(params, "title"));

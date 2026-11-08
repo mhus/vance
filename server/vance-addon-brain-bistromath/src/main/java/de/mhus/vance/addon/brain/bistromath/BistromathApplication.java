@@ -54,8 +54,8 @@ public class BistromathApplication implements VanceApplication {
 
     private final RequireResolver requireResolver;
 
-    public BistromathApplication(BistromathStore store, DocumentLinkBuilder linkBuilder,
-                                 RequireResolver requireResolver) {
+    public BistromathApplication(
+            BistromathStore store, DocumentLinkBuilder linkBuilder, RequireResolver requireResolver) {
         this.store = store;
         this.linkBuilder = linkBuilder;
         this.requireResolver = requireResolver;
@@ -105,38 +105,53 @@ public class BistromathApplication implements VanceApplication {
 
         // No `landing`: with one view it is the first one anyway, and a key that
         // states the only possibility is noise.
-        DocumentDocument manifest = store.writeManifest(ctx.tenantId(), ctx.projectName(),
-                folder, title, description, BistromathConfig.empty(), ctx.userId());
+        DocumentDocument manifest = store.writeManifest(
+                ctx.tenantId(), ctx.projectName(), folder, title, description, BistromathConfig.empty(), ctx.userId());
 
-        store.writeDocument(ctx.tenantId(), ctx.projectName(), viewPath, label,
-                BistromathStore.YAML_MIME, starterView(label),
-                List.of(BistromathConfig.VIEW_KIND), ctx.userId());
+        store.writeDocument(
+                ctx.tenantId(),
+                ctx.projectName(),
+                viewPath,
+                label,
+                BistromathStore.YAML_MIME,
+                starterView(label),
+                List.of(BistromathConfig.VIEW_KIND),
+                ctx.userId());
 
-        store.writeDocument(ctx.tenantId(), ctx.projectName(), programPath, label + " — program",
-                BistromathStore.JS_MIME, starterProgram(),
-                List.of(APP_NAME, "program"), ctx.userId());
+        store.writeDocument(
+                ctx.tenantId(),
+                ctx.projectName(),
+                programPath,
+                label + " — program",
+                BistromathStore.JS_MIME,
+                starterProgram(),
+                List.of(APP_NAME, "program"),
+                ctx.userId());
 
-        RefreshResult refresh = refresh(new RefreshContext(ctx.tenantId(), ctx.projectName(),
-                folder, ctx.userId(), ctx.processId()));
+        RefreshResult refresh = refresh(new RefreshContext(
+                ctx.tenantId(), ctx.projectName(), folder, ctx.userId(), ctx.processId(), ctx.confinedToProject()));
 
-        log.info("BistromathApplication.create tenant='{}' folder='{}'",
-                ctx.tenantId(), folder);
+        log.info("BistromathApplication.create tenant='{}' folder='{}'", ctx.tenantId(), folder);
 
         Map<String, Object> stats = new LinkedHashMap<>();
         stats.put("viewCount", 1);
 
-        return new CreateResult(APP_NAME, folder, manifest.getPath(),
+        return new CreateResult(
+                APP_NAME,
+                folder,
+                manifest.getPath(),
                 linkBuilder.linkFor(manifest, ctx.projectName()),
-                List.of(), refresh.artefacts(),
-                "Open the app and press Hello. Shape the page in `" + viewPath
-                        + "`, the behaviour in `" + programPath + "`.",
+                List.of(),
+                refresh.artefacts(),
+                "Open the app and press Hello. Shape the page in `" + viewPath + "`, the behaviour in `" + programPath
+                        + "`.",
                 stats);
     }
 
     private void requireAbsent(CreateContext ctx, String path, String what) {
         if (store.documentExists(ctx.tenantId(), ctx.projectName(), path)) {
-            throw new ToolException("A document already exists at '" + path + "' (the app's "
-                    + what + "). Move or delete it, or pass overwrite=true to replace it.");
+            throw new ToolException("A document already exists at '" + path + "' (the app's " + what
+                    + "). Move or delete it, or pass overwrite=true to replace it.");
         }
     }
 
@@ -151,13 +166,12 @@ public class BistromathApplication implements VanceApplication {
     public RefreshResult refresh(RefreshContext ctx) {
         String folder = BistromathStore.normaliseFolder(ctx.folder());
         BistromathStore.Loaded loaded = store.load(ctx.tenantId(), ctx.projectName(), folder);
-        BistromathStore.Discovered found =
-                store.discoverViews(ctx.tenantId(), ctx.projectName(), folder);
+        BistromathStore.Discovered found = store.discoverViews(ctx.tenantId(), ctx.projectName(), folder);
 
         List<String> problems = new ArrayList<>(found.problems());
         if (found.views().isEmpty()) {
-            problems.add("No view found. A view is a document whose `$meta.kind` is `"
-                    + BistromathConfig.VIEW_KIND + "`; without one the app opens empty.");
+            problems.add("No view found. A view is a document whose `$meta.kind` is `" + BistromathConfig.VIEW_KIND
+                    + "`; without one the app opens empty.");
         }
         for (ViewRef view : found.views()) {
             try {
@@ -168,11 +182,9 @@ public class BistromathApplication implements VanceApplication {
         }
 
         BistromathConfig config = loaded.config();
-        Optional<DocumentDocument> program =
-                store.findProgram(ctx.tenantId(), ctx.projectName(), folder, config);
+        Optional<DocumentDocument> program = store.findProgram(ctx.tenantId(), ctx.projectName(), folder, config);
         if (program.isEmpty() && config.init() != null) {
-            problems.add("The manifest names `init: " + config.init()
-                    + "`, but no document is there.");
+            problems.add("The manifest names `init: " + config.init() + "`, but no document is there.");
         }
         String landing = config.landing();
         if (landing != null && found.views().stream().noneMatch(v -> v.handle().equals(landing))) {
@@ -185,17 +197,31 @@ public class BistromathApplication implements VanceApplication {
         // Resolved here as well as in the scan, and on purpose: refresh is the
         // app's validator, so a missing library has to be a *rebuild* problem
         // and not only something the reader finds when opening the app.
-        RequireReport requires = requireResolver.resolve(ctx.tenantId(), ctx.projectName(),
-                folder, config, found.views(),
+        RequireReport requires = requireResolver.resolve(
+                ctx.tenantId(),
+                ctx.projectName(),
+                folder,
+                config,
+                found.views(),
                 program.map(DocumentDocument::getPath).orElse(null));
         problems.addAll(requires.warnings());
         problems.addAll(requires.missing());
 
-        DocumentDocument index = store.writeDocument(ctx.tenantId(), ctx.projectName(),
-                folder + "/" + INDEX, "Index — " + title, MD_MIME,
-                renderIndex(found.views(), config, program.map(DocumentDocument::getPath)
-                        .orElse(null), title, problems, requires),
-                List.of(APP_NAME, "generated", "index"), ctx.userId());
+        DocumentDocument index = store.writeDocument(
+                ctx.tenantId(),
+                ctx.projectName(),
+                folder + "/" + INDEX,
+                "Index — " + title,
+                MD_MIME,
+                renderIndex(
+                        found.views(),
+                        config,
+                        program.map(DocumentDocument::getPath).orElse(null),
+                        title,
+                        problems,
+                        requires),
+                List.of(APP_NAME, "generated", "index"),
+                ctx.userId());
 
         Map<String, Object> stats = new LinkedHashMap<>();
         stats.put("viewCount", found.views().size());
@@ -203,12 +229,18 @@ public class BistromathApplication implements VanceApplication {
         stats.put("problemCount", problems.size());
         if (!problems.isEmpty()) stats.put("problems", List.copyOf(problems));
 
-        log.info("BistromathApplication.refresh tenant='{}' folder='{}' views={} problems={}",
-                ctx.tenantId(), folder, found.views().size(), problems.size());
+        log.info(
+                "BistromathApplication.refresh tenant='{}' folder='{}' views={} problems={}",
+                ctx.tenantId(),
+                folder,
+                found.views().size(),
+                problems.size());
 
-        return new RefreshResult(APP_NAME, folder, List.of(new ArtefactResult(
-                "index", index.getPath(), linkBuilder.linkFor(index, ctx.projectName()),
-                stats)));
+        return new RefreshResult(
+                APP_NAME,
+                folder,
+                List.of(new ArtefactResult(
+                        "index", index.getPath(), linkBuilder.linkFor(index, ctx.projectName()), stats)));
     }
 
     /** An abacus: this app computes from what is written down. */
@@ -228,22 +260,24 @@ public class BistromathApplication implements VanceApplication {
         List<StatusItem> items = new ArrayList<>();
         for (ViewRef v : found.views()) {
             if (items.size() >= STATUS_ITEM_LIMIT) break;
-            items.add(new StatusItem(v.title() == null ? v.handle() : v.title(),
-                    v.handle(), null, null));
+            items.add(new StatusItem(v.title() == null ? v.handle() : v.title(), v.handle(), null, null));
         }
         List<StatusMetric> metrics = new ArrayList<>();
         metrics.add(new StatusMetric("Views", Integer.toString(found.views().size())));
         if (!found.problems().isEmpty()) {
-            metrics.add(new StatusMetric("Problems",
-                    Integer.toString(found.problems().size())));
+            metrics.add(new StatusMetric(
+                    "Problems", Integer.toString(found.problems().size())));
         }
         int views = found.views().size();
         String headline = views == 1 ? "1 view" : views + " views";
         // ATTENTION, not BLOCKED: a reported problem means one view or handle is
         // unusable, never that the app cannot open.
-        return Optional.of(new AppStatus(headline,
+        return Optional.of(new AppStatus(
+                headline,
                 found.problems().isEmpty() ? StatusSeverity.OK : StatusSeverity.ATTENTION,
-                metrics, items, null));
+                metrics,
+                items,
+                null));
     }
 
     /**
@@ -259,11 +293,10 @@ public class BistromathApplication implements VanceApplication {
         if (ctx.purpose() != TargetPurpose.NAVIGATE) return List.of();
         BistromathStore.Discovered found;
         try {
-            found = store.discoverViews(ctx.tenantId(), ctx.projectName(),
-                    BistromathStore.normaliseFolder(ctx.folder()));
+            found = store.discoverViews(
+                    ctx.tenantId(), ctx.projectName(), BistromathStore.normaliseFolder(ctx.folder()));
         } catch (RuntimeException e) {
-            log.debug("BistromathApplication.targets folder='{}' unreadable: {}",
-                    ctx.folder(), e.toString());
+            log.debug("BistromathApplication.targets folder='{}' unreadable: {}", ctx.folder(), e.toString());
             return List.of();
         }
         List<AppTarget> out = new ArrayList<>(found.views().size());
@@ -295,15 +328,19 @@ public class BistromathApplication implements VanceApplication {
                     + ". The manifest is `" + BistromathStore.manifestPath(folder)
                     + "` — read and repair it with the document tools.\n";
         }
-        BistromathStore.Discovered found =
-                store.discoverViews(ctx.tenantId(), ctx.projectName(), folder);
+        BistromathStore.Discovered found = store.discoverViews(ctx.tenantId(), ctx.projectName(), folder);
 
         StringBuilder sb = new StringBuilder();
-        sb.append("You are in a Bistromath app at `").append(folder).append("`.\n")
+        sb.append("You are in a Bistromath app at `")
+                .append(folder)
+                .append("`.\n")
                 .append("This app is DEFINED BY ITS DOCUMENTS, not by compiled code. A view is")
-                .append(" a document with `$meta.kind: ").append(BistromathConfig.VIEW_KIND)
+                .append(" a document with `$meta.kind: ")
+                .append(BistromathConfig.VIEW_KIND)
                 .append("` holding a widget tree; the behaviour is JavaScript in `")
-                .append(folder).append('/').append(loaded.config().program())
+                .append(folder)
+                .append('/')
+                .append(loaded.config().program())
                 .append("`, which runs in a sandbox and reaches the server only through the")
                 .append(" `vance.*` API. You can change what this app does with the ordinary")
                 .append(" document tools — never say a change needs a new release.\n");
@@ -313,7 +350,11 @@ public class BistromathApplication implements VanceApplication {
         } else {
             sb.append("Views (handle ← file name):\n");
             for (ViewRef v : found.views()) {
-                sb.append("- `").append(v.handle()).append("` → `").append(v.path()).append("`\n");
+                sb.append("- `")
+                        .append(v.handle())
+                        .append("` → `")
+                        .append(v.path())
+                        .append("`\n");
             }
         }
         sb.append("A widget shows state via `from: <key>`; the program writes it with")
@@ -324,7 +365,9 @@ public class BistromathApplication implements VanceApplication {
                 .append("A `form` is EDITABLE and writes what the reader types back into its")
                 .append(" `from:` key; a `details` shows the same field list read-only. Nothing")
                 .append(" is stored until the program calls `vance.documents.write`.\n")
-                .append("Run `app_rebuild(folder=\"").append(folder).append("\")` after editing")
+                .append("Run `app_rebuild(folder=\"")
+                .append(folder)
+                .append("\")` after editing")
                 .append(" — it re-reads every view and reports what does not parse.\n");
         if (!found.problems().isEmpty()) {
             sb.append("Current problems:\n");
@@ -457,9 +500,13 @@ public class BistromathApplication implements VanceApplication {
                 """;
     }
 
-    static String renderIndex(List<ViewRef> views, BistromathConfig config,
-                              @Nullable String programPath, String title,
-                              List<String> problems, RequireReport requires) {
+    static String renderIndex(
+            List<ViewRef> views,
+            BistromathConfig config,
+            @Nullable String programPath,
+            String title,
+            List<String> problems,
+            RequireReport requires) {
         String heading = oneLine(title);
         StringBuilder sb = new StringBuilder();
         sb.append("---\n$meta:\n  kind: workpage\n");
@@ -491,8 +538,13 @@ public class BistromathApplication implements VanceApplication {
             for (LoadedScript sc : requires.scripts()) {
                 sb.append("1. `").append(sc.path()).append('`');
                 if (sc.name() != null) {
-                    sb.append(" — ").append(sc.name()).append('@').append(sc.version())
-                            .append(" (").append(sc.origin()).append(')');
+                    sb.append(" — ")
+                            .append(sc.name())
+                            .append('@')
+                            .append(sc.version())
+                            .append(" (")
+                            .append(sc.origin())
+                            .append(')');
                 }
                 if (sc.askedBy() != null) {
                     sb.append(" ← ").append(mdText(oneLine(sc.askedBy())));
@@ -509,9 +561,13 @@ public class BistromathApplication implements VanceApplication {
             sb.append("None found.\n\n");
         } else {
             for (ViewRef v : views) {
-                sb.append("- `").append(v.handle()).append("` — ")
+                sb.append("- `")
+                        .append(v.handle())
+                        .append("` — ")
                         .append(mdText(oneLine(v.title() == null ? v.handle() : v.title())))
-                        .append(" (`").append(v.path()).append("`)");
+                        .append(" (`")
+                        .append(v.path())
+                        .append("`)");
                 if (v.handle().equals(config.landing())) sb.append(" — landing");
                 sb.append('\n');
             }

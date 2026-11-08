@@ -305,7 +305,7 @@ public class KanbanApplication implements VanceApplication {
                     null,
                     YAML_MIME,
                     DocumentService.TOOL_IDENTITY,
-                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), manifestPath));
+                    contextFactory.writeActor(ctx.toolContext(), manifestPath));
         } else {
             try (InputStream in = new ByteArrayInputStream(manifestBody.getBytes(StandardCharsets.UTF_8))) {
                 stored = documentService.create(
@@ -317,7 +317,7 @@ public class KanbanApplication implements VanceApplication {
                         YAML_MIME,
                         in,
                         ctx.userId(),
-                        contextFactory.writeActor(ctx.tenantId(), ctx.userId(), manifestPath));
+                        contextFactory.writeActor(ctx.toolContext(), manifestPath));
             } catch (IOException e) {
                 throw new ToolException("Could not write manifest '" + manifestPath + "': " + e.getMessage(), e);
             }
@@ -350,8 +350,8 @@ public class KanbanApplication implements VanceApplication {
 
         List<ArtefactResult> artefacts;
         if (cardCountWritten > 0) {
-            RefreshContext rc =
-                    new RefreshContext(ctx.tenantId(), ctx.projectName(), folder, ctx.userId(), ctx.processId());
+            RefreshContext rc = new RefreshContext(
+                    ctx.tenantId(), ctx.projectName(), folder, ctx.userId(), ctx.processId(), ctx.confinedToProject());
             RefreshResult refresh = refresh(rc);
             artefacts = refresh.artefacts();
         } else {
@@ -472,12 +472,7 @@ public class KanbanApplication implements VanceApplication {
         }
 
         DocumentDocument moved = documentService.update(
-                cardDoc.getId(),
-                null,
-                null,
-                null,
-                newPath,
-                contextFactory.writeActor(ctx.tenantId(), ctx.userId(), newPath));
+                cardDoc.getId(), null, null, null, newPath, contextFactory.writeActor(ctx.toolContext(), newPath));
 
         log.info(
                 "KanbanApplication.moveCard tenant='{}' folder='{}' " + "card='{}' {}→{} warnings={}",
@@ -631,7 +626,7 @@ public class KanbanApplication implements VanceApplication {
                     null,
                     mime,
                     DocumentService.TOOL_IDENTITY,
-                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), outputPath));
+                    contextFactory.writeActor(ctx.toolContext(), outputPath));
         }
         try (InputStream in = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))) {
             return documentService.create(
@@ -643,7 +638,7 @@ public class KanbanApplication implements VanceApplication {
                     mime,
                     in,
                     ctx.userId(),
-                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), outputPath));
+                    contextFactory.writeActor(ctx.toolContext(), outputPath));
         } catch (IOException e) {
             throw new ToolException("Could not write artefact '" + outputPath + "': " + e.getMessage(), e);
         }
@@ -663,7 +658,7 @@ public class KanbanApplication implements VanceApplication {
                     null,
                     MD_MIME,
                     DocumentService.TOOL_IDENTITY,
-                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), path));
+                    contextFactory.writeActor(ctx.toolContext(), path));
             return;
         }
         try (ByteArrayInputStream in = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))) {
@@ -676,7 +671,7 @@ public class KanbanApplication implements VanceApplication {
                     MD_MIME,
                     in,
                     ctx.userId(),
-                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), path));
+                    contextFactory.writeActor(ctx.toolContext(), path));
         } catch (IOException e) {
             throw new ToolException("Could not write card '" + path + "': " + e.getMessage(), e);
         }

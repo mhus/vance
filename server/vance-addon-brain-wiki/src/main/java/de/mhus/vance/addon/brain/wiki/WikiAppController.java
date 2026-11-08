@@ -2,6 +2,7 @@ package de.mhus.vance.addon.brain.wiki;
 
 import de.mhus.vance.brain.applications.VanceApplication;
 import de.mhus.vance.brain.permission.RequestAuthority;
+import de.mhus.vance.brain.permission.SecurityContextFactory;
 import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
@@ -60,14 +61,17 @@ public class WikiAppController {
         List<WikiSpaceView> spaces = new ArrayList<>();
         for (String space : scanResult.spaces()) {
             int count = wikiService.pagesInSpace(scanResult, space).size();
-            String mainPath = spaceFilePath(normalised, space, WikiFolderReader.MAIN_PAGE + WikiFolderReader.PAGE_EXTENSION);
+            String mainPath =
+                    spaceFilePath(normalised, space, WikiFolderReader.MAIN_PAGE + WikiFolderReader.PAGE_EXTENSION);
             String indexPath = WikiFolderReader.indexPathFor(
                     normalised, space, scanResult.config().index().outputPath());
             String spaceTitle = space.isEmpty()
                     ? firstNonBlank(scanResult.config().title(), normalised)
                     : WikiFolderReader.humanise(leaf(space));
             spaces.add(new WikiSpaceView(
-                    space, spaceTitle, count,
+                    space,
+                    spaceTitle,
+                    count,
                     existsPath(tenant, projectId, mainPath) ? mainPath : null,
                     resolveId(tenant, projectId, mainPath),
                     indexPath,
@@ -78,7 +82,8 @@ public class WikiAppController {
         String rootIndexPath = WikiFolderReader.indexPathFor(
                 normalised, "", scanResult.config().index().outputPath());
 
-        String viewTitle = firstNonBlank(scanResult.config().title(), scanResult.manifest().getTitle());
+        String viewTitle =
+                firstNonBlank(scanResult.config().title(), scanResult.manifest().getTitle());
         return new WikiView(
                 normalised,
                 viewTitle,
@@ -101,7 +106,12 @@ public class WikiAppController {
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.WRITE);
         String normalised = WikiFolderReader.normaliseFolder(folder);
         VanceApplication.RefreshContext rc = new VanceApplication.RefreshContext(
-                tenant, projectId, normalised, currentUser(httpRequest), null);
+                tenant,
+                projectId,
+                normalised,
+                currentUser(httpRequest),
+                null,
+                SecurityContextFactory.credentialProjectConfinement(httpRequest));
         VanceApplication.RefreshResult result = application.refresh(rc);
 
         WikiFolderReader.Scan scanResult = folderReader.scan(tenant, projectId, normalised);
@@ -110,13 +120,19 @@ public class WikiAppController {
         String backlinksPath = result.artefacts().stream()
                 .filter(a -> "backlinks".equals(a.name()))
                 .map(VanceApplication.ArtefactResult::path)
-                .findFirst().orElse(null);
+                .findFirst()
+                .orElse(null);
         long indexCount = result.artefacts().stream()
-                .filter(a -> !"backlinks".equals(a.name())).count();
+                .filter(a -> !"backlinks".equals(a.name()))
+                .count();
 
         return new WikiRebuildResponse(
-                normalised, rootIndexPath, backlinksPath,
-                (int) indexCount, scanResult.pages().size(), scanResult.spaces().size());
+                normalised,
+                rootIndexPath,
+                backlinksPath,
+                (int) indexCount,
+                scanResult.pages().size(),
+                scanResult.spaces().size());
     }
 
     @PostMapping("/brain/{tenant}/addon/wiki/page")
@@ -133,11 +149,9 @@ public class WikiAppController {
         }
         String normalised = WikiFolderReader.normaliseFolder(folder);
         DocumentDocument doc = wikiService.createPage(
-                tenant, projectId, normalised, request.space(),
-                request.title(), currentUser(httpRequest));
+                tenant, projectId, normalised, request.space(), request.title(), currentUser(httpRequest));
 
-        log.info("WikiAppController.createPage tenant='{}' folder='{}' path='{}'",
-                tenant, normalised, doc.getPath());
+        log.info("WikiAppController.createPage tenant='{}' folder='{}' path='{}'", tenant, normalised, doc.getPath());
         return toPageView(pageFromDoc(normalised, doc, request.title()));
     }
 
@@ -151,14 +165,13 @@ public class WikiAppController {
 
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.DELETE);
         String normalised = WikiFolderReader.normaliseFolder(folder);
-        DocumentDocument doc = documentService.findById(id)
-                .orElseThrow(() -> new ToolException("Unknown page id='" + id + "'"));
+        DocumentDocument doc =
+                documentService.findById(id).orElseThrow(() -> new ToolException("Unknown page id='" + id + "'"));
         if (!doc.getPath().startsWith(normalised + "/")) {
             throw new ToolException("Page is not inside wiki '" + normalised + "'");
         }
         documentService.trash(id, actor(httpRequest));
-        log.info("WikiAppController.deletePage tenant='{}' folder='{}' path='{}'",
-                tenant, normalised, doc.getPath());
+        log.info("WikiAppController.deletePage tenant='{}' folder='{}' path='{}'", tenant, normalised, doc.getPath());
         return ResponseEntity.noContent().build();
     }
 
@@ -174,14 +187,16 @@ public class WikiAppController {
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.READ);
         String normalised = WikiFolderReader.normaliseFolder(folder);
         WikiFolderReader.Scan scanResult = folderReader.scan(tenant, projectId, normalised);
-        WikiService.Resolution r = wikiService.resolve(
-                scanResult, space == null ? "" : WikiService.normaliseSpace(space), target);
+        WikiService.Resolution r =
+                wikiService.resolve(scanResult, space == null ? "" : WikiService.normaliseSpace(space), target);
 
-        String createPath = spaceFilePath(
-                normalised, r.createSpace(), r.slug() + WikiFolderReader.PAGE_EXTENSION);
+        String createPath = spaceFilePath(normalised, r.createSpace(), r.slug() + WikiFolderReader.PAGE_EXTENSION);
         @Nullable WikiPage page = r.page();
         return new WikiResolveResponse(
-                target, r.exists(), r.ambiguous(), r.slug(),
+                target,
+                r.exists(),
+                r.ambiguous(),
+                r.slug(),
                 page != null ? page.doc().getPath() : null,
                 page != null ? page.doc().getId() : null,
                 page != null ? page.space() : null,
@@ -255,15 +270,13 @@ public class WikiAppController {
 
     private WikiPageView toPageView(WikiPage p) {
         return new WikiPageView(
-                p.doc().getId(), p.doc().getPath(), p.relativePath(),
-                p.space(), p.slug(), p.title(), p.main());
+                p.doc().getId(), p.doc().getPath(), p.relativePath(), p.space(), p.slug(), p.title(), p.main());
     }
 
     /** Build a lightweight {@link WikiPage} from a freshly stored document. */
     private static WikiPage pageFromDoc(String folder, DocumentDocument doc, String title) {
-        String rel = doc.getPath().startsWith(folder + "/")
-                ? doc.getPath().substring(folder.length() + 1)
-                : doc.getPath();
+        String rel =
+                doc.getPath().startsWith(folder + "/") ? doc.getPath().substring(folder.length() + 1) : doc.getPath();
         int slash = rel.lastIndexOf('/');
         String space = slash < 0 ? "" : rel.substring(0, slash);
         String leaf = rel.contains("/") ? rel.substring(rel.lastIndexOf('/') + 1) : rel;

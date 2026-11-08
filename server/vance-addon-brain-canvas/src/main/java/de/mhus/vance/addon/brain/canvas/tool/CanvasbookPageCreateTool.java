@@ -98,7 +98,7 @@ public class CanvasbookPageCreateTool implements Tool {
                 ctx.tenantId(), project.getName(), normalised + "/" + slug, title, description, ctx.userId());
 
         application.refresh(new VanceApplication.RefreshContext(
-                ctx.tenantId(), project.getName(), normalised, ctx.userId(), ctx.processId()));
+                ctx.tenantId(), project.getName(), normalised, ctx.userId(), ctx.processId(), ctx.confinedToProject()));
 
         log.info("CanvasbookPageCreateTool folder='{}' path='{}'", normalised, stored.getPath());
 

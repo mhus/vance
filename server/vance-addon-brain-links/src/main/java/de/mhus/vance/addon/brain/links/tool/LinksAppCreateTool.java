@@ -114,7 +114,14 @@ public class LinksAppCreateTool implements Tool {
         appParams.remove("projectId");
 
         VanceApplication.CreateResult result = application.create(new VanceApplication.CreateContext(
-                ctx.tenantId(), project.getName(), folder, ctx.userId(), ctx.processId(), overwrite, appParams));
+                ctx.tenantId(),
+                project.getName(),
+                folder,
+                ctx.userId(),
+                ctx.processId(),
+                overwrite,
+                appParams,
+                ctx.confinedToProject()));
 
         log.info("LinksAppCreateTool folder='{}'", folder);
         return result.toMap();

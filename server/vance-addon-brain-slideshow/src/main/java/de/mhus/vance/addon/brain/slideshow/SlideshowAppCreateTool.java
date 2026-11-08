@@ -157,7 +157,8 @@ public class SlideshowAppCreateTool implements Tool {
                 ctx.userId(),
                 ctx.processId(),
                 paramBoolean(params, "overwrite"),
-                createParams);
+                createParams,
+                ctx.confinedToProject());
 
         VanceApplication.CreateResult result = slideshowApplication.create(cc);
 

@@ -186,7 +186,14 @@ public class TemplateService {
         VanceApplication.CreateResult result = applicationRegistry
                 .require(app)
                 .create(new VanceApplication.CreateContext(
-                        tenantId, project, targetFolder, userId, /*processId*/ null, /*overwrite*/ false, values));
+                        tenantId,
+                        project,
+                        targetFolder,
+                        userId,
+                        /*processId*/ null,
+                        /*overwrite*/ false,
+                        values,
+                        subject.restrictedToProject()));
 
         log.info(
                 "Template '{}' scaffolded app='{}' tenant='{}' project='{}' folder='{}' artefacts={}",

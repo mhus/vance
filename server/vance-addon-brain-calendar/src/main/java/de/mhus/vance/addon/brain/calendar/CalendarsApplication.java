@@ -228,8 +228,7 @@ public class CalendarsApplication implements VanceApplication {
                     null,
                     YAML_MIME,
                     DocumentService.TOOL_IDENTITY,
-                    contextFactory.writeActor(
-                            ctx.tenantId(), ctx.userId(), existing.get().getPath()));
+                    contextFactory.writeActor(ctx.toolContext(), existing.get().getPath()));
         } else {
             try (var in = new java.io.ByteArrayInputStream(body.getBytes(java.nio.charset.StandardCharsets.UTF_8))) {
                 stored = documentService.create(
@@ -241,7 +240,7 @@ public class CalendarsApplication implements VanceApplication {
                         YAML_MIME,
                         in,
                         ctx.userId(),
-                        contextFactory.writeActor(ctx.tenantId(), ctx.userId(), manifestPath));
+                        contextFactory.writeActor(ctx.toolContext(), manifestPath));
             } catch (java.io.IOException e) {
                 throw new ToolException("Could not write manifest '" + manifestPath + "': " + e.getMessage(), e);
             }
@@ -274,8 +273,8 @@ public class CalendarsApplication implements VanceApplication {
         // the caller from doing app_rebuild() in a second tool call.
         List<ArtefactResult> artefacts;
         if (eventCountWritten > 0) {
-            RefreshContext rc =
-                    new RefreshContext(ctx.tenantId(), ctx.projectName(), folder, ctx.userId(), ctx.processId());
+            RefreshContext rc = new RefreshContext(
+                    ctx.tenantId(), ctx.projectName(), folder, ctx.userId(), ctx.processId(), ctx.confinedToProject());
             RefreshResult refresh = refresh(rc);
             artefacts = refresh.artefacts();
         } else {
@@ -379,8 +378,7 @@ public class CalendarsApplication implements VanceApplication {
                     null,
                     YAML_MIME,
                     DocumentService.TOOL_IDENTITY,
-                    contextFactory.writeActor(
-                            ctx.tenantId(), ctx.userId(), existing.get().getPath()));
+                    contextFactory.writeActor(ctx.toolContext(), existing.get().getPath()));
             return;
         }
         try (ByteArrayInputStream in = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))) {
@@ -393,7 +391,7 @@ public class CalendarsApplication implements VanceApplication {
                     YAML_MIME,
                     in,
                     ctx.userId(),
-                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), path));
+                    contextFactory.writeActor(ctx.toolContext(), path));
         } catch (IOException e) {
             throw new ToolException("Could not write calendar '" + path + "': " + e.getMessage(), e);
         }
@@ -565,8 +563,7 @@ public class CalendarsApplication implements VanceApplication {
                     null,
                     mime,
                     DocumentService.TOOL_IDENTITY,
-                    contextFactory.writeActor(
-                            ctx.tenantId(), ctx.userId(), existing.get().getPath()));
+                    contextFactory.writeActor(ctx.toolContext(), existing.get().getPath()));
         }
         try (InputStream in = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))) {
             return documentService.create(
@@ -578,7 +575,7 @@ public class CalendarsApplication implements VanceApplication {
                     mime,
                     in,
                     ctx.userId(),
-                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), outputPath));
+                    contextFactory.writeActor(ctx.toolContext(), outputPath));
         } catch (IOException e) {
             throw new ToolException("Could not write artefact '" + outputPath + "': " + e.getMessage(), e);
         }

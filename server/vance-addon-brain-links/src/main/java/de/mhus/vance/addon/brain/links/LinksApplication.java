@@ -92,8 +92,8 @@ public class LinksApplication implements VanceApplication {
         DocumentDocument stored = store.writeManifest(
                 ctx.tenantId(), ctx.projectName(), folder, title, description, config, ctx.userId());
 
-        RefreshResult refresh =
-                refresh(new RefreshContext(ctx.tenantId(), ctx.projectName(), folder, ctx.userId(), ctx.processId()));
+        RefreshResult refresh = refresh(new RefreshContext(
+                ctx.tenantId(), ctx.projectName(), folder, ctx.userId(), ctx.processId(), ctx.confinedToProject()));
 
         log.info("LinksApplication.create tenant='{}' folder='{}' groups={}", ctx.tenantId(), folder, groups.size());
 

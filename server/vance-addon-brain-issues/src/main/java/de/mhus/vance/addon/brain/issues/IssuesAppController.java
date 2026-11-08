@@ -2,6 +2,7 @@ package de.mhus.vance.addon.brain.issues;
 
 import de.mhus.vance.brain.applications.VanceApplication;
 import de.mhus.vance.brain.permission.RequestAuthority;
+import de.mhus.vance.brain.permission.SecurityContextFactory;
 import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentNote;
@@ -12,7 +13,6 @@ import de.mhus.vance.toolpack.ToolException;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -56,9 +56,8 @@ public class IssuesAppController {
         String normalised = IssuesFolderReader.normaliseFolder(folder);
         IssuesFolderReader.Scan scan = folderReader.scan(tenant, projectId, normalised);
 
-        List<Issue> source = archived
-                ? folderReader.scanArchived(tenant, projectId, normalised, scan.config())
-                : scan.issues();
+        List<Issue> source =
+                archived ? folderReader.scanArchived(tenant, projectId, normalised, scan.config()) : scan.issues();
         List<IssueView> issues = new ArrayList<>();
         for (Issue i : source) {
             if (!archived && state != null && !state.isBlank() && !state.equalsIgnoreCase(i.state())) continue;
@@ -66,8 +65,14 @@ public class IssuesAppController {
         }
         IssueStatsView stats = toStatsView(statsBuilder.build(scan));
         String title = firstNonBlank(scan.config().title(), scan.manifest().getTitle());
-        return new IssuesView(normalised, title, scan.config().description(),
-                scan.config().suggestedLabels(), issues, stats, archived);
+        return new IssuesView(
+                normalised,
+                title,
+                scan.config().description(),
+                scan.config().suggestedLabels(),
+                issues,
+                stats,
+                archived);
     }
 
     @GetMapping("/brain/{tenant}/addon/issues/issue")
@@ -93,9 +98,15 @@ public class IssuesAppController {
         if (request == null || request.title() == null || request.title().isBlank()) {
             throw new ToolException("title is required");
         }
-        DocumentDocument doc = issuesService.createIssue(tenant, projectId,
-                IssuesFolderReader.normaliseFolder(folder), request.title(),
-                request.labels(), request.assignee(), request.priority(), request.body(),
+        DocumentDocument doc = issuesService.createIssue(
+                tenant,
+                projectId,
+                IssuesFolderReader.normaliseFolder(folder),
+                request.title(),
+                request.labels(),
+                request.assignee(),
+                request.priority(),
+                request.body(),
                 currentUser(httpRequest));
         return toContentView(doc);
     }
@@ -109,7 +120,10 @@ public class IssuesAppController {
             HttpServletRequest httpRequest) {
 
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.WRITE);
-        DocumentDocument doc = issuesService.updateIssue(tenant, projectId, path,
+        DocumentDocument doc = issuesService.updateIssue(
+                tenant,
+                projectId,
+                path,
                 request != null ? request.state() : null,
                 request != null ? request.labels() : null,
                 request != null ? request.assignee() : null,
@@ -199,8 +213,8 @@ public class IssuesAppController {
             HttpServletRequest httpRequest) {
 
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.READ);
-        DocumentService.DocumentMetaListing listing = issuesService.search(
-                tenant, projectId, IssuesFolderReader.normaliseFolder(folder), query, label, size);
+        DocumentService.DocumentMetaListing listing =
+                issuesService.search(tenant, projectId, IssuesFolderReader.normaliseFolder(folder), query, label, size);
         List<IssueHitView> items = new ArrayList<>(listing.items().size());
         for (DocumentService.DocumentMetaMatch m : listing.items()) {
             items.add(new IssueHitView(m.id(), m.path(), m.title(), m.snippet(), m.score()));
@@ -218,23 +232,36 @@ public class IssuesAppController {
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.WRITE);
         String normalised = IssuesFolderReader.normaliseFolder(folder);
         VanceApplication.RefreshResult result = application.refresh(new VanceApplication.RefreshContext(
-                tenant, projectId, normalised, currentUser(httpRequest), null));
+                tenant,
+                projectId,
+                normalised,
+                currentUser(httpRequest),
+                null,
+                SecurityContextFactory.credentialProjectConfinement(httpRequest)));
         IssuesStatsBuilder.Stats stats = statsBuilder.build(folderReader.scan(tenant, projectId, normalised));
-        return new IssuesRebuildResponse(normalised,
-                artefactPath(result, "index"), artefactPath(result, "stats"),
-                stats.open(), stats.closed());
+        return new IssuesRebuildResponse(
+                normalised, artefactPath(result, "index"), artefactPath(result, "stats"), stats.open(), stats.closed());
     }
 
     // ── Helpers ───────────────────────────────────────────────────
 
     private DocumentDocument requireDoc(String tenant, String projectId, String path) {
-        return documentService.findByPath(tenant, projectId, path)
+        return documentService
+                .findByPath(tenant, projectId, path)
                 .orElseThrow(() -> new ToolException("No issue at '" + path + "'"));
     }
 
     private IssueView toView(Issue i) {
-        return new IssueView(i.doc().getId(), i.doc().getPath(), i.number(), i.title(),
-                i.state(), i.labels(), i.assignee(), i.priority(), i.archived());
+        return new IssueView(
+                i.doc().getId(),
+                i.doc().getPath(),
+                i.number(),
+                i.title(),
+                i.state(),
+                i.labels(),
+                i.assignee(),
+                i.priority(),
+                i.archived());
     }
 
     private IssueContentView toContentView(DocumentDocument doc) {
@@ -242,13 +269,25 @@ public class IssuesAppController {
         boolean archived = doc.getPath().contains("/archive/");
         List<IssueCommentView> comments = new ArrayList<>();
         for (DocumentNote n : issuesService.listComments(doc)) {
-            comments.add(new IssueCommentView(n.getId(), n.getText(), n.getUserId(),
+            comments.add(new IssueCommentView(
+                    n.getId(),
+                    n.getText(),
+                    n.getUserId(),
                     n.getCreatedAt() != null ? n.getCreatedAt().toString() : null,
                     n.getUpdatedAt() != null ? n.getUpdatedAt().toString() : null));
         }
-        return new IssueContentView(doc.getId(), doc.getPath(), issue.number(), issue.title(),
-                issue.state(), issue.labels(), issue.assignee(), issue.priority(), archived,
-                issue.body(), comments);
+        return new IssueContentView(
+                doc.getId(),
+                doc.getPath(),
+                issue.number(),
+                issue.title(),
+                issue.state(),
+                issue.labels(),
+                issue.assignee(),
+                issue.priority(),
+                archived,
+                issue.body(),
+                comments);
     }
 
     private static IssueStatsView toStatsView(IssuesStatsBuilder.Stats s) {
@@ -256,8 +295,11 @@ public class IssuesAppController {
     }
 
     private static @Nullable String artefactPath(VanceApplication.RefreshResult result, String name) {
-        return result.artefacts().stream().filter(a -> name.equals(a.name()))
-                .map(VanceApplication.ArtefactResult::path).findFirst().orElse(null);
+        return result.artefacts().stream()
+                .filter(a -> name.equals(a.name()))
+                .map(VanceApplication.ArtefactResult::path)
+                .findFirst()
+                .orElse(null);
     }
 
     private static @Nullable String firstNonBlank(@Nullable String a, @Nullable String b) {

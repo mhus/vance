@@ -102,7 +102,14 @@ public class WikiAppCreateTool implements Tool {
         appParams.remove("projectId");
 
         VanceApplication.CreateContext cc = new VanceApplication.CreateContext(
-                ctx.tenantId(), project.getName(), folder, ctx.userId(), ctx.processId(), overwrite, appParams);
+                ctx.tenantId(),
+                project.getName(),
+                folder,
+                ctx.userId(),
+                ctx.processId(),
+                overwrite,
+                appParams,
+                ctx.confinedToProject());
         VanceApplication.CreateResult result = application.create(cc);
 
         log.info("WikiAppCreateTool folder='{}' title='{}'", folder, paramString(params, "title"));

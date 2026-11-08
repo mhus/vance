@@ -519,6 +519,23 @@ public class ProjectService {
     }
 
     /**
+     * Feed rows for explicit suspend and resume only; the system's own {@code IDLE} stays out of the feed. {@code INIT → RUNNING}
+     * is the first start and is already covered by the create row, so it stays
+     * silent; {@code CLOSED} has its own rows in {@code close}/{@code reopen}.
+     */
+    private void emitStatusTransition(String tenantId, String name, ProjectStatus from, ProjectStatus to) {
+        switch (to) {
+            case SUSPENDED -> megadodoService.projectSuspended(tenantId, name, /*actor*/ null);
+            case RUNNING -> {
+                if (from == ProjectStatus.SUSPENDED || from == ProjectStatus.IDLE) {
+                    megadodoService.projectResumed(tenantId, name, from.name(), /*actor*/ null);
+                }
+            }
+            default -> {}
+        }
+    }
+
+    /**
      * Atomically transitions a project from one desired state to another.
      * Returns the updated document if the transition won the race, throws
      * {@link ProjectStatusConflictException} if the document was in a
@@ -536,6 +553,9 @@ public class ProjectService {
         Update update = new Update().set(F_STATUS, target);
         ProjectDocument updated = mongoTemplate.findAndModify(
                 query, update, FindAndModifyOptions.options().returnNew(true), ProjectDocument.class);
+        if (updated != null) {
+            emitStatusTransition(tenantId, name, expected, target);
+        }
         if (updated == null) {
             ProjectDocument actual = repository
                     .findByTenantIdAndName(tenantId, name)

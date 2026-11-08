@@ -117,6 +117,37 @@ public class MegadodoService {
                 .message("Project '" + projectName + "' reopened"));
     }
 
+    /**
+     * The project was stopped on purpose — desired state {@code SUSPENDED}.
+     * Only an explicit start brings it back, so the row is a WARN: from here
+     * the project stays down until somebody acts.
+     */
+    public void projectSuspended(String tenantId, String projectName, @Nullable String actor) {
+        record(builder(tenantId, /*projectId*/ null, "project.lifecycle", projectName)
+                .phase(MegadodoPhase.SINGLE)
+                .severity(MegadodoSeverity.WARN)
+                .outcome("success")
+                .actor(actor)
+                .refType(MegadodoRefType.PROJECT)
+                .refId(projectName)
+                .message("Project '" + projectName + "' suspended"));
+    }
+
+    /**
+     * A suspended or idle project is {@code RUNNING} again.
+     *
+     * @param from the status it came back from ({@code SUSPENDED} or {@code IDLE})
+     */
+    public void projectResumed(String tenantId, String projectName, String from, @Nullable String actor) {
+        record(builder(tenantId, /*projectId*/ null, "project.lifecycle", projectName)
+                .phase(MegadodoPhase.SINGLE)
+                .outcome("success")
+                .actor(actor)
+                .refType(MegadodoRefType.PROJECT)
+                .refId(projectName)
+                .message("Project '" + projectName + "' running again (was " + from + ")"));
+    }
+
     public void projectRenamed(String tenantId, String projectName, String newProjectName, @Nullable String actor) {
         // projectId stays null like the other lifecycle rows — and here that is
         // load-bearing rather than convention: rows tagged with the project are

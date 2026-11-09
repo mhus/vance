@@ -18,28 +18,28 @@
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
-    "@capacitor/android": "^8.5.3",
-    "@capacitor/core": "^8.5.3",
-    "@capacitor/ios": "^8.5.3",
+    "@capacitor/android": "^8.6.0",
+    "@capacitor/core": "^8.6.0",
+    "@capacitor/ios": "^8.6.0",
     "@capacitor/preferences": "^8.0.1",
     "@capacitor/splash-screen": "^8.0.2",
     "@capacitor/status-bar": "^8.0.4",
     "@vance/components": "workspace:*",
     "@vance/facelift-account-webview": "workspace:*",
-    "pinia": "^4.0.3",
-    "vue": "^3.5.43",
+    "pinia": "^4.1.0",
+    "vue": "^3.5.45",
     "vue-router": "^5.4.0"
   },
   "devDependencies": {
     "@capacitor/assets": "^3.0.5",
-    "@capacitor/cli": "^8.5.3",
-    "@tailwindcss/postcss": "^4.3.3",
+    "@capacitor/cli": "^8.6.0",
+    "@tailwindcss/postcss": "^4.3.4",
     "@vitejs/plugin-vue": "^6.0.10",
-    "daisyui": "^5.7.47",
-    "postcss": "^8.5.29",
+    "daisyui": "^5.7.50",
+    "postcss": "^8.5.32",
     "sharp": "^0.35.5",
-    "tailwindcss": "^4.3.3",
-    "vite": "^8.3.4",
-    "vue-tsc": "^3.3.13"
+    "tailwindcss": "^4.3.4",
+    "vite": "^8.3.6",
+    "vue-tsc": "^3.3.14"
   }
 }

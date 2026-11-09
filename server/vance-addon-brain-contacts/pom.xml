@@ -44,7 +44,7 @@
         <dependency>
             <groupId>com.sksamuel.scrimage</groupId>
             <artifactId>scrimage-core</artifactId>
-            <version>4.6.8</version>
+            <version>4.6.11</version>
             <scope>provided</scope>
         </dependency>
 
@@ -54,7 +54,7 @@
         <dependency>
             <groupId>com.googlecode.ez-vcard</groupId>
             <artifactId>ez-vcard</artifactId>
-            <version>0.12.1</version>
+            <version>0.12.2</version>
             <exclusions>
                 <!-- hCard (HTML) templating and jCard: unused here. jsoup and
                      jackson-core sit on the brain's classpath anyway. -->

@@ -166,10 +166,41 @@ public class WorkTargetService {
         if (process != null && process.getSessionId() != null && footBound(process.getSessionId())) {
             return WorkTarget.client();
         }
+        return serverSideDefaultFor(process);
+    }
+
+    /**
+     * The default a process gets when it cannot use a client surface: WORK
+     * with a workspace, else the project's runner, else NONE. Same rules as
+     * {@link #defaultFor} minus the Foot check.
+     */
+    private WorkTarget serverSideDefaultFor(ThinkProcessDocument process) {
         if (workAvailable()) {
             return WorkTarget.work(null);
         }
         return process != null && runnerAvailable(process) ? WorkTarget.runner(null) : WorkTarget.none();
+    }
+
+    /**
+     * Moves a headless process off the CLIENT default. A process spawned
+     * without a connection profile (a Magrathea {@code agent_task}) carries no
+     * {@code client_*} tools, yet {@link #defaultFor} still answers CLIENT when
+     * a Foot happens to be bound to the session — every file/exec call would
+     * then fail on a backend the process cannot reach. Pins the server-side
+     * default instead; does nothing when the current target is not CLIENT or
+     * when no server-side surface exists (then the CLIENT default stays, and
+     * the dispatcher's error names the way out).
+     *
+     * <p>Call only for processes whose recipe set no explicit target.
+     */
+    public void pinServerSideIfClientDefault(ThinkProcessDocument process) {
+        if (current(process).kind() != WorkTargetKind.CLIENT) {
+            return;
+        }
+        WorkTarget serverSide = serverSideDefaultFor(process);
+        if (serverSide.kind() == WorkTargetKind.WORK || serverSide.kind() == WorkTargetKind.RUNNER) {
+            set(process.getId(), serverSide);
+        }
     }
 
     private boolean workAvailable() {

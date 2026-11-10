@@ -71,6 +71,37 @@ class WorkTargetServiceTest {
     }
 
     @Test
+    void pinServerSideIfClientDefault_footBound_movesTheProcessToWork() {
+        when(clientToolRegistry.entry(SESSION_ID))
+                .thenReturn(Optional.of(new ClientToolRegistry.Entry(
+                        "editor-foot",
+                        null,
+                        Map.of(
+                                "client_exec_run",
+                                de.mhus.vance.api.tools.ToolSpec.builder()
+                                        .name("client_exec_run")
+                                        .build()))));
+        when(thinkProcessService.replaceEngineParams(eq(PROC_ID), any())).thenReturn(true);
+
+        service.pinServerSideIfClientDefault(process);
+
+        ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
+        verify(thinkProcessService).replaceEngineParams(eq(PROC_ID), captor.capture());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> pinned = (Map<String, Object>) captor.getValue().get(WorkTarget.KEY);
+        assertThat(pinned).containsEntry("kind", "WORK");
+    }
+
+    @Test
+    void pinServerSideIfClientDefault_noFoot_changesNothing() {
+        when(clientToolRegistry.entry(SESSION_ID)).thenReturn(Optional.empty());
+
+        service.pinServerSideIfClientDefault(process);
+
+        verify(thinkProcessService, org.mockito.Mockito.never()).replaceEngineParams(any(), any());
+    }
+
+    @Test
     void current_noEngineParams_returnsWorkWhenNoFoot() {
         when(clientToolRegistry.entry(SESSION_ID)).thenReturn(Optional.empty());
 

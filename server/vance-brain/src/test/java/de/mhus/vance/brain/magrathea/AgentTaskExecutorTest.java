@@ -45,6 +45,8 @@ class AgentTaskExecutorTest {
             mock(de.mhus.vance.brain.scheduling.LaneScheduler.class);
     private final EngineMessageRouter messageRouter = mock(EngineMessageRouter.class);
     private final MagratheaTimeoutScheduler timeoutScheduler = mock(MagratheaTimeoutScheduler.class);
+    private final de.mhus.vance.brain.tools.worktarget.WorkTargetService workTargetService =
+            mock(de.mhus.vance.brain.tools.worktarget.WorkTargetService.class);
     private final AgentTaskExecutor executor = new AgentTaskExecutor(
             recipeResolver,
             thinkProcessService,
@@ -55,7 +57,8 @@ class AgentTaskExecutorTest {
             laneScheduler,
             routerProvider(messageRouter),
             timeoutScheduler,
-            mock(de.mhus.vance.brain.inherit.ParentContextSpawnHelper.class));
+            mock(de.mhus.vance.brain.inherit.ParentContextSpawnHelper.class),
+            workTargetService);
 
     @SuppressWarnings("unchecked")
     private static org.springframework.beans.factory.ObjectProvider<EngineMessageRouter> routerProvider(
@@ -242,6 +245,28 @@ class AgentTaskExecutorTest {
     }
 
     @Test
+    void spawn_pinsTheServerSideWorkTarget_soAHeadlessStepIsNotLeftOnClient() {
+        // The step has no connection profile, hence no client_* tools; a Foot
+        // bound to the session would still make CLIENT the default.
+        stubResolver("ford", Map.of("model", "default:fast", "prompt", "hi"));
+        stubSpawn("ford");
+
+        executor.execute(ctx(agentState("ford", Map.of("prompt", "hi"))));
+
+        verify(workTargetService).pinServerSideIfClientDefault(any());
+    }
+
+    @Test
+    void spawn_keepsAnExplicitWorkTargetOfTheRecipe() {
+        stubResolver("ford", Map.of("model", "default:fast", "prompt", "hi", "workTarget", Map.of("kind", "CLIENT")));
+        stubSpawn("ford");
+
+        executor.execute(ctx(agentState("ford", Map.of("prompt", "hi"))));
+
+        verify(workTargetService, org.mockito.Mockito.never()).pinServerSideIfClientDefault(any());
+    }
+
+    @Test
     void spawn_passesRecipeSkillConfig_throughToTheProcess() {
         // Regression for the mid-overload gap: defaultActiveSkills/allowedSkills
         // from the recipe were silently dropped, so a recipe pinning skills had
@@ -308,7 +333,8 @@ class AgentTaskExecutorTest {
                 laneScheduler,
                 routerProvider(null),
                 timeoutScheduler,
-                mock(de.mhus.vance.brain.inherit.ParentContextSpawnHelper.class));
+                mock(de.mhus.vance.brain.inherit.ParentContextSpawnHelper.class),
+                workTargetService);
         stubResolver("ford", Map.of("prompt", "hi"));
         stubSpawn("ford");
 

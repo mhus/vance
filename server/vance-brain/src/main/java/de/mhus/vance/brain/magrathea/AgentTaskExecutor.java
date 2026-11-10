@@ -94,6 +94,8 @@ public class AgentTaskExecutor implements MagratheaTypeExecutor {
     private final MagratheaTimeoutScheduler timeoutScheduler;
     /** Wraps a worker prompt with the owning process's context — see inheritContext. */
     private final de.mhus.vance.brain.inherit.ParentContextSpawnHelper parentContextSpawnHelper;
+    /** Keeps a headless step off the CLIENT target it has no tools for — see {@link #pinServerSideTarget}. */
+    private final de.mhus.vance.brain.tools.worktarget.WorkTargetService workTargetService;
 
     @Override
     public MagratheaTaskType type() {
@@ -188,6 +190,8 @@ public class AgentTaskExecutor implements MagratheaTypeExecutor {
             log.warn("Magrathea agent_task '{}' ThinkProcess create failed: {}", state.name(), ex.getMessage());
             return Optional.of(TaskOutcome.failure("ThinkProcess create failed: " + ex.getMessage()));
         }
+
+        pinServerSideTarget(applied, spawned);
 
         // Link sub-process id to the task BEFORE start so a fast-finishing
         // engine still finds a WAITING_SUBPROCESS row when the listener fires.
@@ -300,6 +304,28 @@ public class AgentTaskExecutor implements MagratheaTypeExecutor {
      * {@code process_spawn} straight back to the agent that
      * {@link #withoutDelegation} just took it from.
      */
+    /**
+     * A step runs headless: it is created without a connection profile, so it
+     * has no {@code client_*} tools — but with a Foot bound to the session the
+     * work-target default would still be CLIENT, and every file/exec call would
+     * fail on an unreachable backend (the step then loops on the error). Unless
+     * the recipe names a target itself, pin the server-side one. Never fails
+     * the task: a missing surface is reported by the dispatcher at first use.
+     */
+    private void pinServerSideTarget(AppliedRecipe applied, ThinkProcessDocument spawned) {
+        if (applied.params() != null && applied.params().containsKey(de.mhus.vance.shared.worktarget.WorkTarget.KEY)) {
+            return;
+        }
+        try {
+            workTargetService.pinServerSideIfClientDefault(spawned);
+        } catch (RuntimeException ex) {
+            log.warn(
+                    "Magrathea agent_task: could not pin the server-side work target on '{}': {}",
+                    spawned.getId(),
+                    ex.toString());
+        }
+    }
+
     private static java.util.Map<String, Object> withoutToolPool(
             java.util.@org.jspecify.annotations.Nullable Map<String, Object> params) {
         java.util.Map<String, Object> out =

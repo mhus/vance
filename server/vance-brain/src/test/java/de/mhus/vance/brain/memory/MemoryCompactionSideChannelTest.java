@@ -5,7 +5,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -63,8 +62,7 @@ class MemoryCompactionSideChannelTest {
     private AiChat aiChat;
     private ChatModel chatModel;
 
-    private final AiChatConfig config =
-            new AiChatConfig("anthropic", "claude-sonnet-4-5", "k");
+    private final AiChatConfig config = new AiChatConfig("anthropic", "claude-sonnet-4-5", "k");
 
     @BeforeEach
     void setUp() {
@@ -79,24 +77,31 @@ class MemoryCompactionSideChannelTest {
         metricService = new MetricService(new SimpleMeterRegistry());
         runner = mock(PrakSideChannelRunner.class);
 
-        de.mhus.vance.brain.prak.PrakProperties prakProps =
-                new de.mhus.vance.brain.prak.PrakProperties();
+        de.mhus.vance.brain.prak.PrakProperties prakProps = new de.mhus.vance.brain.prak.PrakProperties();
         service = new MemoryCompactionService(
-                chatMessageService, memoryService, aiModelService,
-                sessionService, settingService, properties,
-                llmCallTracker, progressEmitter, metricService, runner,
+                chatMessageService,
+                memoryService,
+                aiModelService,
+                sessionService,
+                settingService,
+                properties,
+                llmCallTracker,
+                progressEmitter,
+                metricService,
+                runner,
                 new de.mhus.vance.brain.memory.StrengthAwareSelector(
                         prakProps, new de.mhus.vance.brain.prak.TrivialPatterns()),
                 new de.mhus.vance.brain.memory.CompactionTriggerService(prakProps),
                 prakProps,
                 mock(de.mhus.vance.brain.prak.PrakPeriodicTrigger.class),
-                mock(de.mhus.vance.shared.settings.LanguageResolver.class));
+                mock(de.mhus.vance.shared.settings.LanguageResolver.class),
+                mock(de.mhus.vance.brain.ai.AiModelResolver.class));
 
         aiChat = mock(AiChat.class);
         chatModel = mock(ChatModel.class);
         when(aiChat.chatModel()).thenReturn(chatModel);
-        when(aiModelService.createChat(eq(config), any(AiChatOptions.class),
-                any(de.mhus.vance.shared.llmusage.CallAttribution.class)))
+        when(aiModelService.createChat(
+                        eq(config), any(AiChatOptions.class), any(de.mhus.vance.shared.llmusage.CallAttribution.class)))
                 .thenReturn(aiChat);
         when(sessionService.findBySessionId(anyString())).thenReturn(Optional.empty());
 
@@ -114,8 +119,11 @@ class MemoryCompactionSideChannelTest {
         primeSummarizer("Summary text");
 
         CompactionResult result = service.compactRange(
-                process(), Instant.parse("2026-05-11T14:00:00Z"),
-                Instant.parse("2026-05-11T15:00:00Z"), "auth-setup", config);
+                process(),
+                Instant.parse("2026-05-11T14:00:00Z"),
+                Instant.parse("2026-05-11T15:00:00Z"),
+                "auth-setup",
+                config);
 
         assertThat(result.compacted()).isTrue();
 
@@ -137,11 +145,15 @@ class MemoryCompactionSideChannelTest {
         // supposed to swallow internally, but we belt-and-suspenders),
         // compaction must still succeed.
         org.mockito.Mockito.doThrow(new RuntimeException("runner blew up"))
-                .when(runner).run(any(), any(), any(), any());
+                .when(runner)
+                .run(any(), any(), any(), any());
 
         CompactionResult result = service.compactRange(
-                process(), Instant.parse("2026-05-11T14:00:00Z"),
-                Instant.parse("2026-05-11T15:00:00Z"), "auth-setup", config);
+                process(),
+                Instant.parse("2026-05-11T14:00:00Z"),
+                Instant.parse("2026-05-11T15:00:00Z"),
+                "auth-setup",
+                config);
 
         // compaction itself succeeded; side-channel failure is logged.
         assertThat(result.compacted()).isTrue();
@@ -160,8 +172,12 @@ class MemoryCompactionSideChannelTest {
     private ChatMessageDocument msg(String id, ChatRole role, String content, Instant at) {
         ChatMessageDocument m = ChatMessageDocument.builder()
                 .id(id)
-                .tenantId("t").sessionId("s").thinkProcessId("p-1")
-                .role(role).content(content).build();
+                .tenantId("t")
+                .sessionId("s")
+                .thinkProcessId("p-1")
+                .role(role)
+                .content(content)
+                .build();
         m.setCreatedAt(at);
         return m;
     }
@@ -179,9 +195,8 @@ class MemoryCompactionSideChannelTest {
     }
 
     private void primeSummarizer(String text) {
-        ChatResponse response = ChatResponse.builder()
-                .aiMessage(AiMessage.from(text))
-                .build();
+        ChatResponse response =
+                ChatResponse.builder().aiMessage(AiMessage.from(text)).build();
         when(chatModel.chat(any(ChatRequest.class))).thenReturn(response);
     }
 }

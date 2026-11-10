@@ -2,7 +2,6 @@ package de.mhus.vance.brain.memory;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -65,8 +64,7 @@ class MemoryCompactionServiceRangeTest {
     private AiChat aiChat;
     private ChatModel chatModel;
 
-    private final AiChatConfig config =
-            new AiChatConfig("anthropic", "claude-sonnet-4-5", "k");
+    private final AiChatConfig config = new AiChatConfig("anthropic", "claude-sonnet-4-5", "k");
 
     @BeforeEach
     void setUp() {
@@ -79,25 +77,31 @@ class MemoryCompactionServiceRangeTest {
         llmCallTracker = mock(LlmCallTracker.class);
         progressEmitter = mock(ProgressEmitter.class);
         metricService = new MetricService(new io.micrometer.core.instrument.simple.SimpleMeterRegistry());
-        de.mhus.vance.brain.prak.PrakProperties prakProps =
-                new de.mhus.vance.brain.prak.PrakProperties();
+        de.mhus.vance.brain.prak.PrakProperties prakProps = new de.mhus.vance.brain.prak.PrakProperties();
         service = new MemoryCompactionService(
-                chatMessageService, memoryService, aiModelService,
-                sessionService, settingService, properties,
-                llmCallTracker, progressEmitter, metricService,
+                chatMessageService,
+                memoryService,
+                aiModelService,
+                sessionService,
+                settingService,
+                properties,
+                llmCallTracker,
+                progressEmitter,
+                metricService,
                 mock(de.mhus.vance.brain.prak.PrakSideChannelRunner.class),
                 new de.mhus.vance.brain.memory.StrengthAwareSelector(
                         prakProps, new de.mhus.vance.brain.prak.TrivialPatterns()),
                 new de.mhus.vance.brain.memory.CompactionTriggerService(prakProps),
                 prakProps,
                 mock(de.mhus.vance.brain.prak.PrakPeriodicTrigger.class),
-                mock(de.mhus.vance.shared.settings.LanguageResolver.class));
+                mock(de.mhus.vance.shared.settings.LanguageResolver.class),
+                mock(de.mhus.vance.brain.ai.AiModelResolver.class));
 
         aiChat = mock(AiChat.class);
         chatModel = mock(ChatModel.class);
         when(aiChat.chatModel()).thenReturn(chatModel);
-        when(aiModelService.createChat(eq(config), any(AiChatOptions.class),
-                any(de.mhus.vance.shared.llmusage.CallAttribution.class)))
+        when(aiModelService.createChat(
+                        eq(config), any(AiChatOptions.class), any(de.mhus.vance.shared.llmusage.CallAttribution.class)))
                 .thenReturn(aiChat);
         when(sessionService.findBySessionId(anyString())).thenReturn(Optional.empty());
     }
@@ -115,16 +119,19 @@ class MemoryCompactionServiceRangeTest {
     private ChatMessageDocument msg(String id, ChatRole role, String content, Instant at) {
         ChatMessageDocument m = ChatMessageDocument.builder()
                 .id(id)
-                .tenantId("t").sessionId("s").thinkProcessId("p-1")
-                .role(role).content(content).build();
+                .tenantId("t")
+                .sessionId("s")
+                .thinkProcessId("p-1")
+                .role(role)
+                .content(content)
+                .build();
         m.setCreatedAt(at);
         return m;
     }
 
     private void primeSummarizer(String text) {
-        ChatResponse response = ChatResponse.builder()
-                .aiMessage(AiMessage.from(text))
-                .build();
+        ChatResponse response =
+                ChatResponse.builder().aiMessage(AiMessage.from(text)).build();
         when(chatModel.chat(any(ChatRequest.class))).thenReturn(response);
     }
 
@@ -136,8 +143,11 @@ class MemoryCompactionServiceRangeTest {
                 .thenReturn(List.of());
 
         CompactionResult result = service.compactRange(
-                process(), Instant.parse("2026-05-11T14:00:00Z"),
-                Instant.parse("2026-05-11T15:00:00Z"), "auth-setup", config);
+                process(),
+                Instant.parse("2026-05-11T14:00:00Z"),
+                Instant.parse("2026-05-11T15:00:00Z"),
+                "auth-setup",
+                config);
 
         assertThat(result.compacted()).isFalse();
         assertThat(result.reason()).contains("empty range");
@@ -149,11 +159,9 @@ class MemoryCompactionServiceRangeTest {
         Instant t0 = Instant.parse("2026-05-11T14:00:00Z");
         when(chatMessageService.findActiveInRange(eq("t"), eq("p-1"), any(), any()))
                 .thenReturn(List.of(msg("m1", ChatRole.USER, "hi", t0)));
-        when(chatModel.chat(any(ChatRequest.class)))
-                .thenThrow(new RuntimeException("boom"));
+        when(chatModel.chat(any(ChatRequest.class))).thenThrow(new RuntimeException("boom"));
 
-        CompactionResult result = service.compactRange(
-                process(), t0, t0.plusSeconds(1), "auth-setup", config);
+        CompactionResult result = service.compactRange(process(), t0, t0.plusSeconds(1), "auth-setup", config);
 
         assertThat(result.compacted()).isFalse();
         assertThat(result.reason()).contains("summarizer failed").contains("boom");
@@ -166,9 +174,9 @@ class MemoryCompactionServiceRangeTest {
         Instant t2 = Instant.parse("2026-05-11T14:05:00Z");
         Instant t3 = Instant.parse("2026-05-11T14:10:00Z");
         List<ChatMessageDocument> range = List.of(
-                msg("m1", ChatRole.USER,      "Plan auth setup",  t1),
+                msg("m1", ChatRole.USER, "Plan auth setup", t1),
                 msg("m2", ChatRole.ASSISTANT, "Sure — three steps", t2),
-                msg("m3", ChatRole.ASSISTANT, "All three done",   t3));
+                msg("m3", ChatRole.ASSISTANT, "All three done", t3));
         when(chatMessageService.findActiveInRange(eq("t"), eq("p-1"), eq(t1), eq(t3)))
                 .thenReturn(range);
         primeSummarizer("Auth setup completed in three steps.");
@@ -181,8 +189,7 @@ class MemoryCompactionServiceRangeTest {
         });
         when(chatMessageService.markArchived(any(), eq("mem-99"))).thenReturn(3L);
 
-        CompactionResult result = service.compactRange(
-                process(), t1, t3, "auth-setup", config);
+        CompactionResult result = service.compactRange(process(), t1, t3, "auth-setup", config);
 
         assertThat(result.compacted()).isTrue();
         assertThat(result.messagesCompacted()).isEqualTo(3);
@@ -194,8 +201,7 @@ class MemoryCompactionServiceRangeTest {
         // Content carries a deterministic "[yyyy-MM-ddTHH:mm]" stamp prepended
         // by the service (see callSummarizer) so summaries stay anchored in
         // time even when the LLM doesn't mention the date in prose.
-        assertThat(saved.getContent())
-                .matches("\\[\\d{4}-\\d{2}-\\d{2}] Auth setup completed in three steps\\.");
+        assertThat(saved.getContent()).matches("\\[\\d{4}-\\d{2}-\\d{2}] Auth setup completed in three steps\\.");
         assertThat(saved.getSourceRefs()).containsExactly("m1", "m2", "m3");
         assertThat(saved.getMetadata())
                 .containsEntry("recompaction", true)
@@ -209,13 +215,11 @@ class MemoryCompactionServiceRangeTest {
         // row. Persisted via insertCopies (not append) so @CreatedDate auditing
         // does not clobber the pinned createdAt (code-review Phase 2).
         @SuppressWarnings({"unchecked", "rawtypes"})
-        ArgumentCaptor<List<ChatMessageDocument>> markerCap =
-                ArgumentCaptor.forClass((Class) List.class);
+        ArgumentCaptor<List<ChatMessageDocument>> markerCap = ArgumentCaptor.forClass((Class) List.class);
         verify(chatMessageService).insertCopies(markerCap.capture());
         ChatMessageDocument marker = markerCap.getValue().get(0);
         assertThat(marker.getRole()).isEqualTo(ChatRole.SYSTEM);
-        assertThat(marker.getContent())
-                .matches("\\[\\d{4}-\\d{2}-\\d{2}] Auth setup completed in three steps\\.");
+        assertThat(marker.getContent()).matches("\\[\\d{4}-\\d{2}-\\d{2}] Auth setup completed in three steps\\.");
         assertThat(marker.getTags()).containsExactly("RECOMPACTION:auth-setup");
         assertThat(marker.getCreatedAt()).isEqualTo(t3.plusMillis(1));
         assertThat(marker.getThinkProcessId()).isEqualTo("p-1");
@@ -228,8 +232,7 @@ class MemoryCompactionServiceRangeTest {
                 .thenReturn(List.of(msg("m1", ChatRole.USER, "hi", t0)));
         primeSummarizer("   "); // whitespace → trimmed to empty
 
-        CompactionResult result = service.compactRange(
-                process(), t0, t0.plusSeconds(1), "auth", config);
+        CompactionResult result = service.compactRange(process(), t0, t0.plusSeconds(1), "auth", config);
 
         assertThat(result.compacted()).isFalse();
         assertThat(result.reason()).contains("empty");

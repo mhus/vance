@@ -111,6 +111,7 @@ public class MemoryCompactionService {
     private final de.mhus.vance.brain.prak.PrakProperties prakProperties;
     private final de.mhus.vance.brain.prak.PrakPeriodicTrigger prakPeriodicTrigger;
     private final de.mhus.vance.shared.settings.LanguageResolver languageResolver;
+    private final de.mhus.vance.brain.ai.AiModelResolver aiModelResolver;
 
     /**
      * Estimated input-token count for {@code messages} — the same
@@ -597,7 +598,16 @@ public class MemoryCompactionService {
         return languageResolver.chatLanguage(process.getTenantId(), userId, projectId, process.getId());
     }
 
-    private AiChatConfig resolveAiConfig(ThinkProcessDocument process) {
+    /**
+     * The summarizer uses the tenant's default model ({@code ai.default.provider}
+     * / {@code ai.default.model}, project cascade included). The provider value
+     * may be a protocol wire-name or a named instance ({@code openrouter}), so
+     * the pair goes through {@link de.mhus.vance.brain.ai.AiModelResolver} like
+     * every other model spec; reading the value as a wire-name made an instance
+     * default fail with "Unknown provider wire-name". Without a configured
+     * default the built-in fallback applies.
+     */
+    AiChatConfig resolveAiConfig(ThinkProcessDocument process) {
         String tenantId = process.getTenantId();
         String processId = process.getId();
         // Include the project layer of the settings cascade (derived from the
@@ -611,17 +621,31 @@ public class MemoryCompactionService {
                 .orElse(null);
         String providerCascade =
                 settingService.getStringValueCascade(tenantId, projectId, processId, SETTING_AI_PROVIDER);
-        String provider =
-                (providerCascade == null || providerCascade.isBlank()) ? DEFAULT_PROVIDER.wireName() : providerCascade;
         String modelCascade = settingService.getStringValueCascade(tenantId, projectId, processId, SETTING_AI_MODEL);
-        String model = (modelCascade == null || modelCascade.isBlank()) ? DEFAULT_MODEL : modelCascade;
-        // Compaction reads provider/model from settings directly (no recipe
-        // alias), so instance defaults to the protocol wire-name. Named
-        // instances aren't reachable here without going through the resolver.
+        boolean defaultConfigured = providerCascade != null
+                && !providerCascade.isBlank()
+                && modelCascade != null
+                && !modelCascade.isBlank();
+        if (defaultConfigured) {
+            de.mhus.vance.brain.ai.AiModelResolver.Resolved resolved =
+                    aiModelResolver.resolveOrDefault(null, tenantId, projectId, processId);
+            String apiKey = ChatBehaviorBuilder.resolveApiKey(
+                    resolved.provider(), resolved.providerInstance(), tenantId, projectId, processId, settingService);
+            String baseUrl = ChatBehaviorBuilder.resolveBaseUrl(
+                    resolved.providerInstance(), tenantId, projectId, processId, settingService);
+            return new AiChatConfig(
+                    resolved.provider(),
+                    resolved.providerInstance(),
+                    resolved.modelName(),
+                    apiKey,
+                    baseUrl,
+                    resolved.insecureTls());
+        }
+        String provider = DEFAULT_PROVIDER.wireName();
         String apiKey =
                 ChatBehaviorBuilder.resolveApiKey(provider, provider, tenantId, projectId, processId, settingService);
         String baseUrl = ChatBehaviorBuilder.resolveBaseUrl(provider, tenantId, projectId, processId, settingService);
-        return new AiChatConfig(provider, model, apiKey, baseUrl);
+        return new AiChatConfig(provider, DEFAULT_MODEL, apiKey, baseUrl);
     }
 
     /**

@@ -1891,11 +1891,9 @@ function onKeyDown(e: KeyboardEvent): void {
     void requestCloseTab(activeTab.value.id);
     return;
   }
-  // Quick-open (⌘O, with ⌘P as the muscle-memory alias every editor's
-  // quick-open uses). Both must beat the browser's own bindings — its
-  // open-file and print dialogs would otherwise swallow the intent before
-  // the Cortex ever sees it.
-  if (key === 'o' || key === 'p') {
+  // Quick-open (⌘O). Must beat the browser's own open-file dialog. ⌘P is
+  // deliberately left alone so the browser's print dialog still opens.
+  if (key === 'o') {
     e.preventDefault();
     showOpenDocument.value = true;
     return;

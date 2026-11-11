@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * Quick-open — the "Open…" entry in the Cortex File menu (⌘O, aliased ⌘P).
+ * Quick-open — the "Open…" entry in the Cortex File menu (⌘O).
  *
  * A single search field over {@code GET documents/search}, the same route the
  * link picker uses: project-wide recursive match on path and title, `_vance`

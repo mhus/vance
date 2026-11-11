@@ -64,12 +64,18 @@ export class AccountViewManager {
     // Meta/Ctrl+1..0 while the SHELL has focus — the same interception the
     // account views get (below); one path, two focus homes.
     this.win.webContents.on('before-input-event', (event, input) => {
-      this.onTabShortcutInput(event, input, () => this.activeAccountId, () => this.reload());
+      this.onTabShortcutInput(
+        event,
+        input,
+        () => this.activeAccountId,
+        () => this.reload(),
+        () => this.activeView(),
+      );
     });
   }
 
   /** Tab shortcuts (planning/desktop-profile-tabs.md): Meta/Ctrl+digit
-   *  switches tabs, +R reloads the focused view, +W closes the active
+   *  switches tabs, +R reloads the focused view, +P prints it, +W closes the active
    *  tab (the shell owns the list and enforces min-1). Runs in the main
    *  process on before-input-event — BEFORE any page-level hotkey — and
    *  works no matter which webContents has focus. The default Electron
@@ -79,6 +85,7 @@ export class AccountViewManager {
     input: { type: string; key: string; control: boolean; meta: boolean },
     accountOf: () => string | null,
     reloadTarget: () => void,
+    printTarget: () => Electron.WebContents | undefined,
   ): void {
     if (input.type !== 'keyDown') return;
     // Apple key on macOS, Ctrl elsewhere — the browser-tab convention.
@@ -102,6 +109,14 @@ export class AccountViewManager {
     if (input.key.toLowerCase() === 'w') {
       event.preventDefault();
       this.win.webContents.send('facelift:tab-close-request', { accountId });
+      return;
+    }
+    // Print: there is no menu item to own Cmd+P (main.ts), so the key would
+    // be dead. Print the focused view (or the active tab when the shell has
+    // focus) — the page's own @media print rules decide what comes out.
+    if (input.key.toLowerCase() === 'p') {
+      event.preventDefault();
+      printTarget()?.print();
     }
   }
   private partitionFor(accountId: string): string {
@@ -292,7 +307,7 @@ export class AccountViewManager {
     // Tab shortcut while THIS view has focus (the normal case — the user
     // interacts with the web content, not the shell).
     wc.on('before-input-event', (event, input) => {
-      this.onTabShortcutInput(event, input, () => accountId, () => wc.reload());
+      this.onTabShortcutInput(event, input, () => accountId, () => wc.reload(), () => wc);
     });
     wc.on('will-navigate', (event: ElectronEvent, navUrl: string) => {
       if (this.handleNavigation(accountId, navUrl)) event.preventDefault();

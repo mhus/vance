@@ -14,6 +14,8 @@ import {
   DESKTOP_USER_AGENT_TOKEN,
   type AccountWebViewBounds,
   type CloseTabOptions,
+  type FindOptions,
+  type FindResultEvent,
   type NavigateHomeOptions,
   type PresentOptions,
   type RemoveOptions,
@@ -117,6 +119,13 @@ export class AccountViewManager {
     if (input.key.toLowerCase() === 'p') {
       event.preventDefault();
       printTarget()?.print();
+      return;
+    }
+    // Find in page: Electron ships no find UI, so the shell shows its own
+    // bar and drives findInPage on the active view.
+    if (input.key.toLowerCase() === 'f') {
+      event.preventDefault();
+      this.win.webContents.send('facelift:find-open', { accountId });
     }
   }
   private partitionFor(accountId: string): string {
@@ -186,6 +195,26 @@ export class AccountViewManager {
   navigateForward(): void {
     const view = this.activeView();
     if (view !== undefined && view.navigationHistory.canGoForward()) view.navigationHistory.goForward();
+  }
+
+  /** Find in the ACTIVE TAB's page. A new query starts a search; the same
+   *  query with newSearch=false steps to the next/previous match. Results
+   *  come back through 'found-in-page' (see createView). */
+  find(options: FindOptions): void {
+    const view = this.activeView();
+    if (view === undefined) return;
+    if (options.text === '') {
+      view.stopFindInPage('clearSelection');
+      return;
+    }
+    view.findInPage(options.text, {
+      forward: options.forward,
+      findNext: !options.newSearch,
+    });
+  }
+
+  stopFind(): void {
+    this.activeView()?.stopFindInPage('clearSelection');
   }
 
   private activeView(): Electron.WebContents | undefined {
@@ -308,6 +337,13 @@ export class AccountViewManager {
     // interacts with the web content, not the shell).
     wc.on('before-input-event', (event, input) => {
       this.onTabShortcutInput(event, input, () => accountId, () => wc.reload(), () => wc);
+    });
+    wc.on('found-in-page', (_event, result) => {
+      if (!result.finalUpdate) return;
+      this.win.webContents.send('facelift:find-result', {
+        activeMatchOrdinal: result.activeMatchOrdinal,
+        matches: result.matches,
+      } satisfies FindResultEvent);
     });
     wc.on('will-navigate', (event: ElectronEvent, navUrl: string) => {
       if (this.handleNavigation(accountId, navUrl)) event.preventDefault();

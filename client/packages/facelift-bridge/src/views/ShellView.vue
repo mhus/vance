@@ -144,6 +144,42 @@ let packsProjectUnsub: (() => void) | null = null;
 let tabUrlUnsub: (() => void) | null = null;
 let tabShortcutUnsub: (() => void) | null = null;
 let tabCloseUnsub: (() => void) | null = null;
+let findOpenUnsub: (() => void) | null = null;
+let findResultUnsub: (() => void) | null = null;
+
+// Find in page (desktop only): the bar lives in the header, so the native
+// view below is never covered; the header grows and the ResizeObserver
+// re-fits the view's bounds.
+const findOpen = ref(false);
+const findText = ref('');
+const findMatches = ref(0);
+const findOrdinal = ref(0);
+const findInputEl = ref<HTMLInputElement | null>(null);
+
+async function openFind(): Promise<void> {
+  findOpen.value = true;
+  await nextTick();
+  findInputEl.value?.focus();
+  findInputEl.value?.select();
+  if (findText.value !== '') void runFind(true, true);
+}
+
+async function closeFind(): Promise<void> {
+  findOpen.value = false;
+  findMatches.value = 0;
+  findOrdinal.value = 0;
+  await window.faceliftDesktop?.stopFind();
+}
+
+async function runFind(newSearch: boolean, forward: boolean): Promise<void> {
+  if (findText.value === '') {
+    findMatches.value = 0;
+    findOrdinal.value = 0;
+    await window.faceliftDesktop?.stopFind();
+    return;
+  }
+  await window.faceliftDesktop?.find({ text: findText.value, newSearch, forward });
+}
 
 const toolsTitle = computed(() => {
   const context = activeId.value !== null ? packsProjects.value.get(activeId.value) : undefined;
@@ -179,6 +215,7 @@ async function toggleTools(): Promise<void> {
 }
 
 watch(activeId, () => {
+  if (findOpen.value) void closeFind();
   void refreshToolsEnabled();
 });
 
@@ -207,6 +244,13 @@ onMounted(async () => {
       if (event.accountId === activeId.value) {
         toolsActive.value = event.active;
       }
+    }) ?? null;
+    findOpenUnsub = window.faceliftDesktop?.onFindOpen((event) => {
+      if (activeId.value === event.accountId) void openFind();
+    }) ?? null;
+    findResultUnsub = window.faceliftDesktop?.onFindResult((event) => {
+      findMatches.value = event.matches;
+      findOrdinal.value = event.activeMatchOrdinal;
     }) ?? null;
     tabCloseUnsub = window.faceliftDesktop?.onTabCloseRequest((event) => {
       // Meta/Ctrl+W from the main — min-1 is OUR rule (closeTab no-ops on
@@ -262,6 +306,10 @@ onBeforeUnmount(async () => {
   tabShortcutUnsub = null;
   tabCloseUnsub?.();
   tabCloseUnsub = null;
+  findOpenUnsub?.();
+  findOpenUnsub = null;
+  findResultUnsub?.();
+  findResultUnsub = null;
   await VanceAccountWebView.dismiss();
 });
 
@@ -513,6 +561,29 @@ async function goAdd(): Promise<void> {
           class="shrink-0"
           @click="newTab"
         />
+      </div>
+      <div
+        v-if="findOpen"
+        class="flex w-full items-center gap-1 px-1 pb-1"
+      >
+        <input
+          ref="findInputEl"
+          v-model="findText"
+          type="text"
+          class="h-8 min-w-0 flex-1 rounded-(--v-radius-control) border border-(--v-separator) bg-(--v-surface) px-2 text-sm text-(--v-label) focus-visible:shadow-[0_0_0_3px_var(--v-focus-ring)] focus-visible:outline-none"
+          placeholder="Find in page"
+          aria-label="Find in page"
+          @input="runFind(true, true)"
+          @keydown.enter.exact.prevent="runFind(false, true)"
+          @keydown.shift.enter.prevent="runFind(false, false)"
+          @keydown.esc.prevent="closeFind"
+        />
+        <span class="w-16 shrink-0 text-center text-xs text-(--v-label-secondary)">
+          {{ findText === '' ? '' : `${findOrdinal}/${findMatches}` }}
+        </span>
+        <VIconButton icon="arrow-up" label="Previous match" size="sm" @click="runFind(false, false)" />
+        <VIconButton icon="arrow-down" label="Next match" size="sm" @click="runFind(false, true)" />
+        <VIconButton icon="close" label="Close find" size="sm" @click="closeFind" />
       </div>
     </header>
 

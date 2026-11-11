@@ -50,6 +50,19 @@ export interface TabShortcutEvent {
   digit: '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9';
 }
 
+/** Find-in-page result for the active tab's view (Electron 'found-in-page'). */
+export interface FindResultEvent {
+  activeMatchOrdinal: number;
+  matches: number;
+}
+
+export interface FindOptions {
+  text: string;
+  /** false = continue the running search (next/previous); true = new query. */
+  newSearch: boolean;
+  forward: boolean;
+}
+
 export interface UrlOpenEvent {
   url: string;
 }

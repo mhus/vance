@@ -257,6 +257,14 @@ export interface FaceliftDesktopBridge {
   onUrlOpen(callback: (event: UrlOpenEvent) => void): () => void;
   onTabUrl(callback: (event: TabUrlEvent) => void): () => void;
   onTabCloseRequest(callback: (event: { accountId: string }) => void): () => void;
+  /** Find in the active tab's page (Electron has no built-in find UI). */
+  find(options: { text: string; newSearch: boolean; forward: boolean }): Promise<void>;
+  stopFind(): Promise<void>;
+  /** Fired when Cmd/Ctrl+F is pressed anywhere in the window. */
+  onFindOpen(callback: (event: { accountId: string }) => void): () => void;
+  onFindResult(
+    callback: (event: { activeMatchOrdinal: number; matches: number }) => void,
+  ): () => void;
   onTabShortcut(
     callback: (event: { accountId: string; digit: '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' }) => void,
   ): () => void;

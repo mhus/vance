@@ -4,6 +4,8 @@ import type {
   AccountWebViewBounds,
   BiometricAvailability,
   CloseTabOptions,
+  FindOptions,
+  FindResultEvent,
   BiometricResult,
   HttpGetOptions,
   HttpGetResult,
@@ -85,6 +87,20 @@ const bridge = {
       callback(event);
     ipcRenderer.on('facelift:tab-close-request', listener);
     return () => ipcRenderer.removeListener('facelift:tab-close-request', listener);
+  },
+  find: (o: FindOptions): Promise<void> => ipcRenderer.invoke('facelift:find', o),
+  stopFind: (): Promise<void> => ipcRenderer.invoke('facelift:find-stop'),
+  onFindOpen: (callback: (event: { accountId: string }) => void): (() => void) => {
+    const listener = (_e: IpcRendererEvent, event: { accountId: string }): void =>
+      callback(event);
+    ipcRenderer.on('facelift:find-open', listener);
+    return () => ipcRenderer.removeListener('facelift:find-open', listener);
+  },
+  onFindResult: (callback: (event: FindResultEvent) => void): (() => void) => {
+    const listener = (_e: IpcRendererEvent, event: FindResultEvent): void =>
+      callback(event);
+    ipcRenderer.on('facelift:find-result', listener);
+    return () => ipcRenderer.removeListener('facelift:find-result', listener);
   },
   onTabShortcut: (callback: (event: TabShortcutEvent) => void): (() => void) => {
     const listener = (_e: IpcRendererEvent, event: TabShortcutEvent): void =>

@@ -193,7 +193,15 @@ public class FinanceService {
      * the embedded summary / preview. {@link #recalculate} is the write path.
      */
     public FinanceComputed snapshot(DocumentDocument doc) {
-        FinanceTreeDocument tree = readDocument(doc);
+        return snapshot(readDocument(doc));
+    }
+
+    /**
+     * The same read-only computation for a tree the caller holds but has not
+     * stored — the editor recomputes figures from its in-memory tree while the
+     * Cortex shell owns persisting it.
+     */
+    public FinanceComputed snapshot(FinanceTreeDocument tree) {
         List<NodeSnapshot> nodes =
                 tree.root() == null ? List.of() : FinanceCalculator.compute(tree.root(), LocalDate.now(ZoneOffset.UTC));
         return new FinanceComputed(Instant.now().toString(), nodes);

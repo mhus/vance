@@ -18,16 +18,6 @@ export async function getTree(projectId: string, path: string): Promise<FinanceT
   return brainFetch<FinanceTreeDto>('GET', `addon/finance/tree?${qs({ projectId, path })}`);
 }
 
-export async function putTree(
-  projectId: string,
-  path: string,
-  tree: FinanceTreeDto,
-): Promise<FinanceTreeDto> {
-  return brainFetch<FinanceTreeDto>('PUT', `addon/finance/tree?${qs({ projectId, path })}`, {
-    body: tree,
-  });
-}
-
 export async function createTree(
   projectId: string,
   path: string,
@@ -38,8 +28,25 @@ export async function createTree(
   return brainFetch<FinanceTreeDto>('POST', `addon/finance/create?${qs(params)}`);
 }
 
-export async function calc(projectId: string, path: string): Promise<FinanceComputed> {
-  return brainFetch<FinanceComputed>('POST', `addon/finance/calc?${qs({ projectId, path })}`);
+/** Whole-tree write — only for hosts without the Cortex shell (see FinanceDialogEditor). */
+export async function putTree(
+  projectId: string,
+  path: string,
+  tree: FinanceTreeDto,
+): Promise<FinanceTreeDto> {
+  return brainFetch<FinanceTreeDto>('PUT', `addon/finance/tree?${qs({ projectId, path })}`, {
+    body: tree,
+  });
+}
+
+/**
+ * Figures for a tree the caller holds — stateless, nothing is stored. The
+ * editor uses it on its in-memory tree; persisting is the Cortex shell's job.
+ */
+export async function snapshotOf(projectId: string, tree: FinanceTreeDto): Promise<FinanceComputed> {
+  return brainFetch<FinanceComputed>('POST', `addon/finance/snapshot?${qs({ projectId })}`, {
+    body: tree,
+  });
 }
 
 export async function getSnapshot(projectId: string, path: string): Promise<FinanceComputed> {

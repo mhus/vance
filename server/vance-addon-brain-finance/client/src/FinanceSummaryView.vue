@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { VAlert, VButton, VModal } from '@vance/components';
-import FinanceKind from './FinanceKind.vue';
+import FinanceDialogEditor from './FinanceDialogEditor.vue';
 import { getSnapshot, getTree } from './api';
 import type { FinanceNodeDto } from './generated/finance/FinanceNodeDto';
 import type { FinanceTreeDto } from './generated/finance/FinanceTreeDto';
@@ -104,9 +104,10 @@ async function onEditClosed(): Promise<void> {
       @update:model-value="(o: boolean) => !o && onEditClosed()"
     >
       <div class="h-[70vh]">
-        <FinanceKind
+        <FinanceDialogEditor
           v-if="editOpen && projectId && path"
-          :document="{ projectId, path }"
+          :project-id="projectId"
+          :path="path"
         />
       </div>
     </VModal>

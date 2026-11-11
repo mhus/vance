@@ -9,6 +9,7 @@ export default {
   documents: {
     detail: {
       tabFinance: 'Finance',
+      financeParseError: 'This document is not a valid finance tree.',
     },
   },
   finance: {
@@ -19,13 +20,6 @@ export default {
     loading: 'Loading…',
     createRoot: 'Create root node',
     pickNode: 'Select a node to edit it.',
-    // Save indicator, keyed by state id.
-    save: {
-      saved: 'saved',
-      dirty: 'unsaved',
-      saving: 'saving…',
-      error: 'save failed',
-    },
     fields: {
       heading: 'Fields · {name}',
       title: 'Title',

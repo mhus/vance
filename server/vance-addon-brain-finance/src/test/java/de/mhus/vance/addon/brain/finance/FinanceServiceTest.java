@@ -71,6 +71,23 @@ class FinanceServiceTest {
     }
 
     @Test
+    void snapshotOfTree_computesFiguresWithoutTouchingStorage() {
+        FinanceComputed computed = service.snapshot(sample());
+
+        NodeSnapshot root = computed.nodes().get(0);
+        assertThat(root.name()).isEqualTo("projekt");
+        assertThat(root.perMonth()).isCloseTo(800.0, within(1e-6));
+        org.mockito.Mockito.verifyNoInteractions(documentService);
+    }
+
+    @Test
+    void snapshotOfTree_withoutRoot_isEmpty() {
+        assertThat(service.snapshot(new FinanceTreeDocument(1, "Plan", null, null))
+                        .nodes())
+                .isEmpty();
+    }
+
+    @Test
     void recalculate_writesComputedSnapshotBack() {
         DocumentDocument doc = docWithTree(sample());
 

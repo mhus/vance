@@ -128,6 +128,17 @@ public class FinanceController {
         return financeService.snapshot(requireDoc(tenant, projectId, path));
     }
 
+    /** Stateless: computes figures for the posted tree, stores nothing. */
+    @PostMapping("/brain/{tenant}/addon/finance/snapshot")
+    public FinanceComputed snapshotOf(
+            @PathVariable String tenant,
+            @RequestParam String projectId,
+            @RequestBody FinanceTreeDto dto,
+            HttpServletRequest request) {
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.READ);
+        return financeService.snapshot(FinanceDtoMapper.fromDto(dto));
+    }
+
     @GetMapping("/brain/{tenant}/addon/finance/project")
     public FinanceProjection project(
             @PathVariable String tenant,

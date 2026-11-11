@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, inject, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import {
   VAlert,
   VButton,
@@ -13,13 +13,18 @@ import {
 import FinanceColorMenu from './FinanceColorMenu.vue';
 import FinanceTreeNode from './FinanceTreeNode.vue';
 import * as ops from './treeOps';
-import { calc, generateReport, getSnapshot, getTree, listProcessors, putTree } from './api';
+import { generateReport, listProcessors, snapshotOf } from './api';
+import {
+  type FinanceComputedOverlay,
+  type FinanceTreeDoc,
+  serializeFinance,
+} from './financeCodec';
 import type { FinanceNodeDto } from './generated/finance/FinanceNodeDto';
-import type { FinanceTreeDto } from './generated/finance/FinanceTreeDto';
 import type { FinanceValueDto } from './generated/finance/FinanceValueDto';
 import type {
   DropPosition,
   DropTarget,
+  FinanceComputed,
   Granularity,
   NodeAction,
   NodeSnapshot,
@@ -28,27 +33,48 @@ import type {
 } from './types';
 import { useT } from './i18n';
 
+// Codec-kind contract: the Cortex shell parses the body into `doc` and owns
+// load / dirty / autosave / 3-way merge. This view edits a local working copy
+// and reports every change through `update:doc`; it never writes on its own.
 const props = defineProps<{
-  document: { id?: string; path: string; projectId: string; inlineText?: string };
+  doc: FinanceTreeDoc | null;
+  projectId: string;
+  docPath: string;
+  readOnly?: boolean;
+}>();
+
+const emit = defineEmits<{
+  (e: 'update:doc', doc: FinanceTreeDoc): void;
 }>();
 
 const t = useT();
 
-// Provided by the Cortex tab shell; absent when the view is hosted elsewhere.
-const notifyWritten = inject<null | (() => Promise<void>)>('vance:document-written', null);
+const SNAPSHOT_DEBOUNCE_MS = 250;
+const COMPUTED_DECIMALS = 1_000_000;
 
-const tree = ref<FinanceTreeDto | null>(null);
+function clone<T>(v: T): T {
+  return JSON.parse(JSON.stringify(v)) as T;
+}
+
+/** Canonical text of a model — the one comparison that ignores object identity and defaults. */
+function canonical(doc: FinanceTreeDoc): string {
+  return serializeFinance(doc, 'application/json');
+}
+
+/** Same, without the derived `$computed` overlay: "did the tree itself change?" */
+function structural(doc: FinanceTreeDoc): string {
+  return canonical({ ...doc, computed: undefined });
+}
+
+const tree = ref<FinanceTreeDoc | null>(props.doc ? clone(props.doc) : null);
 const selectedName = ref<string | null>(null);
 const computedMap = ref<Record<string, NodeSnapshot> | null>(null);
 const displayUnit = ref<'year' | 'month' | 'week' | 'day'>('year');
 const processors = ref<ProcessorInfo[]>([]);
 const error = ref<string | null>(null);
-const loading = ref(false);
-const saveState = ref<'saved' | 'dirty' | 'saving' | 'error'>('saved');
 
-let dirtyEnabled = false;
-let ownWrite = false;
-let saveTimer: ReturnType<typeof setTimeout> | null = null;
+let snapshotTimer: ReturnType<typeof setTimeout> | null = null;
+let snapshotSeq = 0;
 
 const unitKey = computed<'perYear' | 'perMonth' | 'perWeek' | 'perDay'>(() => {
   switch (displayUnit.value) {
@@ -64,75 +90,89 @@ const selected = computed<FinanceNodeDto | null>(() => {
   return ops.locate(tree.value, selectedName.value)?.node ?? null;
 });
 
-// ── Load / save ───────────────────────────────────────────────
+// ── Sync with the shell ───────────────────────────────────────
 
-async function load(): Promise<void> {
-  loading.value = true;
-  error.value = null;
-  dirtyEnabled = false;
-  try {
-    tree.value = await getTree(props.document.projectId, props.document.path);
-    processors.value = await listProcessors(props.document.projectId);
-    await nextTick();
-    dirtyEnabled = true;
-    await refreshSnapshot();
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e);
-  } finally {
-    loading.value = false;
+// The shell hands over a new model after our own emit (an echo — same content,
+// nothing to do), after a reload, or after it merged a foreign change into the
+// text. Only a real difference replaces the working copy, so a local edit never
+// flickers back through the view; the selection survives by node name.
+watch(() => props.doc, (incoming) => {
+  if (!incoming) return;
+  if (tree.value && canonical(incoming) === canonical(tree.value)) return;
+  tree.value = clone(incoming);
+  scheduleSnapshot();
+});
+
+watch(tree, (t) => {
+  if (!t || props.readOnly) return;
+  const incoming = props.doc;
+  if (incoming && canonical(incoming) === canonical(t)) return;
+  // Figures that no longer match the tree would mislead whoever reads the
+  // file; only a change to the tree drops them, not Reload writing them.
+  if (t.computed && (!incoming || structural(incoming) !== structural(t))) {
+    t.computed = undefined;
   }
+  emit('update:doc', clone(t));
+  scheduleSnapshot();
+}, { deep: true });
+
+onMounted(() => {
+  void refreshSnapshot();
+  void listProcessors(props.projectId).then(
+    (p) => { processors.value = p; },
+    (e) => { error.value = e instanceof Error ? e.message : String(e); },
+  );
+});
+onUnmounted(() => { if (snapshotTimer) clearTimeout(snapshotTimer); });
+
+// ── Live figures ──────────────────────────────────────────────
+
+function scheduleSnapshot(): void {
+  if (snapshotTimer) clearTimeout(snapshotTimer);
+  snapshotTimer = setTimeout(() => { void refreshSnapshot(); }, SNAPSHOT_DEBOUNCE_MS);
 }
 
-/** Live, ephemeral recompute (read-only, no persist) → per-node figures. */
-async function refreshSnapshot(): Promise<void> {
+/**
+ * Live, ephemeral recompute from the in-memory tree (nothing is stored) →
+ * per-node figures. Answers that arrive out of order are dropped; a failed
+ * recompute keeps the previous figures.
+ */
+async function refreshSnapshot(): Promise<FinanceComputed | null> {
+  if (!tree.value) return null;
+  const seq = ++snapshotSeq;
   try {
-    const c = await getSnapshot(props.document.projectId, props.document.path);
+    // `$computed` is derived data and not part of the REST DTO.
+    const { computed: _derived, ...plain } = clone(tree.value);
+    const c = await snapshotOf(props.projectId, plain);
+    if (seq !== snapshotSeq) return null;
     const map: Record<string, NodeSnapshot> = {};
     for (const n of c.nodes) map[n.name] = n;
     computedMap.value = map;
+    return c;
   } catch {
-    /* keep the previous figures if a recompute fails */
+    return null;
   }
 }
 
-function markDirty(): void {
-  saveState.value = 'dirty';
-  if (saveTimer) clearTimeout(saveTimer);
-  saveTimer = setTimeout(save, 800);
+function round(v: number): number {
+  return Math.round(v * COMPUTED_DECIMALS) / COMPUTED_DECIMALS;
 }
 
-async function save(): Promise<void> {
-  if (!tree.value) return;
-  saveState.value = 'saving';
-  try {
-    await putTree(props.document.projectId, props.document.path, tree.value);
-    saveState.value = 'saved';
-    // Keep the host tab's raw body in step with what we wrote. The tab reload
-    // changes `document.inlineText`, which must not read as a foreign change.
-    ownWrite = true;
-    try {
-      await notifyWritten?.();
-    } finally {
-      setTimeout(() => { ownWrite = false; }, 0); // after the watcher's flush
-    }
-    await refreshSnapshot(); // live figures reflect the just-saved edits
-  } catch (e) {
-    saveState.value = 'error';
-    error.value = e instanceof Error ? e.message : String(e);
+function overlayOf(c: FinanceComputed): FinanceComputedOverlay {
+  const nodes: FinanceComputedOverlay['nodes'] = {};
+  for (const n of c.nodes) {
+    nodes[n.name] = {
+      perYear: round(n.perYear),
+      perMonth: round(n.perMonth),
+      perWeek: round(n.perWeek),
+      perDay: round(n.perDay),
+      base: round(n.base),
+      interest: round(n.interest),
+      oneTimeSum: round(n.oneTimeSum),
+    };
   }
+  return c.computedAt ? { computedAt: c.computedAt, nodes } : { nodes };
 }
-
-watch(tree, () => { if (dirtyEnabled) markDirty(); }, { deep: true });
-watch(() => [props.document.projectId, props.document.path], () => { void load(); });
-// The body changed behind this view (an agent tool, another client — the host
-// tab reloaded). Without a reload the next autosave would write our stale tree
-// over it. Skipped for our own writes and while local edits are still pending.
-watch(() => props.document.inlineText, () => {
-  if (ownWrite || saveState.value !== 'saved') return;
-  void load();
-});
-onMounted(load);
-onUnmounted(() => { if (saveTimer) clearTimeout(saveTimer); });
 
 // ── Tree actions ──────────────────────────────────────────────
 
@@ -204,15 +244,15 @@ function addRoot(): void {
   selectedName.value = root.name;
 }
 
+/**
+ * Recompute the figures and write them into the document under `$computed`
+ * (what agents read). It goes through the same `update:doc` path as any edit,
+ * so it is saved and merged by the shell like one.
+ */
 async function reload(): Promise<void> {
-  try {
-    const c = await calc(props.document.projectId, props.document.path);
-    const map: Record<string, NodeSnapshot> = {};
-    for (const n of c.nodes) map[n.name] = n;
-    computedMap.value = map;
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e);
-  }
+  const c = await refreshSnapshot();
+  if (!c || !tree.value) return;
+  tree.value.computed = overlayOf(c);
 }
 
 // ── Detail-panel editing helpers ──────────────────────────────
@@ -304,8 +344,8 @@ async function runReport(): Promise<void> {
   reportResult.value = null;
   try {
     reportResult.value = await generateReport(
-      props.document.projectId,
-      props.document.path,
+      props.projectId,
+      props.docPath,
       reportForm.processor,
       params,
       reportForm.persist,
@@ -335,14 +375,11 @@ async function runReport(): Promise<void> {
         </select>
       </label>
       <VButton icon="play" variant="secondary" @click="openReport">{{ t('finance.report') }}</VButton>
-      <span class="ml-auto text-xs opacity-60">{{ t(`finance.save.${saveState}`) }}</span>
     </div>
 
     <VAlert v-if="error" variant="error">{{ error }}</VAlert>
 
-    <div v-if="loading" class="p-4 opacity-60">{{ t('finance.loading') }}</div>
-
-    <div v-else class="flex flex-1 min-h-0">
+    <div class="flex flex-1 min-h-0">
       <!-- Tree (left) -->
       <div class="w-1/2 overflow-auto border-r border-(--v-separator) p-2">
         <FinanceTreeNode

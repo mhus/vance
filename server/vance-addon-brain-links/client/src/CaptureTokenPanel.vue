@@ -41,11 +41,17 @@ const props = defineProps<{
  * <p>A token may hold several profiles, and this is where that becomes a
  * person's choice rather than something baked in. The reason it is offered
  * *here*, in a links dialog, is the whole point of the design: one browser
- * extension does more than one thing and must still be set up once. What each
- * profile opens is the server's answer — the list is fetched, not written out
- * in this file, so an addon that adds a capability appears without a UI
- * release.
+ * extension does more than one thing and must still be set up once.
+ *
+ * <p>The offer is limited to what a capture tool does: saving links and
+ * saving pages. The server knows more profiles (MCP doors, backup, agents),
+ * but those are credentials for other tools and have their own places to be
+ * minted — offering them in a link list's settings was a misplaced option, not
+ * a feature. What each offered profile opens is still the server's answer
+ * (label and routes are fetched, not written out here).
  */
+const CAPTURE_PROFILES = ['links-capture', 'web-grab'];
+
 const profiles = ref<IntegrationScopeProfileDto[]>([]);
 const chosen = ref<string[]>(['links-capture']);
 
@@ -95,7 +101,9 @@ async function load(): Promise<void> {
       listScopeProfiles(),
       listIntegrationTokens(),
     ]);
-    profiles.value = available;
+    profiles.value = CAPTURE_PROFILES
+      .map((id) => available.find((p) => p.id === id))
+      .filter((p): p is IntegrationScopeProfileDto => p !== undefined);
     tokens.value = existing;
   } catch (e) {
     error.value = message(e);

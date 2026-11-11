@@ -45,6 +45,7 @@ import { ProcessSkillCommand } from '@vance/generated';
 import { useTenantProjects } from '@composables/useTenantProjects';
 import DocumentPresenceStrip from '@/ws/DocumentPresenceStrip.vue';
 import { brainFetchText } from '@vance/shared';
+import { resolveKindFor } from '@vance/kind-registry';
 import {
   isAudioVideoMime,
   tryThreeWayMerge,
@@ -1129,6 +1130,27 @@ function tryApplyForTab(
   return runTryApply(tab, notification.kind ?? 'upserted');
 }
 
+/**
+ * Body → canonical body for a kind with a full codec (parse + serialize), or
+ * `null` when the kind has none. A body that does not parse is returned as it
+ * is, so a broken document still takes part in the merge as plain text.
+ */
+function canonicalizerFor(
+  tab: ReturnType<typeof store.openTabs.find> & object,
+): ((text: string) => string) | null {
+  const mime = tab.mimeType ?? '';
+  const entry = resolveKindFor(tab.kind ?? null, mime);
+  const { parse, serialize } = entry ?? {};
+  if (!parse || !serialize) return null;
+  return (text) => {
+    try {
+      return serialize(parse(text, mime), mime);
+    } catch {
+      return text;
+    }
+  };
+}
+
 async function runTryApply(
   tab: ReturnType<typeof store.openTabs.find> & object,
   _kind: string,
@@ -1150,11 +1172,27 @@ async function runTryApply(
     if (remoteText === null) {
       return false;
     }
-    const outcome = tryThreeWayMerge(
+    let outcome = tryThreeWayMerge(
       tab.baselineInlineText,
       tab.inlineText,
       remoteText,
     );
+    if (!outcome.ok) {
+      // A line merge cannot see through formatting: a writer that serialises
+      // the whole body (a server tool, another client's codec) rewrites every
+      // line even for a one-field change, and then any local edit "conflicts".
+      // A codec kind can say what the same content looks like canonically, so
+      // retry on those forms. Only as a fallback — the plain merge keeps
+      // comments and layout, the canonical one does not.
+      const canon = canonicalizerFor(tab);
+      if (canon) {
+        outcome = tryThreeWayMerge(
+          canon(tab.baselineInlineText),
+          canon(tab.inlineText),
+          canon(remoteText),
+        );
+      }
+    }
     if (!outcome.ok) {
       return false;
     }

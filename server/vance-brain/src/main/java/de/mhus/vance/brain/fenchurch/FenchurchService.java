@@ -750,7 +750,11 @@ public class FenchurchService {
                         config.provider(),
                         config.modelName(),
                         costUsd,
-                        "USD",
+                        modelCatalog.costCurrency(
+                                request.getTenantId(),
+                                request.getProjectId(),
+                                config.providerInstance(),
+                                config.modelName()),
                         outcome,
                         durationMs));
     }

@@ -517,6 +517,22 @@ public class ModelCatalog implements ResourceOverrideConsumer {
                 toEntry(parts, spec, snap.modelSourcesFor(tenantId, projectId).get(k)));
     }
 
+    /**
+     * Currency the per-unit costs of a model (image, speech, transcription, music,
+     * decision) are stated in and booked in: the document's {@code costCurrency},
+     * USD when it says nothing — the convention of every bundled document. Chat
+     * prices carry their own currency in the {@code pricing} block.
+     */
+    public String costCurrency(
+            @Nullable String tenantId, @Nullable String projectId, String provider, String modelName) {
+        return lookupEntry(tenantId, projectId, provider, modelName)
+                .map(e -> e.spec().get("costCurrency"))
+                .map(Object::toString)
+                .map(String::trim)
+                .filter(c -> !c.isEmpty())
+                .orElse("USD");
+    }
+
     /** Source layer per field of an instance's {@code _provider.yaml}; empty when there is none. */
     public Map<String, ModelCatalogLayer> providerFieldSources(
             @Nullable String tenantId, @Nullable String projectId, String providerInstance) {
@@ -1129,6 +1145,8 @@ public class ModelCatalog implements ResourceOverrideConsumer {
             "costPerMillionInput",
             "rateLimitRps",
             "maxConcurrentCalls",
+            // Currency of the per-unit cost fields above (default USD)
+            "costCurrency",
             // Discovery markers (informational)
             "discoveredBy",
             "discoveredAt");

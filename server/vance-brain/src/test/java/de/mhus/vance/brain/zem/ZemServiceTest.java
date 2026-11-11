@@ -70,6 +70,8 @@ class ZemServiceTest {
         recipes = mock(RecipeLoader.class);
         resolver = mock(AiModelResolver.class);
         catalog = mock(ModelCatalog.class);
+        // Documents state their cost currency; the bundled ones say nothing and mean USD.
+        when(catalog.costCurrency(any(), any(), anyString(), anyString())).thenReturn("USD");
         decisions = mock(AiDecisionService.class);
         usageSink = mock(UsageSink.class);
         interrupts = mock(ToolInterruptChecker.class);
@@ -260,7 +262,20 @@ class ZemServiceTest {
         assertThat(what.getValue().tokensIn()).isEqualTo(456);
         assertThat(what.getValue().images()).isEqualTo(1);
         assertThat(what.getValue().pricing().inputPerMTok()).isEqualTo(0.042);
+        assertThat(what.getValue().pricing().currency()).isEqualTo("USD");
         assertThat(what.getValue().outcome()).isEqualTo(UsageOutcome.SUCCESS);
+    }
+
+    @Test
+    void a_decision_is_booked_in_the_currency_the_catalog_states() {
+        when(catalog.costCurrency(any(), any(), anyString(), anyString())).thenReturn("EUR");
+        when(decisions.decide(any(), any())).thenAnswer(inv -> answerAll(inv.getArgument(1), 100));
+
+        service.decide(request().question(noul("billing")).build(), Map.of("m", "x"));
+
+        ArgumentCaptor<UsageMeasurement> what = ArgumentCaptor.forClass(UsageMeasurement.class);
+        verify(usageSink).onCall(any(), what.capture());
+        assertThat(what.getValue().pricing().currency()).isEqualTo("EUR");
     }
 
     @Test

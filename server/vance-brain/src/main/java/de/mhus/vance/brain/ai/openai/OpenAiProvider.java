@@ -256,12 +256,20 @@ public class OpenAiProvider extends AbstractChatProvider {
         }
         List<DiscoveredModelInfo> out = new ArrayList<>(data.size());
         for (JsonNode entry : data) {
-            DiscoveredModelInfo info = OpenAiModelListing.parse(entry);
+            DiscoveredModelInfo info = parseListingEntry(entry);
             if (info != null) {
                 out.add(info);
             }
         }
         return out;
+    }
+
+    /**
+     * One {@code data[]} entry of the model listing. A gateway whose endpoint owns
+     * its model list (Iris) overrides this to read more than observations.
+     */
+    protected @org.jspecify.annotations.Nullable DiscoveredModelInfo parseListingEntry(JsonNode entry) {
+        return OpenAiModelListing.parse(entry);
     }
 
     /**

@@ -123,7 +123,7 @@ public class OpenRouterImageProvider implements AiImageModelProvider {
      */
     private void executeAndCommit(
             AiImageConfig config, ObjectNode body, long start, ImageDestinationStream destination) {
-        String baseUrl = config.baseUrl() != null ? config.baseUrl() : defaultBaseUrl;
+        String baseUrl = baseUrlFor(config.baseUrl());
         String imagesUrl = baseUrl.endsWith("/") ? baseUrl + "images" : baseUrl + "/images";
 
         HttpRequest request = HttpRequest.newBuilder()
@@ -157,7 +157,24 @@ public class OpenRouterImageProvider implements AiImageModelProvider {
 
         JsonNode root = parseJson(response.body(), config);
         long durationMs = System.currentTimeMillis() - start;
-        writeToDestination(root, config, durationMs, destination);
+        writeToDestination(root, config, durationMs, destination, reportsVendorCost());
+    }
+
+    /**
+     * The base URL to call: the instance's own, or this provider's default. A
+     * variant that must never fall back (a gateway key sent to the wrong party)
+     * overrides this.
+     */
+    protected String baseUrlFor(@Nullable String configured) {
+        return configured != null ? configured : defaultBaseUrl;
+    }
+
+    /**
+     * Whether the vendor's own {@code usage.cost} (USD) is passed on as the
+     * call's cost. A gateway that bills in its own currency says no.
+     */
+    protected boolean reportsVendorCost() {
+        return true;
     }
 
     private JsonNode parseJson(String body, AiImageConfig config) {
@@ -187,6 +204,15 @@ public class OpenRouterImageProvider implements AiImageModelProvider {
 
     static void writeToDestination(
             JsonNode root, AiImageConfig config, long durationMs, ImageDestinationStream destination) {
+        writeToDestination(root, config, durationMs, destination, true);
+    }
+
+    static void writeToDestination(
+            JsonNode root,
+            AiImageConfig config,
+            long durationMs,
+            ImageDestinationStream destination,
+            boolean vendorCost) {
         JsonNode data = root.path("data");
         if (!data.isArray() || data.isEmpty()) {
             throw new AiImageException("OpenRouter returned no image data for " + config.fullName());
@@ -219,7 +245,7 @@ public class OpenRouterImageProvider implements AiImageModelProvider {
         // The real, vendor-reported cost in USD — the whole point of
         // the dedicated provider: token- and megapixel-priced models
         // book their actual spend instead of a flat-rate estimate.
-        @Nullable Double cost = usageCost(root);
+        @Nullable Double cost = vendorCost ? usageCost(root) : null;
         if (cost != null) {
             destination.setMetadata("costUsd", Double.toString(cost));
         }

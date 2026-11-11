@@ -43,11 +43,16 @@ abstract class SystemOneProviderSupport implements AiDecisionModelProvider {
 
     /** Endpoint for {@code baseUrl}, falling back to the provider default. */
     URI endpoint(@Nullable String baseUrl) {
-        String base = baseUrl != null ? baseUrl.trim() : defaultBaseUrl;
+        String base = baseUrlFor(baseUrl);
         while (base.endsWith("/")) {
             base = base.substring(0, base.length() - 1);
         }
         return URI.create(base.endsWith(V1_SUFFIX) ? base + ROUTE : base + V1_SUFFIX + ROUTE);
+    }
+
+    /** The configured base URL, or this provider's default; a gateway variant refuses the default. */
+    String baseUrlFor(@Nullable String baseUrl) {
+        return baseUrl != null ? baseUrl.trim() : defaultBaseUrl;
     }
 
     private @Nullable String key(AiDecisionConfig config) {

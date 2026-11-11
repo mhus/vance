@@ -1412,7 +1412,7 @@ public class HotblackService {
                         config.provider(),
                         config.modelName(),
                         costUsd,
-                        "USD",
+                        modelCatalog.costCurrency(tenantId, projectId, config.providerInstance(), config.modelName()),
                         outcome,
                         durationMs));
     }

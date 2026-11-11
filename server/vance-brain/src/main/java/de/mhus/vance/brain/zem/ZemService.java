@@ -412,7 +412,16 @@ public class ZemService {
         DecisionModelInfo model = call.model();
         ModelInfo.Pricing pricing = model.costPerMillionInput() == null
                 ? null
-                : new ModelInfo.Pricing("USD", model.costPerMillionInput(), 0.0, null, null);
+                : new ModelInfo.Pricing(
+                        modelCatalog.costCurrency(
+                                call.tenantId(),
+                                call.projectId(),
+                                call.config().providerInstance(),
+                                call.config().modelName()),
+                        model.costPerMillionInput(),
+                        0.0,
+                        null,
+                        null);
         usageSink.onCall(
                 new CallAttribution(
                         call.tenantId(),

@@ -221,7 +221,7 @@ public class OpenRouterAudioProvider implements AiAudioModelProvider {
         String text = root.path("text").asString("");
         JsonNode usage = root.path("usage");
         Double seconds = usage.has("seconds") ? usage.path("seconds").asDouble() : null;
-        Double cost = usage.has("cost") ? usage.path("cost").asDouble() : null;
+        Double cost = vendorCost(usage);
         Double duration = usage.has("duration") ? usage.path("duration").asDouble() : seconds;
         return new SttResult(text, language, duration, cost);
     }
@@ -291,7 +291,7 @@ public class OpenRouterAudioProvider implements AiAudioModelProvider {
     }
 
     /** Parse the SSE stream: base64 audio chunks + the closing usage. */
-    private static void readSse(
+    private void readSse(
             java.io.InputStream in, ByteArrayOutputStream audio, Double[] reportedCost, StringBuilder transcript)
             throws java.io.IOException {
         try (var reader = new java.io.BufferedReader(new java.io.InputStreamReader(in, StandardCharsets.UTF_8))) {
@@ -306,8 +306,11 @@ public class OpenRouterAudioProvider implements AiAudioModelProvider {
                     continue;
                 }
                 JsonNode chunk = MAPPER.readTree(payload.getBytes(StandardCharsets.UTF_8));
-                if (chunk.has("usage") && chunk.path("usage").has("cost")) {
-                    reportedCost[0] = chunk.path("usage").path("cost").asDouble();
+                if (chunk.has("usage")) {
+                    Double cost = vendorCost(chunk.path("usage"));
+                    if (cost != null) {
+                        reportedCost[0] = cost;
+                    }
                 }
                 for (JsonNode choice : chunk.path("choices")) {
                     JsonNode delta = choice.path("delta");
@@ -361,7 +364,7 @@ public class OpenRouterAudioProvider implements AiAudioModelProvider {
             throw new AiAudioException("OpenRouter audio analysis returned no text for " + config.fullName());
         }
         JsonNode usage = root.path("usage");
-        Double cost = usage.has("cost") ? usage.path("cost").asDouble() : null;
+        Double cost = vendorCost(usage);
         return new AnalysisResult(text, cost);
     }
 
@@ -389,11 +392,28 @@ public class OpenRouterAudioProvider implements AiAudioModelProvider {
     }
 
     private String baseUrl(AiAudioConfig config) {
-        String base = config.baseUrl() != null ? config.baseUrl() : defaultBaseUrl;
+        String base = baseUrlFor(config.baseUrl());
         while (base.endsWith("/")) {
             base = base.substring(0, base.length() - 1);
         }
         return base;
+    }
+
+    /**
+     * The base URL to call: the instance's own, or this provider's default. A
+     * variant that must never fall back (a gateway key sent to the wrong party)
+     * overrides this.
+     */
+    protected String baseUrlFor(@Nullable String configured) {
+        return configured != null ? configured : defaultBaseUrl;
+    }
+
+    /**
+     * The vendor's own {@code usage.cost} (USD) of a response, or null. A
+     * gateway that bills in its own currency overrides this to report nothing.
+     */
+    protected @Nullable Double vendorCost(JsonNode usage) {
+        return usage.has("cost") ? usage.path("cost").asDouble() : null;
     }
 
     private static String requireKey(AiAudioConfig config) {

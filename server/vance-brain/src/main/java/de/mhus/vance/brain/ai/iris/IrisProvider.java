@@ -19,6 +19,7 @@ import java.util.List;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.JsonNode;
 
 /**
  * Iris, the paid-usage model gateway. Chat and embeddings are the OpenAI chat
@@ -76,6 +77,11 @@ public class IrisProvider extends OpenAiProvider {
             throw new AiChatException("Provider instance '" + instance + "' (iris) needs ai.provider." + instance
                     + ".baseUrl; without it the key would go to api.openai.com");
         }
+    }
+
+    @Override
+    protected @Nullable DiscoveredModelInfo parseListingEntry(JsonNode entry) {
+        return IrisModelListing.parse(entry);
     }
 
     @Override

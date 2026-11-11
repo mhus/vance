@@ -44,7 +44,18 @@ public record DiscoveredModelInfo(
         @Nullable Integer contextWindowTokens,
         @Nullable Integer maxOutputTokens,
         @Nullable String ownedBy,
-        @Nullable Pricing pricing) {
+        @Nullable Pricing pricing,
+        @Nullable ModelClassification classification) {
+
+    /** The listing states observations only (the common case). */
+    public DiscoveredModelInfo(
+            String wireName,
+            @Nullable Integer contextWindowTokens,
+            @Nullable Integer maxOutputTokens,
+            @Nullable String ownedBy,
+            @Nullable Pricing pricing) {
+        this(wireName, contextWindowTokens, maxOutputTokens, ownedBy, pricing, null);
+    }
 
     /** Back-compat for callers predating the pricing observation. */
     public DiscoveredModelInfo(
@@ -52,7 +63,7 @@ public record DiscoveredModelInfo(
             @Nullable Integer contextWindowTokens,
             @Nullable Integer maxOutputTokens,
             @Nullable String ownedBy) {
-        this(wireName, contextWindowTokens, maxOutputTokens, ownedBy, null);
+        this(wireName, contextWindowTokens, maxOutputTokens, ownedBy, null, null);
     }
 
     public DiscoveredModelInfo {
@@ -63,11 +74,11 @@ public record DiscoveredModelInfo(
 
     /** Wire-name only — every other field stays unknown. */
     public static DiscoveredModelInfo of(String wireName) {
-        return new DiscoveredModelInfo(wireName, null, null, null, null);
+        return new DiscoveredModelInfo(wireName, null, null, null, null, null);
     }
 
     /** Wire-name plus a discovered context window. */
     public static DiscoveredModelInfo withWindow(String wireName, int contextWindowTokens) {
-        return new DiscoveredModelInfo(wireName, contextWindowTokens, null, null, null);
+        return new DiscoveredModelInfo(wireName, contextWindowTokens, null, null, null, null);
     }
 }

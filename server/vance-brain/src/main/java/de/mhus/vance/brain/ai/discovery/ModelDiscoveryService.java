@@ -4,6 +4,7 @@ import de.mhus.vance.brain.ai.AiModelProvider;
 import de.mhus.vance.brain.ai.AiModelService;
 import de.mhus.vance.brain.ai.DiscoveredModelInfo;
 import de.mhus.vance.brain.ai.ModelCatalog;
+import de.mhus.vance.brain.ai.ModelClassification;
 import de.mhus.vance.brain.ai.ModelInfo;
 import de.mhus.vance.brain.ai.ProviderListingRequest;
 import de.mhus.vance.brain.ai.ProviderType;
@@ -369,7 +370,8 @@ public class ModelDiscoveryService {
             DiscoveredModelInfo model,
             DiscoveryResult.Builder result) {
         ModelInfo.Pricing pricing = model.pricing();
-        if (pricing == null) {
+        ModelClassification classification = model.classification();
+        if (pricing == null && classification == null) {
             return;
         }
         String wireName = model.wireName();
@@ -389,6 +391,33 @@ public class ModelDiscoveryService {
                 return;
             }
         }
+        String yaml = renderMachineOwnedDoc(slug, wireName, pricing, classification);
+        documentService.upsertText(
+                tenantId,
+                projectId,
+                path,
+                /* title */ instance + "/" + wireName,
+                /* tags  */ List.of("ai-model", "pricing-auto"),
+                yaml,
+                DOC_AUTHOR,
+                de.mhus.vance.shared.permission.WriteActor.SYSTEM);
+        if (existed) {
+            result.pricingDocUpdated();
+        } else {
+            result.pricingDocCreated();
+        }
+    }
+
+    /**
+     * The machine-owned manual document: prices the endpoint reports and, for an
+     * endpoint that owns its model list ({@link ModelClassification}), the class of
+     * the model. Pure, so the format is testable without a document store.
+     */
+    static String renderMachineOwnedDoc(
+            String slug,
+            String wireName,
+            ModelInfo.@Nullable Pricing pricing,
+            @Nullable ModelClassification classification) {
         StringBuilder yaml = new StringBuilder();
         yaml.append("# Machine-owned by model-discovery — refreshed on every run while auto: true stays.\n");
         yaml.append("# Remove the marker to take ownership; discovery then never touches this file.\n");
@@ -397,33 +426,60 @@ public class ModelDiscoveryService {
         if (!derivedNameMatches(slug, wireName)) {
             yaml.append("wireName: ").append(yamlString(wireName)).append('\n');
         }
-        yaml.append("pricing:\n");
-        yaml.append("  currency: ").append(yamlString(pricing.currency())).append('\n');
-        yaml.append("  inputPerMTok: ").append(pricing.inputPerMTok()).append('\n');
-        yaml.append("  outputPerMTok: ").append(pricing.outputPerMTok()).append('\n');
-        if (pricing.cacheReadPerMTok() != null) {
-            yaml.append("  cacheReadPerMTok: ")
-                    .append(pricing.cacheReadPerMTok())
-                    .append('\n');
+        if (classification != null) {
+            yaml.append("kind: ").append(yamlString(classification.kind())).append('\n');
+            if (classification.size() != null) {
+                yaml.append("size: ").append(yamlString(classification.size())).append('\n');
+            }
+            if (!classification.capabilities().isEmpty()) {
+                yaml.append("capabilities: [");
+                yaml.append(String.join(
+                        ", ",
+                        classification.capabilities().stream()
+                                .map(ModelDiscoveryService::yamlString)
+                                .toList()));
+                yaml.append("]\n");
+            }
+            if (classification.costCurrency() != null) {
+                yaml.append("costCurrency: ")
+                        .append(yamlString(classification.costCurrency()))
+                        .append('\n');
+            }
+            for (Map.Entry<String, Object> cost : classification.costFields().entrySet()) {
+                appendCost(yaml, cost.getKey(), cost.getValue());
+            }
         }
-        if (pricing.cacheWritePerMTok() != null) {
-            yaml.append("  cacheWritePerMTok: ")
-                    .append(pricing.cacheWritePerMTok())
-                    .append('\n');
+        if (pricing != null) {
+            yaml.append("pricing:\n");
+            yaml.append("  currency: ").append(yamlString(pricing.currency())).append('\n');
+            yaml.append("  inputPerMTok: ").append(pricing.inputPerMTok()).append('\n');
+            yaml.append("  outputPerMTok: ").append(pricing.outputPerMTok()).append('\n');
+            if (pricing.cacheReadPerMTok() != null) {
+                yaml.append("  cacheReadPerMTok: ")
+                        .append(pricing.cacheReadPerMTok())
+                        .append('\n');
+            }
+            if (pricing.cacheWritePerMTok() != null) {
+                yaml.append("  cacheWritePerMTok: ")
+                        .append(pricing.cacheWritePerMTok())
+                        .append('\n');
+            }
         }
-        documentService.upsertText(
-                tenantId,
-                projectId,
-                path,
-                /* title */ instance + "/" + wireName,
-                /* tags  */ List.of("ai-model", "pricing-auto"),
-                yaml.toString(),
-                DOC_AUTHOR,
-                de.mhus.vance.shared.permission.WriteActor.SYSTEM);
-        if (existed) {
-            result.pricingDocUpdated();
+        return yaml.toString();
+    }
+
+    private static void appendCost(StringBuilder yaml, String field, Object value) {
+        if (value instanceof Map<?, ?> tiers) {
+            yaml.append(field).append(":\n");
+            for (Map.Entry<?, ?> tier : tiers.entrySet()) {
+                yaml.append("  ")
+                        .append(tier.getKey())
+                        .append(": ")
+                        .append(tier.getValue())
+                        .append('\n');
+            }
         } else {
-            result.pricingDocCreated();
+            yaml.append(field).append(": ").append(value).append('\n');
         }
     }
 

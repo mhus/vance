@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
+import { computed, inject, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import {
   VAlert,
   VButton,
@@ -29,10 +29,13 @@ import type {
 import { useT } from './i18n';
 
 const props = defineProps<{
-  document: { id?: string; path: string; projectId: string };
+  document: { id?: string; path: string; projectId: string; inlineText?: string };
 }>();
 
 const t = useT();
+
+// Provided by the Cortex tab shell; absent when the view is hosted elsewhere.
+const notifyWritten = inject<null | (() => Promise<void>)>('vance:document-written', null);
 
 const tree = ref<FinanceTreeDto | null>(null);
 const selectedName = ref<string | null>(null);
@@ -44,6 +47,7 @@ const loading = ref(false);
 const saveState = ref<'saved' | 'dirty' | 'saving' | 'error'>('saved');
 
 let dirtyEnabled = false;
+let ownWrite = false;
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 
 const unitKey = computed<'perYear' | 'perMonth' | 'perWeek' | 'perDay'>(() => {
@@ -103,6 +107,14 @@ async function save(): Promise<void> {
   try {
     await putTree(props.document.projectId, props.document.path, tree.value);
     saveState.value = 'saved';
+    // Keep the host tab's raw body in step with what we wrote. The tab reload
+    // changes `document.inlineText`, which must not read as a foreign change.
+    ownWrite = true;
+    try {
+      await notifyWritten?.();
+    } finally {
+      setTimeout(() => { ownWrite = false; }, 0); // after the watcher's flush
+    }
     await refreshSnapshot(); // live figures reflect the just-saved edits
   } catch (e) {
     saveState.value = 'error';
@@ -112,6 +124,13 @@ async function save(): Promise<void> {
 
 watch(tree, () => { if (dirtyEnabled) markDirty(); }, { deep: true });
 watch(() => [props.document.projectId, props.document.path], () => { void load(); });
+// The body changed behind this view (an agent tool, another client — the host
+// tab reloaded). Without a reload the next autosave would write our stale tree
+// over it. Skipped for our own writes and while local edits are still pending.
+watch(() => props.document.inlineText, () => {
+  if (ownWrite || saveState.value !== 'saved') return;
+  void load();
+});
 onMounted(load);
 onUnmounted(() => { if (saveTimer) clearTimeout(saveTimer); });
 

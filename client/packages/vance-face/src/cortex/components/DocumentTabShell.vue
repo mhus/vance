@@ -121,6 +121,18 @@ provide('vance:register-reset', (fn: null | (() => void)) => {
   resetHandler.value = fn;
 });
 
+/**
+ * A view that persists through its own endpoint (no codec, so no `update`
+ * emit) tells the shell the document was written behind its back. The server
+ * deliberately skips the writer's own editor in the `documents.changed`
+ * fan-out, so without this the tab keeps the old `inlineText` — the raw Edit
+ * view then shows a stale body and its next save would overwrite the write.
+ */
+provide('vance:document-written', async (): Promise<void> => {
+  if (!props.document.id) return;
+  await store.reloadTab(props.document.id);
+});
+
 // True when the binding dispatched to an application:<type> kind from
 // the kind-registry (i.e. the doc is an _app.yaml manifest mounted as a
 // folder-level app: Calendar, Kanban, Slideshow, …). Drives shell

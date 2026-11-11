@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { VueDraggable } from 'vue-draggable-plus';
 import { VAlert, VEmptyState, VSegment, useConfirm, useDocumentPrefixReaction } from '@vance/components';
 import ContactBrowser from './ContactBrowser.vue';
@@ -133,7 +133,20 @@ useDocumentPrefixReaction({
   onRemoteChange: reload,
 });
 
-onMounted(reload);
+// The Cortex shell keeps the tab's raw body in step with what we write: it
+// awaits this before showing the raw editor, then reloads the tab. `reload`
+// queues behind every pending pin mutation, so it settles them first. Absent
+// when the view is hosted elsewhere.
+const registerFlush = inject<null | ((fn: null | (() => Promise<void>)) => void)>(
+  'vance:register-flush',
+  null,
+);
+
+onMounted(() => {
+  registerFlush?.(reload);
+  void reload();
+});
+onBeforeUnmount(() => registerFlush?.(null));
 watch(() => [props.document.projectId, props.document.path], () => {
   generation++;
   void reload();

@@ -121,6 +121,26 @@ provide('vance:register-reset', (fn: null | (() => void)) => {
   resetHandler.value = fn;
 });
 
+/**
+ * A view that writes its document itself (its own endpoint, no `update:doc`)
+ * and says so, so the shell can keep the tab's body honest.
+ *
+ * <p>Such a write never passes through the tab: the server skips the writer's
+ * own editor in the `documents.changed` fan-out, so the tab's `inlineText`
+ * stays the old one. The raw Edit view would then show — and a save from it
+ * overwrite — a body that is already gone. The handler resolves once every
+ * write the view has started has reached the server; the shell calls it as the
+ * view is left for Edit and reloads the tab afterwards.
+ *
+ * <p>Registered, not declared, like {@link resetHandler}: a view calls
+ * `inject('vance:register-flush')` on mount and passes `null` on unmount.
+ * Without a handler (codec kinds, read-only views) nothing happens.
+ */
+const flushHandler = shallowRef<null | (() => Promise<void>)>(null);
+provide('vance:register-flush', (fn: null | (() => Promise<void>)) => {
+  flushHandler.value = fn;
+});
+
 // True when the binding dispatched to an application:<type> kind from
 // the kind-registry (i.e. the doc is an _app.yaml manifest mounted as a
 // folder-level app: Calendar, Kanban, Slideshow, …). Drives shell
@@ -583,6 +603,24 @@ const showToggle = computed<boolean>(
 // a user who prefers 'edit' keeps it across doc switches.
 
 const viewEditMode = useViewEditMode();
+
+// Leaving a self-writing view for the raw editor: settle its writes, then
+// reload the tab (see {@link flushHandler}). Default `pre` flush — the callback
+// starts before the view is replaced, so the handler is still registered and
+// the view still alive.
+watch(viewEditMode, async (mode) => {
+  if (mode !== 'edit') return;
+  const flush = flushHandler.value;
+  if (!flush) return;
+  try {
+    await flush();
+  } catch {
+    // The view reports its own failed save; the reload below shows what landed.
+  }
+  // Local edits in the raw editor (or a parameterised view) are not ours to drop.
+  if (props.document.dirty || props.document.viewQuery || !props.document.id) return;
+  await store.reloadTab(props.document.id);
+});
 
 // In a view-capable mode, 'edit' falls back to the same CodeEditor
 // the catch-all 'code' mode uses — same selection-tracking, same

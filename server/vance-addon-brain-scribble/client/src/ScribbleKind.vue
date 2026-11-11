@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { VAlert, VIconButton, useDocumentPrefixReaction } from '@vance/components';
 import ScribbleEditor from './ScribbleEditor.vue';
 import { exportSheetPdf, getSheet, ocrSheet, putSheet } from './api';
@@ -97,12 +97,22 @@ function onVisibilityChange(): void {
   if (document.visibilityState === 'hidden') void flush();
 }
 
+// The Cortex shell keeps the tab's raw body in step with what we write: it
+// awaits this before showing the raw editor, then reloads the tab. Absent when
+// the view is hosted elsewhere.
+const registerFlush = inject<null | ((fn: null | (() => Promise<void>)) => void)>(
+  'vance:register-flush',
+  null,
+);
+
 onMounted(() => {
   document.addEventListener('visibilitychange', onVisibilityChange);
   window.addEventListener('pagehide', onPageHide);
+  registerFlush?.(flush);
 });
 
 onBeforeUnmount(() => {
+  registerFlush?.(null);
   document.removeEventListener('visibilitychange', onVisibilityChange);
   window.removeEventListener('pagehide', onPageHide);
   void flush();

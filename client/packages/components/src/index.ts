@@ -72,6 +72,7 @@ export { default as VCombobox } from './VCombobox.vue';
 export { default as VToggle } from './VToggle.vue';
 export { default as VColorPicker } from './VColorPicker.vue';
 export { default as VDataList } from './VDataList.vue';
+export { default as VDurationInput } from './VDurationInput.vue';
 export { default as VEmojiPicker } from './VEmojiPicker.vue';
 export { default as VEmptyState } from './VEmptyState.vue';
 export { default as VFileInput } from './VFileInput.vue';

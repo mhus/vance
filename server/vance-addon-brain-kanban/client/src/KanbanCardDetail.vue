@@ -4,6 +4,8 @@ import {
   VButton,
   VCheckbox,
   VColorPicker,
+  VCombobox,
+  VDurationInput,
   VInput,
   VLinkPicker,
   VModal,
@@ -19,6 +21,7 @@ import { updateKanbanCard } from './api';
 import type { KanbanCardUpdateRequest } from './generated/kanban/KanbanCardUpdateRequest';
 import type { KanbanCardView } from './generated/kanban/KanbanCardView';
 import { useT } from './i18n';
+import { useAssigneeSuggestions } from './useAssigneeSuggestions';
 
 /**
  * Card detail panel — two content levels, both auto-saved:
@@ -114,6 +117,14 @@ const editorDocument = computed(() => ({
 }));
 
 const contentOpen = ref(false);
+
+// ── Assignee suggestions ──────────────────────────────────────────
+const { me, options: assigneeOptions, onQuery: onAssigneeQuery } =
+  useAssigneeSuggestions(() => props.projectId);
+
+function assignToMe(): void {
+  if (me) assignee.value = me;
+}
 
 // ── Compose (/compose block) ──────────────────────────────────────
 // Wire the block-editor's compose callbacks the same way the workbook
@@ -365,19 +376,38 @@ onBeforeUnmount(() => {
           ]"
           @update:model-value="(v) => priority = (v as string | null) ?? ''"
         />
-        <VInput v-model="assignee" :label="t('kanban.detail.assignee')" />
+        <div class="flex flex-col gap-1">
+          <VCombobox
+            :model-value="assignee"
+            :options="assigneeOptions"
+            :label="t('kanban.detail.assignee')"
+            :placeholder="t('kanban.detail.assigneePlaceholder')"
+            :custom-value-hint="t('kanban.detail.assigneeCustom')"
+            :no-matches-hint="t('kanban.detail.assigneeNoMatches')"
+            @query="onAssigneeQuery"
+            @update:model-value="(v) => assignee = v ?? ''"
+          />
+          <VButton
+            v-if="me && assignee !== me"
+            variant="plain"
+            class="self-start"
+            @click="assignToMe"
+          >
+            {{ t('kanban.detail.assignToMe') }}
+          </VButton>
+        </div>
       </div>
 
       <div class="grid grid-cols-2 gap-2">
         <VInput
           v-model="dueDate"
+          type="date"
           :label="t('kanban.detail.dueDate')"
-          :placeholder="t('kanban.detail.dueDatePlaceholder')"
         />
-        <VInput
-          :model-value="estimate === null ? '' : String(estimate)"
+        <VDurationInput
+          v-model="estimate"
           :label="t('kanban.detail.estimate')"
-          @update:model-value="(v: string) => estimate = v === '' ? null : Number(v)"
+          :invalid-hint="t('kanban.detail.estimateInvalid')"
         />
       </div>
 

@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, nextTick, onMounted, ref } from 'vue';
 import { VueDraggable } from 'vue-draggable-plus';
+import { formatDuration } from '@vance/shared';
 import {
   VAlert,
   VButton,
+  VCombobox,
   VEmptyState,
   VIcon,
   VIconButton,
@@ -23,6 +25,7 @@ import type { KanbanBoardView } from './generated/kanban/KanbanBoardView';
 import type { KanbanCardCreateRequest } from './generated/kanban/KanbanCardCreateRequest';
 import type { KanbanCardView } from './generated/kanban/KanbanCardView';
 import { useT } from './i18n';
+import { useAssigneeSuggestions } from './useAssigneeSuggestions';
 
 const props = defineProps<{
   projectId: string;
@@ -31,6 +34,8 @@ const props = defineProps<{
 }>();
 
 const t = useT();
+const { me, options: assigneeOptions, onQuery: onAssigneeQuery } =
+  useAssigneeSuggestions(() => props.projectId);
 
 const board = ref<KanbanBoardView | null>(null);
 const loading = ref(true);
@@ -57,6 +62,7 @@ function withinSelfWrite(path: string): boolean {
   return t != null && Date.now() - t < SELF_WRITE_QUIET_MS;
 }
 const showCreateModal = ref(false);
+const newCardTitleInput = ref<{ input: HTMLInputElement | null } | null>(null);
 const newCardForm = ref<KanbanCardCreateRequest>({
   title: '',
   column: '',
@@ -208,6 +214,8 @@ function openCreateModal(column: string): void {
     blocked: false,
   };
   showCreateModal.value = true;
+  // `autofocus` does not survive the dialog's showModal(), so focus once it is rendered.
+  void nextTick(() => newCardTitleInput.value?.input?.focus());
 }
 
 async function submitCreate(): Promise<void> {
@@ -378,7 +386,7 @@ defineExpose({ reload });
                   <VIcon name="calendar" />{{ card.dueDate }}
                 </span>
                 <span v-if="card.estimate" class="bg-base-200 rounded px-1.5 py-0.5">
-                  {{ card.estimate }}p
+                  {{ formatDuration(card.estimate) }}
                 </span>
                 <span v-if="card.blocked" class="bg-error/20 text-error rounded px-1.5 py-0.5">
                   {{ t('kanban.board.blocked') }}
@@ -424,6 +432,7 @@ defineExpose({ reload });
     <VModal v-model="showCreateModal" :title="t('kanban.board.newCard')">
       <form id="kanban-new-card-form" class="flex flex-col gap-4" @submit.prevent="submitCreate">
         <VInput
+          ref="newCardTitleInput"
           v-model="newCardForm.title"
           :label="t('kanban.detail.fieldTitle')"
           :placeholder="t('kanban.board.cardTitlePlaceholder')"
@@ -452,12 +461,26 @@ defineExpose({ reload });
             />
           </div>
         </div>
-        <VInput
-          :model-value="newCardForm.assignee ?? ''"
-          :label="t('kanban.detail.assignee')"
-          :placeholder="t('kanban.board.assigneePlaceholder')"
-          @update:model-value="(v) => newCardForm.assignee = v"
-        />
+        <div class="flex flex-col gap-1">
+          <VCombobox
+            :model-value="newCardForm.assignee ?? ''"
+            :options="assigneeOptions"
+            :label="t('kanban.detail.assignee')"
+            :placeholder="t('kanban.board.assigneePlaceholder')"
+            :custom-value-hint="t('kanban.detail.assigneeCustom')"
+            :no-matches-hint="t('kanban.detail.assigneeNoMatches')"
+            @query="onAssigneeQuery"
+            @update:model-value="(v) => newCardForm.assignee = v ?? ''"
+          />
+          <VButton
+            v-if="me && newCardForm.assignee !== me"
+            variant="plain"
+            class="self-start"
+            @click="newCardForm.assignee = me"
+          >
+            {{ t('kanban.detail.assignToMe') }}
+          </VButton>
+        </div>
         <VInput
           :model-value="newCardForm.dueDate ?? ''"
           type="date"

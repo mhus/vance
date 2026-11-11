@@ -47,7 +47,16 @@ const props = withDefaults(defineProps<Props>(), {
   noMatchesHint: 'No matches',
 });
 
-const emit = defineEmits<{ (e: 'update:modelValue', value: string | null): void }>();
+const emit = defineEmits<{
+  (e: 'update:modelValue', value: string | null): void;
+  /**
+   * The text being typed changed (also fired once when the list opens, with
+   * the current value). Lets a host that sources its options live — a
+   * suggestion endpoint — fetch for what is typed; hosts with a fixed list
+   * ignore it.
+   */
+  (e: 'query', value: string): void;
+}>();
 
 /** Text being typed while the dropdown is open; the closed control shows the model value. */
 const query = ref('');
@@ -79,12 +88,14 @@ function openList(): void {
   query.value = props.modelValue ?? '';
   activeIndex.value = -1;
   open.value = true;
+  emit('query', query.value);
 }
 
 function onInput(event: Event): void {
   query.value = (event.target as HTMLInputElement).value;
   open.value = true;
   activeIndex.value = -1;
+  emit('query', query.value);
 }
 
 function select(opt: Option<string>): void {

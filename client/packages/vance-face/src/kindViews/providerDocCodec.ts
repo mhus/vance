@@ -27,7 +27,7 @@ export class ProviderDocParseError extends Error {}
  * verbatim and the form shows the raw input instead of pretending the value
  * is one of the known ones.
  */
-export const WIRE_TYPES = ['openai', 'anthropic', 'gemini', 'ollama', 'lmstudio', 'local'] as const;
+export const WIRE_TYPES = ['openai', 'anthropic', 'gemini', 'ollama', 'lmstudio', 'local', 'iris'] as const;
 
 /** Credential shapes the resolver knows (values of {@code authType}). */
 export const AUTH_TYPES = ['api-key', 'none', 'oauth'] as const;

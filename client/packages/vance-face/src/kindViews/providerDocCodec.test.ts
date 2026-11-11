@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   PROVIDER_SOURCE_KIND,
   ProviderDocParseError,
+  WIRE_TYPES,
   applyForm,
   parseProviderDoc,
   preservedKeyCount,
@@ -75,5 +76,14 @@ describe('providerDocCodec', () => {
     );
 
     expect(preservedKeyCount(doc)).toBe(1);
+  });
+
+  it('offers the iris protocol so an Iris gateway can be declared as a provider instance', () => {
+    expect(WIRE_TYPES).toContain('iris');
+    // The values the select offers are exactly what the brain's resolver accepts as a wire type.
+    const doc = parseProviderDoc('wireType: iris\n');
+
+    expect(doc.wireType).toBe('iris');
+    expect((WIRE_TYPES as readonly string[]).includes(String(doc.wireType))).toBe(true);
   });
 });

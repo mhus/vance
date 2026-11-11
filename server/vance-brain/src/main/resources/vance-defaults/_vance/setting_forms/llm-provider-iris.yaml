@@ -1,0 +1,44 @@
+# Credentials for the provider instance `iris` — the paid-usage model gateway.
+# Iris is its own provider type (`iris`), so no `ai.provider.iris.type` setting
+# is needed. A model spec `iris:<alias>` opts a call in; every other provider,
+# a bring-your-own-model one included, stays available next to it.
+#
+# The key is the tenant's vKey, issued through Iris' admin API; the base URL is
+# the address of the Iris installation. Both are required and neither has a
+# default: a missing base URL would send the key to the wrong party.
+
+title:
+  de: "LLM-Provider: Iris"
+  en: "LLM provider: Iris"
+description:
+  de: "Zugangsdaten der Provider-Instanz `iris` (bezahlte Modellnutzung über das Iris-Gateway). Unabhängig von allen anderen Providern."
+  en: "Credentials for the `iris` provider instance (paid model usage through the Iris gateway). Independent from every other provider."
+icon: key
+category: llm
+defaultScope: project
+availableIn: [ "!_user_*" ]
+
+fields:
+
+  - name: apiKey
+    type: password
+    label:
+      de: "Iris-Schlüssel (vKey)"
+      en: "Iris key (vKey)"
+    help:
+      de: "Leer lassen um einen bereits gesetzten Schlüssel unverändert zu lassen."
+      en: "Leave empty to keep an already-set key unchanged."
+    bindsTo:
+      key: "ai.provider.iris.apiKey"
+
+  - name: baseUrl
+    type: string
+    required: true
+    label:
+      de: "Base-URL"
+      en: "Base-URL"
+    help:
+      de: "Pflichtfeld — Adresse der Iris-Installation inklusive /v1, z.B. https://iris.example.com/v1."
+      en: "Required — address of the Iris installation including /v1, e.g. https://iris.example.com/v1."
+    bindsTo:
+      key: "ai.provider.iris.baseUrl"

@@ -52,6 +52,16 @@ public enum ProviderType {
      * the chat dispatch refuses such an instance instead of guessing.
      */
     SYSTEMONE("systemone", true),
+    /**
+     * Iris, the paid-usage model gateway (a counterpart to the brain that is
+     * published separately). It speaks the OpenAI chat wire for chat and
+     * embeddings — and the OpenRouter wire for image, audio and decisions — but
+     * answers with its own refusals (quota, 5-hour window, model not allowed),
+     * which the {@code iris} adapter turns into typed, correctly retried
+     * errors. A model spec {@code iris:<alias>} is what opts in; every other
+     * provider, BYOM included, runs next to it unchanged.
+     */
+    IRIS("iris", true),
     /** Test-only deterministic stub provider (qa/ai-test). */
     SCRIPTED("scripted", false);
 

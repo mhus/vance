@@ -155,7 +155,7 @@ public class OpenAiProvider extends AbstractChatProvider {
                 // See ToolCallContentHttpClient. The underlying client swaps
                 // to trust-all TLS when the instance's sidecar declared
                 // tlsInsecure (private-CA gateways).
-                .httpClientBuilder(toolCallBuilder(config, baseUrl))
+                .httpClientBuilder(httpClientBuilder(config, baseUrl))
                 // Bound the retry storm on a persistent failure. The sync
                 // model backs LightLlm helpers (follow-up, judge,
                 // discovery) — a timeout is a persistent condition, so
@@ -178,7 +178,7 @@ public class OpenAiProvider extends AbstractChatProvider {
                 .seed(seed)
                 .stop(options.getStopSequences())
                 .timeout(streamTimeout)
-                .httpClientBuilder(toolCallBuilder(config, baseUrl))
+                .httpClientBuilder(httpClientBuilder(config, baseUrl))
                 .logRequests(options.getLogRequests())
                 .logResponses(options.getLogRequests());
         if (!cacheParams.isEmpty()) {
@@ -272,7 +272,7 @@ public class OpenAiProvider extends AbstractChatProvider {
      * Fresh per call — langchain4j mutates the builder's timeout fields, so
      * instances must not be shared across concurrently built models.
      */
-    private ToolCallContentHttpClientBuilder toolCallBuilder(AiChatConfig config, String baseUrl) {
+    protected HttpClientBuilder httpClientBuilder(AiChatConfig config, String baseUrl) {
         HttpClientBuilder base = config.insecureTls()
                 ? new JdkHttpClientBuilder().httpClientBuilder(TlsInsecure.jdkClientBuilder())
                 : HttpClientBuilderLoader.loadHttpClientBuilder();

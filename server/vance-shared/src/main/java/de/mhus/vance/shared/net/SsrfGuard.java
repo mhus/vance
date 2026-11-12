@@ -114,6 +114,20 @@ public final class SsrfGuard {
         denyList = list;
     }
 
+    /** Hosts of operator-run model gateways ({@code vance.net.ssrf.provider-hosts}), lower case. */
+    private static volatile java.util.Set<String> providerHosts = java.util.Set.of();
+
+    /** Set by {@code SsrfGuardConfigurer} at boot from {@code vance.net.ssrf.provider-hosts}. */
+    public static void setProviderHosts(java.util.Collection<String> hosts) {
+        java.util.Set<String> out = new java.util.HashSet<>();
+        for (String h : hosts) {
+            if (h != null && !h.isBlank()) {
+                out.add(h.strip().toLowerCase(java.util.Locale.ROOT));
+            }
+        }
+        providerHosts = java.util.Set.copyOf(out);
+    }
+
     /** Thrown when a URL is rejected by the egress policy. */
     public static final class SsrfException extends RuntimeException {
         public SsrfException(String message) {
@@ -132,6 +146,29 @@ public final class SsrfGuard {
             uri = URI.create(url.strip());
         } catch (IllegalArgumentException e) {
             throw new SsrfException("Malformed URL: " + e.getMessage(), e);
+        }
+        assertAllowed(uri);
+    }
+
+    /**
+     * Like {@link #assertAllowed(String)} for the base URL of a model provider: a host the
+     * operator named in {@code vance.net.ssrf.provider-hosts} (an in-cluster gateway such as
+     * Iris, whose address is private by design) passes. Only the call sites that vet a
+     * provider endpoint use this; fetching tools keep the full policy, so a tenant cannot
+     * steer {@code web_fetch} at the gateway.
+     */
+    public static void assertProviderEndpointAllowed(String url) {
+        URI uri;
+        try {
+            uri = URI.create(url.strip());
+        } catch (IllegalArgumentException e) {
+            throw new SsrfException("Malformed URL: " + e.getMessage(), e);
+        }
+        String scheme = uri.getScheme();
+        String host = uri.getHost();
+        boolean httpScheme = scheme != null && (scheme.equalsIgnoreCase("http") || scheme.equalsIgnoreCase("https"));
+        if (httpScheme && host != null && providerHosts.contains(host.toLowerCase(java.util.Locale.ROOT))) {
+            return;
         }
         assertAllowed(uri);
     }

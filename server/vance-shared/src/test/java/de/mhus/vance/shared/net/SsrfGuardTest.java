@@ -31,6 +31,21 @@ class SsrfGuardTest {
         SsrfGuard.setAllowPrivate(false);
         SsrfGuard.setDenyList(EgressDenyList.empty());
         SsrfGuard.setPrivateNetworks(SsrfGuard.PrivateNetworks.DENY);
+        SsrfGuard.setProviderHosts(List.of());
+    }
+
+    @Test
+    void providerHosts_letAProviderEndpointReachAPrivateGateway_butNotAFetchingTool() {
+        SsrfGuard.setProviderHosts(List.of("Localhost"));
+
+        assertThatCode(() -> SsrfGuard.assertProviderEndpointAllowed("http://localhost:8080/v1"))
+                .doesNotThrowAnyException();
+        // The fetching tools keep the full policy for the very same host.
+        assertThatThrownBy(() -> SsrfGuard.assertAllowed("http://localhost:8080/v1"))
+                .isInstanceOf(SsrfGuard.SsrfException.class);
+        // A host that is not named stays refused, also for a provider endpoint.
+        assertThatThrownBy(() -> SsrfGuard.assertProviderEndpointAllowed("http://127.0.0.1:8080/v1"))
+                .isInstanceOf(SsrfGuard.SsrfException.class);
     }
 
     @Test

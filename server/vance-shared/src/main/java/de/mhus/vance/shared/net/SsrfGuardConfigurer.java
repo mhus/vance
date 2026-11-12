@@ -32,14 +32,17 @@ public class SsrfGuardConfigurer {
     private final boolean allowPrivate;
     private final String privateNetworks;
     private final List<String> denied;
+    private final List<String> providerHosts;
 
     public SsrfGuardConfigurer(
             @Value("${vance.net.ssrf.allow-private:false}") boolean allowPrivate,
             @Value("${vance.net.ssrf.private-networks:deny}") String privateNetworks,
-            @Value("${vance.net.ssrf.denied:}") List<String> denied) {
+            @Value("${vance.net.ssrf.denied:}") List<String> denied,
+            @Value("${vance.net.ssrf.provider-hosts:}") List<String> providerHosts) {
         this.allowPrivate = allowPrivate;
         this.privateNetworks = privateNetworks;
         this.denied = denied;
+        this.providerHosts = providerHosts;
     }
 
     @PostConstruct
@@ -49,7 +52,8 @@ public class SsrfGuardConfigurer {
         SsrfGuard.setPrivateNetworks(mode);
         EgressDenyList denyList = EgressDenyList.parse(denied);
         SsrfGuard.setDenyList(denyList);
-        log.info("SSRF egress guard: private-networks={}, denied={}", mode, denied);
+        SsrfGuard.setProviderHosts(providerHosts);
+        log.info("SSRF egress guard: private-networks={}, denied={}, provider-hosts={}", mode, denied, providerHosts);
         if (mode == SsrfGuard.PrivateNetworks.ALLOW && denyList.isEmpty()) {
             log.warn("SSRF egress guard: private networks are reachable and vance.net.ssrf.denied is empty — "
                     + "tenants can reach every internal service of this network (databases, cluster API)");

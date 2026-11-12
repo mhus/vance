@@ -92,7 +92,7 @@ public final class ChatBehaviorBuilder {
             return null;
         }
         String baseUrl = value.trim();
-        SsrfGuard.assertAllowed(baseUrl);
+        SsrfGuard.assertProviderEndpointAllowed(baseUrl);
         return baseUrl;
     }
 
@@ -114,7 +114,7 @@ public final class ChatBehaviorBuilder {
         if (declared == null) {
             return null;
         }
-        SsrfGuard.assertAllowed(declared);
+        SsrfGuard.assertProviderEndpointAllowed(declared);
         return declared;
     }
 

@@ -134,6 +134,38 @@ public class TenantService {
     }
 
     /**
+     * Removes the tenant's own row — and nothing else.
+     *
+     * <p>A tenant's data lives in dozens of collections; this method touches none of them. It is the last
+     * step of {@code TenantMaintenanceService} in the admin shell, which removes the projects, the accounts and
+     * everything else keyed by the tenant first and only then lets the row go: the row is the index back to
+     * that data, and dropping it while data is left would strand the data with no way to address it. Do not call
+     * this from anywhere else.
+     *
+     * <p>Two invariants live here because they belong to the entity, not to a caller's care: the system tenant
+     * and any name starting with {@code _} are never removed, and a tenant that is still enabled is never
+     * removed — switching it off is the deliberate step before, and what makes sure nobody is logging in
+     * while the data goes.
+     *
+     * @throws TenantNotFoundException if the tenant does not exist
+     * @throws TenantProtectedException for the system tenant and {@code _}-prefixed names
+     * @throws TenantStillEnabledException if the tenant is enabled
+     */
+    public void delete(String name) {
+        if (SYSTEM_TENANT.equals(name) || name.startsWith("_")) {
+            throw new TenantProtectedException("Tenant '" + name + "' is a system tenant and is never removed");
+        }
+        TenantDocument tenant = repository
+                .findByName(name)
+                .orElseThrow(() -> new TenantNotFoundException("Tenant '" + name + "' not found"));
+        if (tenant.isEnabled()) {
+            throw new TenantStillEnabledException("Tenant '" + name + "' is still enabled — disable it first");
+        }
+        repository.delete(tenant);
+        log.warn("Removed tenant name='{}' id='{}'", name, tenant.getId());
+    }
+
+    /**
      * Creates the tenant's JWT signing key if it has none.
      *
      * <p>Unlike {@link #create(String, String)} this needs no collision
@@ -153,6 +185,20 @@ public class TenantService {
 
     public static class TenantNotFoundException extends RuntimeException {
         public TenantNotFoundException(String message) {
+            super(message);
+        }
+    }
+
+    /** The system tenant, or a {@code _}-prefixed name: never removed. */
+    public static class TenantProtectedException extends RuntimeException {
+        public TenantProtectedException(String message) {
+            super(message);
+        }
+    }
+
+    /** A tenant must be switched off before it can be removed. */
+    public static class TenantStillEnabledException extends RuntimeException {
+        public TenantStillEnabledException(String message) {
             super(message);
         }
     }

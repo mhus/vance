@@ -27,18 +27,14 @@ class ChatBehaviorBuilderTest {
         SettingService settings = mock(SettingService.class);
 
         when(resolver.resolveOrDefault(any(), any(), any(), any()))
-                .thenReturn(new AiModelResolver.Resolved(
-                        "openai", "deepseek-direct", "deepseek-v4-flash"));
-        when(settings.getDecryptedPasswordCascade(
-                eq("acme"), any(), any(), eq("ai.provider.deepseek-direct.apiKey")))
+                .thenReturn(new AiModelResolver.Resolved("openai", "deepseek-direct", "deepseek-v4-flash"));
+        when(settings.getDecryptedPasswordCascade(eq("acme"), any(), any(), eq("ai.provider.deepseek-direct.apiKey")))
                 .thenReturn("sk-deepseek-key");
-        when(settings.getStringValueCascade(
-                eq("acme"), any(), any(), eq("ai.provider.deepseek-direct.baseUrl")))
+        when(settings.getStringValueCascade(eq("acme"), any(), any(), eq("ai.provider.deepseek-direct.baseUrl")))
                 .thenReturn("https://api.deepseek.com/v1");
 
         AiChatConfig cfg = ChatBehaviorBuilder.resolveOne(
-                "deepseek-direct:deepseek-v4-flash",
-                "acme", null, null, settings, resolver);
+                "deepseek-direct:deepseek-v4-flash", "acme", null, null, settings, resolver);
 
         assertThat(cfg.provider()).isEqualTo("openai");
         assertThat(cfg.providerInstance()).isEqualTo("deepseek-direct");
@@ -47,8 +43,7 @@ class ChatBehaviorBuilderTest {
         assertThat(cfg.baseUrl()).isEqualTo("https://api.deepseek.com/v1");
 
         // Never reads the protocol-keyed path when a named instance is used.
-        verify(settings, never()).getDecryptedPasswordCascade(
-                any(), any(), any(), eq("ai.provider.openai.apiKey"));
+        verify(settings, never()).getDecryptedPasswordCascade(any(), any(), any(), eq("ai.provider.openai.apiKey"));
     }
 
     @Test
@@ -60,13 +55,10 @@ class ChatBehaviorBuilderTest {
 
         when(resolver.resolveOrDefault(any(), any(), any(), any()))
                 .thenReturn(AiModelResolver.Resolved.direct("openai", "gpt-4o-mini"));
-        when(settings.getDecryptedPasswordCascade(
-                eq("acme"), any(), any(), eq("ai.provider.openai.apiKey")))
+        when(settings.getDecryptedPasswordCascade(eq("acme"), any(), any(), eq("ai.provider.openai.apiKey")))
                 .thenReturn("sk-real-openai");
 
-        AiChatConfig cfg = ChatBehaviorBuilder.resolveOne(
-                "openai:gpt-4o-mini",
-                "acme", null, null, settings, resolver);
+        AiChatConfig cfg = ChatBehaviorBuilder.resolveOne("openai:gpt-4o-mini", "acme", null, null, settings, resolver);
 
         assertThat(cfg.providerInstance()).isEqualTo("openai");
         assertThat(cfg.apiKey()).isEqualTo("sk-real-openai");
@@ -75,13 +67,11 @@ class ChatBehaviorBuilderTest {
     @Test
     void resolveApiKey_missingKeyForRequiredProvider_throws() {
         SettingService settings = mock(SettingService.class);
-        when(settings.getDecryptedPasswordCascade(
-                any(), any(), any(), eq("ai.provider.deepseek-direct.apiKey")))
+        when(settings.getDecryptedPasswordCascade(any(), any(), any(), eq("ai.provider.deepseek-direct.apiKey")))
                 .thenReturn(null);
 
-        assertThatThrownBy(() -> ChatBehaviorBuilder.resolveApiKey(
-                "openai", "deepseek-direct",
-                "acme", null, null, settings))
+        assertThatThrownBy(() ->
+                        ChatBehaviorBuilder.resolveApiKey("openai", "deepseek-direct", "acme", null, null, settings))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("deepseek-direct")
                 .hasMessageContaining("ai.provider.deepseek-direct.apiKey");
@@ -91,10 +81,34 @@ class ChatBehaviorBuilderTest {
     void resolveApiKey_keylessProvider_returnsPlaceholder() {
         SettingService settings = mock(SettingService.class);
 
-        String key = ChatBehaviorBuilder.resolveApiKey(
-                "ollama", "my-local-llama",
-                "acme", null, null, settings);
+        String key = ChatBehaviorBuilder.resolveApiKey("ollama", "my-local-llama", "acme", null, null, settings);
 
         assertThat(key).isEqualTo(ChatBehaviorBuilder.KEYLESS_PLACEHOLDER);
+    }
+
+    @Test
+    void resolveBaseUrl_sidecarDeclaredUrlIsOnlyTheDefaultBehindTheSetting() {
+        SettingService settings = mock(SettingService.class);
+        AiModelResolver.Resolved iris =
+                new AiModelResolver.Resolved("iris", "iris", "eu-glm", false, "https://8.8.8.8");
+
+        // No setting: the sidecar's URL applies.
+        assertThat(ChatBehaviorBuilder.resolveBaseUrl(iris, "acme", null, null, settings))
+                .isEqualTo("https://8.8.8.8");
+
+        // A setting wins over the sidecar.
+        when(settings.getStringValueCascade(eq("acme"), any(), any(), eq("ai.provider.iris.baseUrl")))
+                .thenReturn("https://1.1.1.1");
+        assertThat(ChatBehaviorBuilder.resolveBaseUrl(iris, "acme", null, null, settings))
+                .isEqualTo("https://1.1.1.1");
+    }
+
+    @Test
+    void resolveBaseUrl_nothingDeclaredStaysNull() {
+        SettingService settings = mock(SettingService.class);
+
+        assertThat(ChatBehaviorBuilder.resolveBaseUrl(
+                        AiModelResolver.Resolved.direct("openai", "gpt-5"), "acme", null, null, settings))
+                .isNull();
     }
 }

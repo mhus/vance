@@ -155,8 +155,7 @@ public class ZemService {
                         projectId,
                         processId,
                         String.format(API_KEY_SETTING_FMT, resolved.providerInstance())),
-                ChatBehaviorBuilder.resolveBaseUrl(
-                        resolved.providerInstance(), tenantId, projectId, processId, settingService),
+                ChatBehaviorBuilder.resolveBaseUrl(resolved, tenantId, projectId, processId, settingService),
                 positiveInt(tenantId, projectId, processId, SETTING_TIMEOUT, model.timeoutSeconds()));
 
         List<String> stateSelect = request.getStateSelect() != null

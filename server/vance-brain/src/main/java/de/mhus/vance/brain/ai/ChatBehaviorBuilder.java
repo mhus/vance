@@ -97,6 +97,28 @@ public final class ChatBehaviorBuilder {
     }
 
     /**
+     * Like {@link #resolveBaseUrl(String, String, String, String, SettingService)}, but a
+     * missing setting falls back to the {@code baseUrl} of the instance's sidecar.
+     */
+    public static @Nullable String resolveBaseUrl(
+            AiModelResolver.Resolved resolved,
+            String tenantId,
+            @Nullable String projectId,
+            @Nullable String processId,
+            SettingService settings) {
+        String fromSetting = resolveBaseUrl(resolved.providerInstance(), tenantId, projectId, processId, settings);
+        if (fromSetting != null) {
+            return fromSetting;
+        }
+        String declared = resolved.declaredBaseUrl();
+        if (declared == null) {
+            return null;
+        }
+        SsrfGuard.assertAllowed(declared);
+        return declared;
+    }
+
+    /**
      * Build a {@link ChatBehavior} for {@code process}. Always returns a
      * non-null behaviour with at least one entry (the primary); throws
      * {@link IllegalStateException} if the primary itself can't be
@@ -188,7 +210,7 @@ public final class ChatBehaviorBuilder {
         AiModelResolver.Resolved resolved = resolver.resolveOrDefault(spec, tenantId, projectId, processId);
         String apiKey = resolveApiKey(
                 resolved.provider(), resolved.providerInstance(), tenantId, projectId, processId, settings);
-        String baseUrl = resolveBaseUrl(resolved.providerInstance(), tenantId, projectId, processId, settings);
+        String baseUrl = resolveBaseUrl(resolved, tenantId, projectId, processId, settings);
         return new AiChatConfig(
                 resolved.provider(),
                 resolved.providerInstance(),

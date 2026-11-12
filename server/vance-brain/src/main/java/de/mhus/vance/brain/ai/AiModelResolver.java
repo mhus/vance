@@ -130,8 +130,21 @@ public class AiModelResolver {
      *                         calls for this instance skip TLS validation
      *                         (private-CA gateways). False for direct specs
      *                         and instances without the flag.
+     * @param declaredBaseUrl  {@code baseUrl} of the instance's sidecar, or null. Only a
+     *                         default: the setting {@code ai.provider.<instance>.baseUrl}
+     *                         wins (see {@code ChatBehaviorBuilder.resolveBaseUrl}).
      */
-    public record Resolved(String provider, String providerInstance, String modelName, boolean insecureTls) {
+    public record Resolved(
+            String provider,
+            String providerInstance,
+            String modelName,
+            boolean insecureTls,
+            @Nullable String declaredBaseUrl) {
+        /** Back-compat for callers that know no sidecar base URL. */
+        public Resolved(String provider, String providerInstance, String modelName, boolean insecureTls) {
+            this(provider, providerInstance, modelName, insecureTls, null);
+        }
+
         /**
          * Back-compat factory for direct ProviderType specs where instance == provider
          * and no TLS relaxation is declared.
@@ -296,7 +309,8 @@ public class AiModelResolver {
                     binding.wireName(),
                     binding.instance(),
                     rest,
-                    declaredInsecureTls(tenantId, projectId, binding.instance()));
+                    declaredInsecureTls(tenantId, projectId, binding.instance()),
+                    declaredBaseUrl(tenantId, projectId, binding.instance()));
         }
 
         // Alias lookup — project cascade. Alias target may itself be a
@@ -354,6 +368,19 @@ public class AiModelResolver {
             return null;
         }
         return s.trim();
+    }
+
+    /**
+     * {@code baseUrl} off the provider sidecar, or null. A sidecar published centrally
+     * (the Iris catalog) states the endpoint once for every tenant; the setting
+     * stays the override.
+     */
+    private @Nullable String declaredBaseUrl(String tenantId, @Nullable String projectId, String instance) {
+        Object raw = modelCatalog
+                .lookupProvider(tenantId, projectId, instance)
+                .map(spec -> spec.get("baseUrl"))
+                .orElse(null);
+        return raw instanceof String s && !s.isBlank() ? s.trim() : null;
     }
 
     /**
@@ -522,7 +549,8 @@ public class AiModelResolver {
                 binding.wireName(),
                 binding.instance(),
                 model.trim(),
-                declaredInsecureTls(tenantId, projectId, binding.instance()));
+                declaredInsecureTls(tenantId, projectId, binding.instance()),
+                declaredBaseUrl(tenantId, projectId, binding.instance()));
     }
 
     /** Thrown when a model spec cannot be resolved. */

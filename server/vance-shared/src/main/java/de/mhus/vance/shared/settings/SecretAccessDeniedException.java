@@ -57,8 +57,6 @@ public class SecretAccessDeniedException extends RuntimeException {
         WRITE_TENANT_DENY_LIST,
         /** Key matches vancetope.denied.project for a write to a user project. */
         WRITE_PROJECT_DENY_LIST,
-        /** {@code forceSet} was used for a vancetope.* key outside the .denied. sub-prefix. */
-        WRITE_FORCE_NON_META,
         /** {@code setAgentSecret} tried to overwrite a PASSWORD that an agent may not read. */
         AGENT_OVERWRITE_PASSWORD,
         /** {@code setAgentSecret} tried to write a key reserved for operator configuration. */

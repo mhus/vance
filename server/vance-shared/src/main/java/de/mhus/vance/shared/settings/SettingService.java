@@ -164,12 +164,10 @@ public class SettingService {
 
     /**
      * Operator escape hatch for {@link #delete}. Bypasses the
-     * {@link VancetopePolicy} deny lists; only the hardcoded
-     * {@code vancetope.*}-prefix check remains, and even there only
-     * {@link VancetopePolicy#isMetaDenyKey meta-deny keys} are accepted.
+     * {@link VancetopePolicy} deny lists and the {@code vancetope.*} namespace
+     * protection: the operator shell may write every key.
      */
     public void forceDelete(String tenantId, String referenceType, String referenceId, String key) {
-        vancetopePolicy.requireForceWritable(key);
         repository.deleteByTenantIdAndReferenceTypeAndReferenceIdAndKey(tenantId, referenceType, referenceId, key);
         vancetopePolicy.onSettingChanged(tenantId, key);
     }
@@ -202,18 +200,13 @@ public class SettingService {
     }
 
     /**
-     * Operator escape hatch for {@link #deleteByPrefix}. Skips the deny lists;
-     * the hardcoded {@code vancetope.*}-prefix check still applies to every
-     * covered key via {@link VancetopePolicy#requireForceWritable}, so a short
-     * prefix cannot sweep non-meta system keys along.
+     * Operator escape hatch for {@link #deleteByPrefix}. Skips the deny lists
+     * and the {@code vancetope.*} namespace protection.
      */
     public long forceDeleteByPrefix(String tenantId, String referenceType, String referenceId, String keyPrefix) {
         if (keyPrefix == null || keyPrefix.isEmpty()) return 0;
         List<SettingDocument> covered =
                 mongoTemplate.find(prefixQuery(tenantId, referenceType, referenceId, keyPrefix), SettingDocument.class);
-        for (SettingDocument doc : covered) {
-            vancetopePolicy.requireForceWritable(doc.getKey());
-        }
         long deleted = removeByPrefix(tenantId, referenceType, referenceId, keyPrefix);
         for (SettingDocument doc : covered) {
             vancetopePolicy.onSettingChanged(tenantId, doc.getKey());
@@ -253,11 +246,8 @@ public class SettingService {
      * encrypted types the caller is expected to have passed ciphertext.
      * Use {@link #forceSetEncryptedSecret} for plaintext secrets.
      *
-     * <p>The only protection that remains is the hardcoded
-     * {@code vancetope.*} prefix — and even there only
-     * {@link VancetopePolicy#isMetaDenyKey meta-deny keys}
-     * ({@code vancetope.denied.*}) are accepted, because otherwise the
-     * configurable deny lists themselves could never be set up.
+     * <p>No key is protected against this path, the {@code vancetope.*}
+     * namespace included: it is how the operator sets those keys at all.
      *
      * <p>Intended for the {@code anus} admin shell only. Brain code must call
      * {@link #set} / {@link #setAs} so the policy runs.
@@ -289,7 +279,6 @@ public class SettingService {
             SettingType type,
             @Nullable String description,
             @Nullable String actor) {
-        vancetopePolicy.requireForceWritable(key);
         SettingDocument saved = setInternal(tenantId, referenceType, referenceId, key, value, type, description, actor);
         // Cache invalidation must run after the write succeeded — a failed
         // write has no observable effect on the next read.
@@ -983,7 +972,6 @@ public class SettingService {
         if (!type.encrypted()) {
             throw new IllegalArgumentException("forceSetEncryptedSecret() requires an encrypted type, got " + type);
         }
-        vancetopePolicy.requireForceWritable(key);
         String ciphertext = encryption.encrypt(plaintext);
         SettingDocument saved = setInternal(
                 tenantId, referenceType, referenceId, key, ciphertext, type, /*description*/ null, /*actor*/ null);

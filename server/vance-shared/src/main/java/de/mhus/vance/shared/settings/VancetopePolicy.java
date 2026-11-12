@@ -10,7 +10,8 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
 /**
- * Write protection for the {@code vancetope.*} namespace. Three layers:
+ * Write protection for the {@code vancetope.*} namespace. Three layers (the first one
+ * holds for every caller except the {@code force} family of the anus operator shell):
  *
  * <ol>
  *   <li><b>Hardcoded prefix</b> {@code vancetope.}: nothing below it is
@@ -48,18 +49,13 @@ import org.springframework.stereotype.Component;
 public class VancetopePolicy {
 
     /**
-     * System key namespace. Every key with this prefix is always blocked for
-     * {@code set}. anus may write only keys under {@link #META_DENY_PREFIX}
-     * via {@code forceSet} — the settings that configure this policy.
+     * System key namespace. Every key with this prefix is blocked for {@code set}
+     * and hidden from the regular read path. The anus operator shell writes them
+     * through the {@code force} family, any key of the namespace.
      */
     public static final String SYSTEM_KEY_PREFIX = "vancetope.";
 
-    /**
-     * Sub-prefix of the "meta" system keys (the deny lists themselves). These
-     * may be written via {@code forceSet}, otherwise the lists could never be
-     * set up. Everything else under {@link #SYSTEM_KEY_PREFIX} stays blocked
-     * for {@code forceSet} too.
-     */
+    /** Sub-prefix of the "meta" system keys: the deny lists that configure this policy. */
     public static final String META_DENY_PREFIX = "vancetope.denied.";
 
     /** Setting key of the tenant deny list. Lives in the {@code _tenant} project. */
@@ -98,12 +94,7 @@ public class VancetopePolicy {
         return key != null && key.startsWith(SYSTEM_KEY_PREFIX);
     }
 
-    /**
-     * Whether {@code key} is a "meta deny key" — a {@code vancetope.denied.*}
-     * setting that configures this policy. These may be written via
-     * {@code forceSet}; every other {@code vancetope.*} key stays blocked for
-     * {@code forceSet}.
-     */
+    /** Whether {@code key} is a "meta deny key" — a {@code vancetope.denied.*} setting that configures this policy. */
     public static boolean isMetaDenyKey(@Nullable String key) {
         return key != null && key.startsWith(META_DENY_PREFIX);
     }
@@ -120,7 +111,7 @@ public class VancetopePolicy {
     public void requireWritable(String tenantId, String referenceType, String referenceId, String key) {
         if (isSystemKey(key)) {
             log.warn(
-                    "Refusing write to system-namespace setting '{}' on {}/{}:{} — use forceSet for vancetope.denied.*",
+                    "Refusing write to system-namespace setting '{}' on {}/{}:{} — use forceSet (anus)",
                     key,
                     tenantId,
                     referenceType,
@@ -163,26 +154,6 @@ public class VancetopePolicy {
                                 + "Resolution: edit vancetope.denied.project in the _tenant project via "
                                 + "the anus admin shell (forceSet), or use a different key.");
             }
-        }
-    }
-
-    /**
-     * Throws {@link SecretAccessDeniedException} when {@code forceSet} has to
-     * refuse the write. The only protection: the {@code vancetope.*} prefix,
-     * and even there only for non-meta keys.
-     */
-    public void requireForceWritable(String key) {
-        if (isSystemKey(key) && !isMetaDenyKey(key)) {
-            log.warn("Refusing force-write to non-meta system-namespace setting '{}'", key);
-            throw new SecretAccessDeniedException(
-                    SecretAccessDeniedException.Reason.WRITE_FORCE_NON_META,
-                    key,
-                    "Setting '" + key + "' is reserved: forceSet may only write 'vancetope.denied.*' keys, "
-                            + "which are the configurable deny-list settings themselves. "
-                            + "Reason: '" + key + "' is in the vancetope.* system namespace but is not a "
-                            + "deny-list configuration key. "
-                            + "Resolution: this key is not operator-configurable through the settings API; "
-                            + "it would require a future setSystem() escape hatch to write.");
         }
     }
 

@@ -188,29 +188,6 @@ class VancetopePolicyTest {
 
     // ──────────────── force escape hatch ────────────────
 
-    @Test
-    void forceSet_allowsMetaDenyKey() {
-        // The one thing forceSet accepts in the vancetope.* namespace: the
-        // deny-list configuration keys themselves.
-        policy.requireForceWritable(VancetopePolicy.KEY_DENIED_TENANT);
-        policy.requireForceWritable(VancetopePolicy.KEY_DENIED_PROJECT);
-        policy.requireForceWritable("vancetope.denied.custom");
-    }
-
-    @Test
-    void forceSet_rejectsNonMetaSystemKey() {
-        assertThatThrownBy(() -> policy.requireForceWritable("vancetope.foo"))
-                .isInstanceOf(SecretAccessDeniedException.class)
-                .extracting(e -> ((SecretAccessDeniedException) e).getReason())
-                .isEqualTo(SecretAccessDeniedException.Reason.WRITE_FORCE_NON_META);
-    }
-
-    @Test
-    void forceSet_allowsOrdinaryKeys() {
-        policy.requireForceWritable("smtp.host");
-        policy.requireForceWritable("ai.provider.openai.apiKey");
-    }
-
     // ──────────────── read filter ────────────────
 
     @Test
@@ -415,14 +392,13 @@ class VancetopePolicyTest {
     }
 
     @Test
-    void forceDeleteByPrefix_refusesNonMetaSystemKeys() {
+    void forceDeleteByPrefix_alsoSweepsOperatorSystemKeys() {
         stubPrefixScan(doc(HomeBootstrapService.TENANT_PROJECT_NAME, "vancetope.foo"));
 
-        assertThatThrownBy(() -> service.forceDeleteByPrefix(
-                        TENANT, SettingService.SCOPE_PROJECT, HomeBootstrapService.TENANT_PROJECT_NAME, "vancetope"))
-                .isInstanceOf(SecretAccessDeniedException.class)
-                .extracting(e -> ((SecretAccessDeniedException) e).getReason())
-                .isEqualTo(SecretAccessDeniedException.Reason.WRITE_FORCE_NON_META);
+        long deleted = service.forceDeleteByPrefix(
+                TENANT, SettingService.SCOPE_PROJECT, HomeBootstrapService.TENANT_PROJECT_NAME, "vancetope");
+
+        assertThat(deleted).isEqualTo(1L);
     }
 
     @Test

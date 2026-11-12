@@ -1,10 +1,10 @@
 # 𝑣 vancetope
 
-**[Website](https://www.vancetope.com)** · **[Erste Schritte](https://www.vancetope.com/getting-started)** · **[Blog](https://www.vancetope.com/blog/)**
+**[Website](https://www.vancetope.com)** · **[Cloud](https://vancetope.eu)** · **[Erste Schritte](https://www.vancetope.com/getting-started)** · **[Blog](https://www.vancetope.com/blog/)**
 
-**Ein persönliches Projekt.** Vancetope habe ich gebaut, um LLM-Agenten zu entwickeln — und sie so zu formen, dass ich damit wirklich produktiv arbeiten kann. Über die Zeit ist alles reingewandert, was ich spannend fand, plus ein paar Dinge, von denen ich glaube, dass andere was davon haben.
+**Community Edition.** Dieses Repository ist die Vancetope Community Edition — frei und Open Source unter der GNU AGPLv3. Vancetope habe ich gebaut, um LLM-Agenten zu entwickeln — und sie so zu formen, dass ich damit wirklich produktiv arbeiten kann. Über die Zeit ist alles reingewandert, was ich spannend fand, plus ein paar Dinge, von denen ich glaube, dass andere was davon haben.
 
-Es ist ein Projekt, kein Produkt — kein Support-Vertrag, keine Roadmap-Versprechen. Der Quellcode ist öffentlich: lesen, ausprobieren, laufen lassen. Er ist Open Source unter der GNU AGPLv3.
+Die Community Edition kommt ohne Support-Vertrag und ohne Roadmap-Versprechen. Der Quellcode ist öffentlich: lesen, ausprobieren, ändern, laufen lassen. Wer es nicht selbst betreiben will: Die gehostete Edition ist die [Vancetope Cloud](https://vancetope.eu).
 
 > [!WARNING]
 > **Beta.** Vancetope ist in aktiver Entwicklung. APIs, Datenmodell, Konfigurations-Keys und Engine-Verhalten können sich zwischen Releases ändern. Gut für Hands-on-Experimente; nicht gehärtet für unbeaufsichtigten Produktiv-Einsatz.
@@ -109,4 +109,4 @@ Das gilt ab Release **0.6.0**; Releases bis einschließlich 0.5.0 sind unter der
 
 Copyright (c) 2024–2026 Mike Hummel. Beiträge werden unter dem [`CLA`](CLA.md) angenommen; ein Bot bittet dich beim ersten Pull Request, per Kommentar zuzustimmen.
 
-Enterprise-orientierte Features (SSO, Audit, Team-Management) liegen separat in [`vance-ee`](https://github.com/mhus/vance-ee) unter eigener Lizenz.
+Die gehostete Edition, die [Vancetope Cloud](https://vancetope.eu), ist ein eigenes kommerzielles Angebot und nicht Teil dieses Repositories.

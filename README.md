@@ -1,10 +1,10 @@
 # 𝑣 vancetope
 
-**[Website](https://www.vancetope.com)** · **[Get started](https://www.vancetope.com/getting-started)** · **[Blog](https://www.vancetope.com/blog/)**
+**[Website](https://www.vancetope.com)** · **[Cloud](https://vancetope.eu)** · **[Get started](https://www.vancetope.com/getting-started)** · **[Blog](https://www.vancetope.com/blog/)**
 
-**A personal project.** Vancetope is something I built to develop LLM agents — and to shape them until I could actually work productively with them. Over time everything I found interesting went in, plus a few things I think others might get something out of.
+**Community Edition.** This repository is the Vancetope Community Edition — free and open source under the GNU AGPLv3. Vancetope is something I built to develop LLM agents — and to shape them until I could actually work productively with them. Over time everything I found interesting went in, plus a few things I think others might get something out of.
 
-It's a project, not a product — no support contract, no roadmap promises. The source is public: read it, run it, take it for a spin. It's open source under the GNU AGPLv3.
+The Community Edition comes without a support contract and without roadmap promises. The source is public: read it, run it, change it, take it for a spin. If you would rather not run it yourself, the hosted edition is [Vancetope Cloud](https://vancetope.eu).
 
 > [!WARNING]
 > **Beta.** Vancetope is in active development. APIs, data model, configuration keys and engine behaviour can change between releases. Good for hands-on experimentation; not hardened for unattended production use.
@@ -109,4 +109,4 @@ This applies from release **0.6.0** on; releases up to and including 0.5.0 were 
 
 Copyright (c) 2024–2026 Mike Hummel. Contributions are accepted under the [`CLA`](CLA.md); a bot asks you to sign it by comment on your first pull request.
 
-Enterprise-oriented features (SSO, audit, team management) live separately in [`vance-ee`](https://github.com/mhus/vance-ee) under their own license.
+The hosted edition, [Vancetope Cloud](https://vancetope.eu), is a separate commercial offering and not part of this repository.

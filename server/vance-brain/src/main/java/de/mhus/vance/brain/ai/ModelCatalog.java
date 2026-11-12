@@ -1100,6 +1100,7 @@ public class ModelCatalog implements ResourceOverrideConsumer {
      */
     private static final Set<String> KNOWN_MODEL_FIELDS = Set.of(
             // Identification
+            "auto", // machine-ownership marker of discovery-written manual docs
             "wireName",
             "modelName",
             // Chat

@@ -30,7 +30,7 @@ public final class MachineOwnedModelDoc {
                 m.pricing(),
                 new Classification(m.kind(), m.size(), m.capabilities(), m.unitCosts(), m.currency()),
                 m.contextWindowTokens(),
-                m.maxOutputTokens());
+                null);
     }
 
     public static String render(

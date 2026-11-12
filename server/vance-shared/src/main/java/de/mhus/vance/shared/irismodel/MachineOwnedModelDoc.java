@@ -120,7 +120,7 @@ public final class MachineOwnedModelDoc {
     }
 
     /** Wire names and currencies are untrusted text: one line, escaped, so a newline cannot write the rest of the doc. */
-    static String yamlString(String raw) {
+    public static String yamlString(String raw) {
         String escaped = raw.replace("\\", "\\\\")
                 .replace("\"", "\\\"")
                 .replace("\n", "\\n")

@@ -7,7 +7,9 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
+import de.mhus.vance.shared.metric.MetricService;
 import de.mhus.vance.shared.settings.RetentionSettingCache;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Instant;
 import org.bson.Document;
 import org.junit.jupiter.api.Test;
@@ -319,6 +321,42 @@ class LlmUsageServiceTest {
         assertThat(inc.get("cacheWriteTokens")).isEqualTo(8_000);
         assertThat(inc.get("cacheWrite1hTokens")).isEqualTo(3_000);
         assertThat(inc.get("cacheReadTokens")).isEqualTo(20_000);
+    }
+
+    @Test
+    void aBooking_isAlsoPublishedAsPrometheusCountersPerProviderInstance() {
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        LlmUsageService service = new LlmUsageService(
+                mock(MongoTemplate.class), mock(RetentionSettingCache.class), 0, 60, 14, new MetricService(registry));
+
+        service.record(baseBuilder()
+                .kind(UsageKind.CHAT)
+                .outcome(UsageOutcome.SUCCESS)
+                .providerInstance("iris")
+                .tokensIn(1_000_000)
+                .tokensOut(2_000_000)
+                .cacheReadTokens(500_000)
+                .priceInputPerMTok(0.5)
+                .priceOutputPerMTok(1.5)
+                .priceCacheReadPerMTok(0.1)
+                .currency("EUR")
+                .build());
+
+        assertThat(registry.get("vance.llm.usage.calls")
+                        .tags("provider", "iris", "kind", "chat", "outcome", "success")
+                        .counter()
+                        .count())
+                .isEqualTo(1.0);
+        assertThat(registry.get("vance.llm.usage.tokens")
+                        .tags("provider", "iris", "direction", "out")
+                        .counter()
+                        .count())
+                .isEqualTo(2_000_000.0);
+        assertThat(registry.get("vance.llm.usage.cost")
+                        .tags("provider", "iris", "currency", "EUR")
+                        .counter()
+                        .count())
+                .isCloseTo(0.5 + 3.0 + 0.05, within(1e-9));
     }
 
     private static LlmUsageService.UsageWrite.UsageWriteBuilder audioBuilder() {

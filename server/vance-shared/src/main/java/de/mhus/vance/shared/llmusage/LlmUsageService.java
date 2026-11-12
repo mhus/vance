@@ -1,6 +1,7 @@
 package de.mhus.vance.shared.llmusage;
 
 import com.mongodb.MongoWriteException;
+import de.mhus.vance.shared.metric.MetricService;
 import de.mhus.vance.shared.settings.RetentionSettingCache;
 import java.time.Duration;
 import java.time.Instant;
@@ -12,6 +13,7 @@ import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import org.bson.Document;
 import org.jspecify.annotations.Nullable;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.data.mongodb.core.MongoTemplate;
@@ -120,13 +122,33 @@ public class LlmUsageService {
     private final int defaultDailyRetentionDays;
     private final int defaultDetailRetentionDays;
     private final int defaultDetailRetentionDaysFailed;
+    private final @Nullable MetricService metrics;
 
+    /** Without metrics, for callers and tests that run without a registry. */
+    public LlmUsageService(
+            MongoTemplate mongoTemplate,
+            RetentionSettingCache retentionCache,
+            int defaultDailyRetentionDays,
+            int defaultDetailRetentionDays,
+            int defaultDetailRetentionDaysFailed) {
+        this(
+                mongoTemplate,
+                retentionCache,
+                defaultDailyRetentionDays,
+                defaultDetailRetentionDays,
+                defaultDetailRetentionDaysFailed,
+                null);
+    }
+
+    @Autowired
     public LlmUsageService(
             MongoTemplate mongoTemplate,
             RetentionSettingCache retentionCache,
             @Value("${vance.usage.retention-days:0}") int defaultDailyRetentionDays,
             @Value("${vance.usage.detail-retention-days:60}") int defaultDetailRetentionDays,
-            @Value("${vance.usage.detail-retention-days-failed:14}") int defaultDetailRetentionDaysFailed) {
+            @Value("${vance.usage.detail-retention-days-failed:14}") int defaultDetailRetentionDaysFailed,
+            @Nullable MetricService metrics) {
+        this.metrics = metrics;
         this.mongoTemplate = mongoTemplate;
         this.retentionCache = retentionCache;
         this.defaultDailyRetentionDays = clamp(defaultDailyRetentionDays);
@@ -144,6 +166,7 @@ public class LlmUsageService {
      */
     public void record(UsageWrite write) {
         Costs costs = Costs.of(write);
+        publishMetrics(write, costs);
         try {
             incrementDaily(write, costs);
         } catch (RuntimeException e) {
@@ -161,6 +184,49 @@ public class LlmUsageService {
                     write.attribution().tenantId(),
                     write.attribution().processId(),
                     e.toString());
+        }
+    }
+
+    /**
+     * Prometheus view of the same booking: calls, tokens and cost per provider
+     * instance. The instance is a handful of configured names, so it is a safe
+     * label; tenants and models are not (they live in the ledger).
+     */
+    private void publishMetrics(UsageWrite w, Costs costs) {
+        if (metrics == null) {
+            return;
+        }
+        try {
+            String provider =
+                    w.providerInstance() == null || w.providerInstance().isBlank() ? "unknown" : w.providerInstance();
+            metrics.counter(
+                            "vance.llm.usage.calls",
+                            "provider",
+                            provider,
+                            "kind",
+                            w.kind().name().toLowerCase(java.util.Locale.ROOT),
+                            "outcome",
+                            w.outcome().name().toLowerCase(java.util.Locale.ROOT))
+                    .increment();
+            addTokens(provider, "in", w.tokensIn());
+            addTokens(provider, "out", w.tokensOut());
+            addTokens(provider, "cache_read", w.cacheReadTokens());
+            addTokens(provider, "cache_write", w.cacheWriteTokens());
+            double total = costs.input() + costs.output() + costs.cacheRead() + costs.cacheWrite();
+            if (total > 0 && w.currency() != null && !w.currency().isBlank()) {
+                metrics.counter("vance.llm.usage.cost", "provider", provider, "currency", w.currency())
+                        .increment(total);
+            }
+        } catch (RuntimeException e) {
+            // Telemetry must never fail a booking.
+            log.debug("LlmUsage metrics failed: {}", e.toString());
+        }
+    }
+
+    private void addTokens(String provider, String direction, int tokens) {
+        if (tokens > 0 && metrics != null) {
+            metrics.counter("vance.llm.usage.tokens", "provider", provider, "direction", direction)
+                    .increment(tokens);
         }
     }
 

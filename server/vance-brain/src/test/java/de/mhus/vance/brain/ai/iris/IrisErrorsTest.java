@@ -43,6 +43,7 @@ class IrisErrorsTest {
         for (String code : new String[] {
             "quota_exhausted",
             "window_exhausted",
+            "request_limit",
             "model_not_allowed",
             "model_not_found",
             "wrong_kind",

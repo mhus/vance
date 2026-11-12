@@ -4,7 +4,7 @@
  * <p>Iris speaks the OpenAI chat wire, so chat and embeddings are built exactly
  * like {@link de.mhus.vance.brain.ai.openai.OpenAiProvider} builds them. What
  * differs is how Iris says "no": it answers with a machine-readable error code
- * ({@code quota_exhausted}, {@code window_exhausted}, {@code model_not_allowed},
+ * ({@code quota_exhausted}, {@code window_exhausted}, {@code request_limit}, {@code model_not_allowed},
  * …) that a plain OpenAI adapter would treat by HTTP status alone. That is
  * wrong for a 429 that means "your five-hour window is full for hours".
  */

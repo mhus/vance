@@ -113,6 +113,11 @@ public class BundledResourceResolver {
         }
     }
 
+    /** The classpath files of {@code section}, whatever the central store says. */
+    public BundledResources loadClasspath(String section) {
+        return classpathResources(section);
+    }
+
     private BundledResources classpathResources(String section) {
         return new BundledResources(classpath.load(section), BundledResources.CLASSPATH);
     }

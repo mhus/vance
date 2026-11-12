@@ -33,7 +33,10 @@ class ModelCatalogCentralTest {
         when(documents.findAllByPathPrefix(ModelCatalog.MODEL_PATH_PREFIX)).thenReturn(List.of());
         when(documents.findAllByPathPrefix(ModelCatalog.AUTO_MODEL_PATH_PREFIX)).thenReturn(List.of());
         catalog = new ModelCatalog(
-                documents, new ModelQuirks(), new BundledResourceResolver(service, true, List.of("model")));
+                documents,
+                new ModelQuirks(),
+                new BundledResourceResolver(service, true, List.of("model")),
+                TenantModelSource.central());
     }
 
     private void publish(long version, boolean overwrite, List<ResourceOverrideFile> files) {

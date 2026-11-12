@@ -130,6 +130,7 @@ public class ModelCatalog implements ResourceOverrideConsumer {
     private final DocumentService documentService;
     private final ModelQuirks modelQuirks;
     private final BundledResourceResolver bundledResolver;
+    private final TenantModelSource tenantSource;
 
     /** Where the bundled layer of the current snapshot came from; see {@link BundledResources#origin()}. */
     private volatile String bundledOrigin = BundledResources.CLASSPATH;
@@ -139,15 +140,19 @@ public class ModelCatalog implements ResourceOverrideConsumer {
 
     /** Reads the bundled layer from the classpath only. */
     public ModelCatalog(DocumentService documentService, ModelQuirks modelQuirks) {
-        this(documentService, modelQuirks, BundledResourceResolver.classpathOnly());
+        this(documentService, modelQuirks, BundledResourceResolver.classpathOnly(), TenantModelSource.central());
     }
 
     @Autowired
     public ModelCatalog(
-            DocumentService documentService, ModelQuirks modelQuirks, BundledResourceResolver bundledResolver) {
+            DocumentService documentService,
+            ModelQuirks modelQuirks,
+            BundledResourceResolver bundledResolver,
+            TenantModelSource tenantSource) {
         this.documentService = documentService;
         this.modelQuirks = modelQuirks;
         this.bundledResolver = bundledResolver;
+        this.tenantSource = tenantSource;
         try {
             // Eager initial load — covers both Spring-managed boot and
             // direct test construction. A Mongo glitch can't keep the
@@ -197,7 +202,12 @@ public class ModelCatalog implements ResourceOverrideConsumer {
                     current.uniqueScopeCount(),
                     Duration.between(start, Instant.now()).toMillis());
         }
-        Snapshot built = buildSnapshot(bundled);
+        // A central catalog replaces the classpath one for every tenant except those that
+        // opted back (vancetope.model.source = bundled), so the classpath layer is kept too.
+        Layer classpathLayer = bundledFiles.isCentral()
+                ? readBundledLayer(bundledResolver.loadClasspath(ResourceOverrideSections.MODEL))
+                : null;
+        Snapshot built = buildSnapshot(bundled, classpathLayer);
         snapshot = built;
         bundledOrigin = bundledFiles.origin();
         Duration elapsed = Duration.between(start, Instant.now());
@@ -574,10 +584,10 @@ public class ModelCatalog implements ResourceOverrideConsumer {
 
     // ──────────────────── Snapshot build ────────────────────
 
-    private Snapshot buildSnapshot(Layer bundled) {
+    private Snapshot buildSnapshot(Layer bundled, @Nullable Layer classpathBundled) {
         Map<TenantProject, Layer> manual = readOverrideLayers(MODEL_PATH_PREFIX);
         Map<TenantProject, Layer> auto = readOverrideLayers(AUTO_MODEL_PATH_PREFIX);
-        return new Snapshot(bundled, manual, auto);
+        return new Snapshot(bundled, classpathBundled, tenantSource, manual, auto);
     }
 
     private Layer readBundledLayer(BundledResources bundled) {
@@ -748,6 +758,14 @@ public class ModelCatalog implements ResourceOverrideConsumer {
      */
     static final class Snapshot {
         final Layer bundled;
+
+        /**
+         * The classpath catalog while {@link #bundled} is a central one, else {@code null}. Tenants
+         * that opted back ({@link TenantModelSource}) get this as their outermost layer.
+         */
+        final @Nullable Layer classpathBundled;
+
+        private final TenantModelSource tenantSource;
         final Map<TenantProject, Layer> perScopeManual;
         final Map<TenantProject, Layer> perScopeAuto;
 
@@ -756,18 +774,28 @@ public class ModelCatalog implements ResourceOverrideConsumer {
          * access for each {@code (tenant, project)} pair; reset only
          * when a new {@code Snapshot} is published.
          */
-        private final Map<TenantProject, Map<String, Map<String, Object>>> mergedCache = new ConcurrentHashMap<>();
+        private final Map<ScopeKey, Map<String, Map<String, Object>>> mergedCache = new ConcurrentHashMap<>();
 
-        private final Map<TenantProject, Map<String, Map<String, Object>>> providerCache = new ConcurrentHashMap<>();
+        private final Map<ScopeKey, Map<String, Map<String, Object>>> providerCache = new ConcurrentHashMap<>();
 
-        Snapshot(Layer bundled, Map<TenantProject, Layer> perScopeManual, Map<TenantProject, Layer> perScopeAuto) {
+        /** A lookup scope plus the bundled catalog it reads; the latter can change without a new snapshot. */
+        private record ScopeKey(TenantProject scope, boolean classpath) {}
+
+        Snapshot(
+                Layer bundled,
+                @Nullable Layer classpathBundled,
+                TenantModelSource tenantSource,
+                Map<TenantProject, Layer> perScopeManual,
+                Map<TenantProject, Layer> perScopeAuto) {
             this.bundled = bundled;
+            this.classpathBundled = classpathBundled;
+            this.tenantSource = tenantSource;
             this.perScopeManual = perScopeManual;
             this.perScopeAuto = perScopeAuto;
         }
 
         static Snapshot empty() {
-            return new Snapshot(Layer.empty(), Map.of(), Map.of());
+            return new Snapshot(Layer.empty(), null, TenantModelSource.central(), Map.of(), Map.of());
         }
 
         /**
@@ -784,28 +812,36 @@ public class ModelCatalog implements ResourceOverrideConsumer {
         }
 
         Map<String, Map<String, Object>> viewFor(@Nullable String tenantId, @Nullable String projectId) {
-            TenantProject key = normalizeScope(tenantId, projectId);
+            ScopeKey key = scopeKey(tenantId, projectId);
             return mergedCache.computeIfAbsent(key, this::buildModelView);
         }
 
         Map<String, Map<String, Object>> providerViewFor(@Nullable String tenantId, @Nullable String projectId) {
-            TenantProject key = normalizeScope(tenantId, projectId);
+            ScopeKey key = scopeKey(tenantId, projectId);
             return providerCache.computeIfAbsent(key, this::buildProviderView);
         }
 
-        private Map<String, Map<String, Object>> buildModelView(TenantProject scope) {
+        private ScopeKey scopeKey(@Nullable String tenantId, @Nullable String projectId) {
+            TenantProject scope = normalizeScope(tenantId, projectId);
+            boolean classpath = classpathBundled != null
+                    && scope.tenantId != null
+                    && tenantSource.usesClasspathCatalog(scope.tenantId);
+            return new ScopeKey(scope, classpath);
+        }
+
+        private Map<String, Map<String, Object>> buildModelView(ScopeKey key) {
             // Outer → inner application. Each layer overrides fields on
             // any (provider, model) key it carries.
             Map<String, Map<String, Object>> acc = new LinkedHashMap<>();
-            for (LabeledLayer l : layersFor(scope)) {
+            for (LabeledLayer l : layersFor(key)) {
                 applyModelLayer(acc, l.layer());
             }
             return Collections.unmodifiableMap(acc);
         }
 
-        private Map<String, Map<String, Object>> buildProviderView(TenantProject scope) {
+        private Map<String, Map<String, Object>> buildProviderView(ScopeKey key) {
             Map<String, Map<String, Object>> acc = new LinkedHashMap<>();
-            for (LabeledLayer l : layersFor(scope)) {
+            for (LabeledLayer l : layersFor(key)) {
                 applyProviderLayer(acc, l.layer());
             }
             return Collections.unmodifiableMap(acc);
@@ -820,7 +856,7 @@ public class ModelCatalog implements ResourceOverrideConsumer {
         Map<String, Map<String, ModelCatalogLayer>> modelSourcesFor(
                 @Nullable String tenantId, @Nullable String projectId) {
             Map<String, Map<String, ModelCatalogLayer>> acc = new LinkedHashMap<>();
-            for (LabeledLayer l : layersFor(normalizeScope(tenantId, projectId))) {
+            for (LabeledLayer l : layersFor(scopeKey(tenantId, projectId))) {
                 for (Map.Entry<String, Map<String, Map<String, Object>>> provEntry :
                         l.layer().models.entrySet()) {
                     for (Map.Entry<String, Map<String, Object>> modelEntry :
@@ -840,7 +876,7 @@ public class ModelCatalog implements ResourceOverrideConsumer {
         Map<String, Map<String, ModelCatalogLayer>> providerSourcesFor(
                 @Nullable String tenantId, @Nullable String projectId) {
             Map<String, Map<String, ModelCatalogLayer>> acc = new LinkedHashMap<>();
-            for (LabeledLayer l : layersFor(normalizeScope(tenantId, projectId))) {
+            for (LabeledLayer l : layersFor(scopeKey(tenantId, projectId))) {
                 for (Map.Entry<String, Map<String, Object>> e :
                         l.layer().providers.entrySet()) {
                     Map<String, ModelCatalogLayer> fields = acc.computeIfAbsent(e.getKey(), k -> new LinkedHashMap<>());
@@ -856,9 +892,11 @@ public class ModelCatalog implements ResourceOverrideConsumer {
          * The layers a scope's view is merged from, outermost first. Within
          * one scope auto comes before manual, so manual fields win.
          */
-        private List<LabeledLayer> layersFor(TenantProject scope) {
+        private List<LabeledLayer> layersFor(ScopeKey key) {
+            TenantProject scope = key.scope();
             List<LabeledLayer> out = new ArrayList<>();
-            out.add(new LabeledLayer(ModelCatalogLayer.BUNDLED, bundled));
+            Layer outermost = key.classpath() && classpathBundled != null ? classpathBundled : bundled;
+            out.add(new LabeledLayer(ModelCatalogLayer.BUNDLED, outermost));
             addScope(
                     out,
                     new TenantProject(SYSTEM_TENANT, HomeBootstrapService.TENANT_PROJECT_NAME),

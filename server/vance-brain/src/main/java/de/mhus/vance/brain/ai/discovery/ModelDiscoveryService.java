@@ -11,6 +11,8 @@ import de.mhus.vance.brain.ai.ProviderType;
 import de.mhus.vance.brain.ai.TlsInsecure;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
+import de.mhus.vance.shared.irismodel.IrisModel;
+import de.mhus.vance.shared.irismodel.MachineOwnedModelDoc;
 import de.mhus.vance.shared.net.SsrfGuard;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectService;
@@ -418,69 +420,25 @@ public class ModelDiscoveryService {
             String wireName,
             ModelInfo.@Nullable Pricing pricing,
             @Nullable ModelClassification classification) {
-        StringBuilder yaml = new StringBuilder();
-        yaml.append("# Machine-owned by model-discovery — refreshed on every run while auto: true stays.\n");
-        yaml.append("# Remove the marker to take ownership; discovery then never touches this file.\n");
-        yaml.append("# Prices are endpoint observations (see _vance/model-auto/ for limits).\n");
-        yaml.append("auto: true\n");
-        if (!derivedNameMatches(slug, wireName)) {
-            yaml.append("wireName: ").append(yamlString(wireName)).append('\n');
-        }
-        if (classification != null) {
-            yaml.append("kind: ").append(yamlString(classification.kind())).append('\n');
-            if (classification.size() != null) {
-                yaml.append("size: ").append(yamlString(classification.size())).append('\n');
-            }
-            if (!classification.capabilities().isEmpty()) {
-                yaml.append("capabilities: [");
-                yaml.append(String.join(
-                        ", ",
-                        classification.capabilities().stream()
-                                .map(ModelDiscoveryService::yamlString)
-                                .toList()));
-                yaml.append("]\n");
-            }
-            if (classification.costCurrency() != null) {
-                yaml.append("costCurrency: ")
-                        .append(yamlString(classification.costCurrency()))
-                        .append('\n');
-            }
-            for (Map.Entry<String, Object> cost : classification.costFields().entrySet()) {
-                appendCost(yaml, cost.getKey(), cost.getValue());
-            }
-        }
-        if (pricing != null) {
-            yaml.append("pricing:\n");
-            yaml.append("  currency: ").append(yamlString(pricing.currency())).append('\n');
-            yaml.append("  inputPerMTok: ").append(pricing.inputPerMTok()).append('\n');
-            yaml.append("  outputPerMTok: ").append(pricing.outputPerMTok()).append('\n');
-            if (pricing.cacheReadPerMTok() != null) {
-                yaml.append("  cacheReadPerMTok: ")
-                        .append(pricing.cacheReadPerMTok())
-                        .append('\n');
-            }
-            if (pricing.cacheWritePerMTok() != null) {
-                yaml.append("  cacheWritePerMTok: ")
-                        .append(pricing.cacheWritePerMTok())
-                        .append('\n');
-            }
-        }
-        return yaml.toString();
-    }
-
-    private static void appendCost(StringBuilder yaml, String field, Object value) {
-        if (value instanceof Map<?, ?> tiers) {
-            yaml.append(field).append(":\n");
-            for (Map.Entry<?, ?> tier : tiers.entrySet()) {
-                yaml.append("  ")
-                        .append(tier.getKey())
-                        .append(": ")
-                        .append(tier.getValue())
-                        .append('\n');
-            }
-        } else {
-            yaml.append(field).append(": ").append(value).append('\n');
-        }
+        return MachineOwnedModelDoc.render(
+                slug,
+                wireName,
+                pricing == null
+                        ? null
+                        : new IrisModel.TokenPricing(
+                                pricing.currency(),
+                                pricing.inputPerMTok(),
+                                pricing.outputPerMTok(),
+                                pricing.cacheReadPerMTok(),
+                                pricing.cacheWritePerMTok()),
+                classification == null
+                        ? null
+                        : new MachineOwnedModelDoc.Classification(
+                                classification.kind(),
+                                classification.size(),
+                                classification.capabilities(),
+                                classification.costFields(),
+                                classification.costCurrency()));
     }
 
     /**

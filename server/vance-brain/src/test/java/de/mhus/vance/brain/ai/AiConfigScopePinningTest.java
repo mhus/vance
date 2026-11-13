@@ -30,56 +30,48 @@ class AiConfigScopePinningTest {
     @Test
     void fromProcess_tenantScope_resolvesWithoutProjectAndProcessLayers() {
         AiModelResolver resolver = mock(AiModelResolver.class);
+        when(resolver.ownEndpointsAllowed(any())).thenReturn(true);
         SettingService settings = mock(SettingService.class);
         when(resolver.resolveOrDefault(any(), any(), any(), any()))
                 .thenReturn(AiModelResolver.Resolved.direct("openai", "gpt-5.6-luna"));
-        when(settings.getDecryptedPasswordCascade(any(), any(), any(), any()))
-                .thenReturn("sk-tenant");
+        when(settings.getDecryptedPasswordCascade(any(), any(), any(), any())).thenReturn("sk-tenant");
 
         ChatBehaviorBuilder.fromProcess(
-                process(Map.of("model", "default:fast",
-                        AiConfigScope.PARAM_KEY, "tenant")),
-                settings, resolver);
+                process(Map.of("model", "default:fast", AiConfigScope.PARAM_KEY, "tenant")), settings, resolver);
 
         // Model spec, api-key and base-URL all read with both inner scopes
         // nulled — that is what collapses the cascade onto _tenant.
-        verify(resolver).resolveOrDefault(
-                eq("default:fast"), eq("acme"), isNull(), isNull());
-        verify(settings).getDecryptedPasswordCascade(
-                eq("acme"), isNull(), isNull(), eq("ai.provider.openai.apiKey"));
-        verify(settings).getStringValueCascade(
-                eq("acme"), isNull(), isNull(), eq("ai.provider.openai.baseUrl"));
+        verify(resolver).resolveOrDefault(eq("default:fast"), eq("acme"), isNull(), isNull());
+        verify(settings).getDecryptedPasswordCascade(eq("acme"), isNull(), isNull(), eq("ai.provider.openai.apiKey"));
+        verify(settings).getStringValueCascade(eq("acme"), isNull(), isNull(), eq("ai.provider.openai.baseUrl"));
     }
 
     @Test
     void fromProcess_defaultScope_resolvesThroughProjectCascade() {
         AiModelResolver resolver = mock(AiModelResolver.class);
+        when(resolver.ownEndpointsAllowed(any())).thenReturn(true);
         SettingService settings = mock(SettingService.class);
         when(resolver.resolveOrDefault(any(), any(), any(), any()))
                 .thenReturn(AiModelResolver.Resolved.direct("openai", "gpt-5.6-luna"));
-        when(settings.getDecryptedPasswordCascade(any(), any(), any(), any()))
-                .thenReturn("sk-project");
+        when(settings.getDecryptedPasswordCascade(any(), any(), any(), any())).thenReturn("sk-project");
 
-        ChatBehaviorBuilder.fromProcess(
-                process(Map.of("model", "default:fast")), settings, resolver);
+        ChatBehaviorBuilder.fromProcess(process(Map.of("model", "default:fast")), settings, resolver);
 
-        verify(resolver).resolveOrDefault(
-                eq("default:fast"), eq("acme"), eq("proj-1"), eq("proc-1"));
-        verify(settings).getStringValueCascade(
-                eq("acme"), eq("proj-1"), eq("proc-1"), eq("ai.provider.openai.baseUrl"));
+        verify(resolver).resolveOrDefault(eq("default:fast"), eq("acme"), eq("proj-1"), eq("proc-1"));
+        verify(settings)
+                .getStringValueCascade(eq("acme"), eq("proj-1"), eq("proc-1"), eq("ai.provider.openai.baseUrl"));
     }
 
     @Test
     void resolveForProcess_tenantScope_alsoSkipsProjectLayer() {
         AiModelResolver resolver = mock(AiModelResolver.class);
+        when(resolver.ownEndpointsAllowed(any())).thenReturn(true);
         SettingService settings = mock(SettingService.class);
         when(resolver.resolveOrDefault(any(), any(), any(), any()))
                 .thenReturn(AiModelResolver.Resolved.direct("openai", "gpt-5.6-luna"));
-        when(settings.getDecryptedPasswordCascade(any(), any(), any(), any()))
-                .thenReturn("sk-tenant");
+        when(settings.getDecryptedPasswordCascade(any(), any(), any(), any())).thenReturn("sk-tenant");
 
-        ChatBehaviorBuilder.resolveForProcess(
-                process(Map.of(AiConfigScope.PARAM_KEY, "tenant")), settings, resolver);
+        ChatBehaviorBuilder.resolveForProcess(process(Map.of(AiConfigScope.PARAM_KEY, "tenant")), settings, resolver);
 
         verify(resolver).resolveOrDefault(isNull(), eq("acme"), isNull(), isNull());
     }
@@ -91,28 +83,24 @@ class AiConfigScopePinningTest {
         overrides.put(AiConfigScope.PARAM_KEY, "tenant");
         p.setEngineParamOverrides(overrides);
 
-        assertThat(ChatBehaviorBuilder.readAiConfigScope(p))
-                .isEqualTo(AiConfigScope.TENANT);
+        assertThat(ChatBehaviorBuilder.readAiConfigScope(p)).isEqualTo(AiConfigScope.TENANT);
     }
 
     @Test
     void readAiConfigScope_unknownValueFallsBackToCascade() {
-        assertThat(ChatBehaviorBuilder.readAiConfigScope(
-                process(Map.of(AiConfigScope.PARAM_KEY, "galaxy"))))
+        assertThat(ChatBehaviorBuilder.readAiConfigScope(process(Map.of(AiConfigScope.PARAM_KEY, "galaxy"))))
                 .isEqualTo(AiConfigScope.CASCADE);
     }
 
     @Test
     void readAiConfigScope_wrongTypeFallsBackToCascade() {
-        assertThat(ChatBehaviorBuilder.readAiConfigScope(
-                process(Map.of(AiConfigScope.PARAM_KEY, 42))))
+        assertThat(ChatBehaviorBuilder.readAiConfigScope(process(Map.of(AiConfigScope.PARAM_KEY, 42))))
                 .isEqualTo(AiConfigScope.CASCADE);
     }
 
     @Test
     void readAiConfigScope_missingParamIsCascade() {
-        assertThat(ChatBehaviorBuilder.readAiConfigScope(process(Map.of())))
-                .isEqualTo(AiConfigScope.CASCADE);
+        assertThat(ChatBehaviorBuilder.readAiConfigScope(process(Map.of()))).isEqualTo(AiConfigScope.CASCADE);
     }
 
     private static ThinkProcessDocument process(Map<String, Object> params) {

@@ -208,6 +208,43 @@ class ModelCatalogTest {
         assertThat(info.size()).isEqualTo(ModelSize.LARGE); // bundled
     }
 
+    // ──── Own-models lock (vancetope.model.custom) ─────────────────────
+
+    @Test
+    void lockedTenant_seesOnlyTheBundledCatalog_andIsReadAtLookupTime() {
+        java.util.Set<String> locked = new java.util.HashSet<>();
+        catalog = new ModelCatalog(
+                documentService,
+                new ModelQuirks(),
+                de.mhus.vance.brain.resources.BundledResourceResolver.classpathOnly(),
+                new TenantModelSource() {
+                    @Override
+                    public boolean usesClasspathCatalog(String tenantId) {
+                        return false;
+                    }
+
+                    @Override
+                    public boolean ownModelsAllowed(String tenantId) {
+                        return !locked.contains(tenantId);
+                    }
+                });
+        stubModelDoc(TENANT, VANCE_TENANT_PROJECT, "own/my-model.yaml", "size: SMALL\n");
+        stubModelDoc(TENANT, PROJECT, "anthropic/claude-sonnet-4-5.yaml", "contextWindowTokens: 100000\n");
+        catalog.refresh();
+
+        assertThat(catalog.lookup(TENANT, PROJECT, "own", "my-model")).isPresent();
+        assertThat(catalog.lookupOrDefault(TENANT, PROJECT, "anthropic", "claude-sonnet-4-5")
+                        .contextWindowTokens())
+                .isEqualTo(100_000);
+
+        locked.add(TENANT);
+
+        assertThat(catalog.lookup(TENANT, PROJECT, "own", "my-model")).isEmpty();
+        assertThat(catalog.lookupOrDefault(TENANT, PROJECT, "anthropic", "claude-sonnet-4-5")
+                        .contextWindowTokens())
+                .isEqualTo(200_000);
+    }
+
     // ──── Capabilities list — replace, not concat ──────────────────────
 
     @Test

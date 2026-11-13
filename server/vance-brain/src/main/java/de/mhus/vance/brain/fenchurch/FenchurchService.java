@@ -558,7 +558,12 @@ public class FenchurchService {
                 request.getTenantId(), request.getProjectId(),
                 request.getProcessId(), settingService);
         String baseUrl = ChatBehaviorBuilder.resolveBaseUrl(
-                resolved, request.getTenantId(), request.getProjectId(), request.getProcessId(), settingService);
+                resolved,
+                request.getTenantId(),
+                request.getProjectId(),
+                request.getProcessId(),
+                settingService,
+                modelResolver.ownEndpointsAllowed(request.getTenantId()));
         return new AiImageConfig(
                 resolved.provider(),
                 resolved.providerInstance(),

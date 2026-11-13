@@ -33,6 +33,7 @@ class ChatModelServiceTest {
     void setUp() {
         catalog = mock(ModelCatalog.class);
         resolver = mock(AiModelResolver.class);
+        when(resolver.ownEndpointsAllowed(any())).thenReturn(true);
         settings = mock(SettingService.class);
         service = new ChatModelService(catalog, resolver, settings);
         // Direct specs resolve to themselves; the openai wire protocol needs a key.

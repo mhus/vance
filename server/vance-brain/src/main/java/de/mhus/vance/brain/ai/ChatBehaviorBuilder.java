@@ -73,6 +73,9 @@ public final class ChatBehaviorBuilder {
      * _tenant}). Returns {@code null} when nothing is configured — the provider
      * then keeps its Spring boot-time default.
      *
+     * <p>Returns {@code null} regardless of the setting when {@code ownEndpointsAllowed} is
+     * {@code false}: a tenant locked to the bundled catalog may not point an instance elsewhere.
+     *
      * <p>A configured value is tenant input, so it must pass the egress guard
      * ({@link SsrfGuard#assertAllowed(String)}); an internal provider (LAN
      * Ollama, in-cluster vLLM) needs {@code vance.net.ssrf.private-networks: allow}.
@@ -85,7 +88,11 @@ public final class ChatBehaviorBuilder {
             String tenantId,
             @Nullable String projectId,
             @Nullable String processId,
-            SettingService settings) {
+            SettingService settings,
+            boolean ownEndpointsAllowed) {
+        if (!ownEndpointsAllowed) {
+            return null;
+        }
         String key = String.format(SETTING_PROVIDER_BASE_URL_FMT, providerInstance);
         String value = settings.getStringValueCascade(tenantId, projectId, processId, key);
         if (value == null || value.isBlank()) {
@@ -105,8 +112,10 @@ public final class ChatBehaviorBuilder {
             String tenantId,
             @Nullable String projectId,
             @Nullable String processId,
-            SettingService settings) {
-        String fromSetting = resolveBaseUrl(resolved.providerInstance(), tenantId, projectId, processId, settings);
+            SettingService settings,
+            boolean ownEndpointsAllowed) {
+        String fromSetting = resolveBaseUrl(
+                resolved.providerInstance(), tenantId, projectId, processId, settings, ownEndpointsAllowed);
         if (fromSetting != null) {
             return fromSetting;
         }
@@ -210,7 +219,8 @@ public final class ChatBehaviorBuilder {
         AiModelResolver.Resolved resolved = resolver.resolveOrDefault(spec, tenantId, projectId, processId);
         String apiKey = resolveApiKey(
                 resolved.provider(), resolved.providerInstance(), tenantId, projectId, processId, settings);
-        String baseUrl = resolveBaseUrl(resolved, tenantId, projectId, processId, settings);
+        String baseUrl = resolveBaseUrl(
+                resolved, tenantId, projectId, processId, settings, resolver.ownEndpointsAllowed(tenantId));
         return new AiChatConfig(
                 resolved.provider(),
                 resolved.providerInstance(),

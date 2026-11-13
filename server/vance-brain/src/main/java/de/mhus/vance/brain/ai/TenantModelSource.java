@@ -10,6 +10,15 @@ public interface TenantModelSource {
     /** Whether {@code tenantId} reads the classpath catalog even though a central one is in force. */
     boolean usesClasspathCatalog(String tenantId);
 
+    /**
+     * Whether the tenant's own model documents (tenant and project layers of the catalog) take
+     * part in the catalog. {@code false} confines the tenant to the bundled catalog: its own
+     * models and provider sidecars are ignored when the view is built. Default {@code true}.
+     */
+    default boolean ownModelsAllowed(String tenantId) {
+        return true;
+    }
+
     /** Every tenant follows the central catalog (what runs without the setting store). */
     static TenantModelSource central() {
         return tenantId -> false;

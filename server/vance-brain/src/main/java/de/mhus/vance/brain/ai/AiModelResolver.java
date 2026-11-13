@@ -371,6 +371,14 @@ public class AiModelResolver {
     }
 
     /**
+     * Whether the tenant's own {@code ai.provider.<instance>.baseUrl} settings count. Locked
+     * tenants run on the endpoints of the bundled catalog only.
+     */
+    public boolean ownEndpointsAllowed(String tenantId) {
+        return modelCatalog.ownModelsAllowed(tenantId);
+    }
+
+    /**
      * {@code baseUrl} off the provider sidecar, or null. A sidecar published centrally
      * (the Iris catalog) states the endpoint once for every tenant; the setting
      * stays the override.

@@ -97,6 +97,7 @@ public class RagService {
     private final EmbeddingModelService embeddingModelService;
     private final de.mhus.vance.brain.ai.UsageSink usageSink;
     private final SettingService settingService;
+    private final de.mhus.vance.brain.ai.AiModelResolver aiModelResolver;
 
     // ──────────────────── Catalog ────────────────────
 
@@ -359,11 +360,16 @@ public class RagService {
 
     /**
      * The tenant's embedding endpoint override, or {@code null} for the provider
-     * default. Tenant input, so it must pass the egress guard.
+     * default. Tenant input, so it must pass the egress guard. Ignored for a tenant
+     * locked to the bundled catalog ({@code vancetope.model.custom = denied}).
      *
      * @throws SsrfGuard.SsrfException when the URL targets a non-public address
      */
-    private @Nullable String configuredEmbeddingBaseUrl(String tenantId) {
+    @Nullable
+    String configuredEmbeddingBaseUrl(String tenantId) {
+        if (!aiModelResolver.ownEndpointsAllowed(tenantId)) {
+            return null;
+        }
         String baseUrl = settingService.getStringValueCascade(
                 tenantId, /*projectId*/ null, /*processId*/ null, SETTING_EMBED_BASE_URL);
         if (StringUtils.isBlank(baseUrl)) {

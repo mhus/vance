@@ -24,6 +24,7 @@ class ChatBehaviorBuilderTest {
     @Test
     void resolveOne_namedInstance_readsApiKeyFromInstancePath() {
         AiModelResolver resolver = mock(AiModelResolver.class);
+        when(resolver.ownEndpointsAllowed(any())).thenReturn(true);
         SettingService settings = mock(SettingService.class);
 
         when(resolver.resolveOrDefault(any(), any(), any(), any()))
@@ -51,6 +52,7 @@ class ChatBehaviorBuilderTest {
         // Direct openai:gpt-4o-mini — instance == provider, so the api-key
         // path stays at ai.provider.openai.apiKey (backward-compat).
         AiModelResolver resolver = mock(AiModelResolver.class);
+        when(resolver.ownEndpointsAllowed(any())).thenReturn(true);
         SettingService settings = mock(SettingService.class);
 
         when(resolver.resolveOrDefault(any(), any(), any(), any()))
@@ -93,14 +95,28 @@ class ChatBehaviorBuilderTest {
                 new AiModelResolver.Resolved("iris", "iris", "eu-glm", false, "https://8.8.8.8");
 
         // No setting: the sidecar's URL applies.
-        assertThat(ChatBehaviorBuilder.resolveBaseUrl(iris, "acme", null, null, settings))
+        assertThat(ChatBehaviorBuilder.resolveBaseUrl(iris, "acme", null, null, settings, true))
                 .isEqualTo("https://8.8.8.8");
 
         // A setting wins over the sidecar.
         when(settings.getStringValueCascade(eq("acme"), any(), any(), eq("ai.provider.iris.baseUrl")))
                 .thenReturn("https://1.1.1.1");
-        assertThat(ChatBehaviorBuilder.resolveBaseUrl(iris, "acme", null, null, settings))
+        assertThat(ChatBehaviorBuilder.resolveBaseUrl(iris, "acme", null, null, settings, true))
                 .isEqualTo("https://1.1.1.1");
+    }
+
+    @Test
+    void resolveBaseUrl_lockedTenantIgnoresItsSettingAndKeepsTheSidecarUrl() {
+        SettingService settings = mock(SettingService.class);
+        AiModelResolver.Resolved iris =
+                new AiModelResolver.Resolved("iris", "iris", "eu-glm", false, "https://8.8.8.8");
+        when(settings.getStringValueCascade(eq("acme"), any(), any(), eq("ai.provider.iris.baseUrl")))
+                .thenReturn("https://1.1.1.1");
+
+        assertThat(ChatBehaviorBuilder.resolveBaseUrl(iris, "acme", null, null, settings, false))
+                .isEqualTo("https://8.8.8.8");
+        assertThat(ChatBehaviorBuilder.resolveBaseUrl("iris", "acme", null, null, settings, false))
+                .isNull();
     }
 
     @Test
@@ -108,7 +124,7 @@ class ChatBehaviorBuilderTest {
         SettingService settings = mock(SettingService.class);
 
         assertThat(ChatBehaviorBuilder.resolveBaseUrl(
-                        AiModelResolver.Resolved.direct("openai", "gpt-5"), "acme", null, null, settings))
+                        AiModelResolver.Resolved.direct("openai", "gpt-5"), "acme", null, null, settings, true))
                 .isNull();
     }
 }

@@ -1165,7 +1165,8 @@ public class HotblackService {
         AiModelResolver.Resolved r = resolved.resolved();
         String apiKey = ChatBehaviorBuilder.resolveApiKey(
                 r.provider(), r.providerInstance(), tenantId, projectId, processId, settingService);
-        String baseUrl = ChatBehaviorBuilder.resolveBaseUrl(r, tenantId, projectId, processId, settingService);
+        String baseUrl = ChatBehaviorBuilder.resolveBaseUrl(
+                r, tenantId, projectId, processId, settingService, modelResolver.ownEndpointsAllowed(tenantId));
         int timeoutSeconds = resolveTimeout(tenantId, projectId, processId, modelTimeout);
         return new AiAudioConfig(r.provider(), r.providerInstance(), r.modelName(), apiKey, baseUrl, timeoutSeconds);
     }

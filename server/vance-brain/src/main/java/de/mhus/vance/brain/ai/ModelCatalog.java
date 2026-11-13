@@ -247,6 +247,14 @@ public class ModelCatalog implements ResourceOverrideConsumer {
 
     // ──────────────────── Scoped lookups (preferred) ────────────────────
 
+    /**
+     * Whether the tenant may bring its own models and endpoints; {@code false} confines it to the
+     * bundled catalog (see {@link TenantModelSource#ownModelsAllowed}).
+     */
+    public boolean ownModelsAllowed(String tenantId) {
+        return tenantSource.ownModelsAllowed(tenantId);
+    }
+
     public Optional<ModelInfo> lookup(
             @Nullable String tenantId, @Nullable String projectId, String provider, String modelName) {
         if (provider == null || modelName == null) {
@@ -779,7 +787,7 @@ public class ModelCatalog implements ResourceOverrideConsumer {
         private final Map<ScopeKey, Map<String, Map<String, Object>>> providerCache = new ConcurrentHashMap<>();
 
         /** A lookup scope plus the bundled catalog it reads; the latter can change without a new snapshot. */
-        private record ScopeKey(TenantProject scope, boolean classpath) {}
+        private record ScopeKey(TenantProject scope, boolean classpath, boolean ownModels) {}
 
         Snapshot(
                 Layer bundled,
@@ -826,7 +834,8 @@ public class ModelCatalog implements ResourceOverrideConsumer {
             boolean classpath = classpathBundled != null
                     && scope.tenantId != null
                     && tenantSource.usesClasspathCatalog(scope.tenantId);
-            return new ScopeKey(scope, classpath);
+            boolean ownModels = scope.tenantId == null || tenantSource.ownModelsAllowed(scope.tenantId);
+            return new ScopeKey(scope, classpath, ownModels);
         }
 
         private Map<String, Map<String, Object>> buildModelView(ScopeKey key) {
@@ -902,7 +911,9 @@ public class ModelCatalog implements ResourceOverrideConsumer {
                     new TenantProject(SYSTEM_TENANT, HomeBootstrapService.TENANT_PROJECT_NAME),
                     ModelCatalogLayer.SYSTEM_AUTO,
                     ModelCatalogLayer.SYSTEM);
-            if (scope.tenantId != null) {
+            // A tenant locked to the bundled catalog gets no layer of its own: the bundled and
+            // system layers are the operator's configuration, everything below is the tenant's.
+            if (scope.tenantId != null && key.ownModels()) {
                 addScope(
                         out,
                         new TenantProject(scope.tenantId, HomeBootstrapService.TENANT_PROJECT_NAME),

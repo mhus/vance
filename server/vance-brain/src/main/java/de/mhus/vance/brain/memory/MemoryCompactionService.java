@@ -632,7 +632,12 @@ public class MemoryCompactionService {
             String apiKey = ChatBehaviorBuilder.resolveApiKey(
                     resolved.provider(), resolved.providerInstance(), tenantId, projectId, processId, settingService);
             String baseUrl = ChatBehaviorBuilder.resolveBaseUrl(
-                    resolved.providerInstance(), tenantId, projectId, processId, settingService);
+                    resolved.providerInstance(),
+                    tenantId,
+                    projectId,
+                    processId,
+                    settingService,
+                    aiModelResolver.ownEndpointsAllowed(tenantId));
             return new AiChatConfig(
                     resolved.provider(),
                     resolved.providerInstance(),
@@ -644,7 +649,13 @@ public class MemoryCompactionService {
         String provider = DEFAULT_PROVIDER.wireName();
         String apiKey =
                 ChatBehaviorBuilder.resolveApiKey(provider, provider, tenantId, projectId, processId, settingService);
-        String baseUrl = ChatBehaviorBuilder.resolveBaseUrl(provider, tenantId, projectId, processId, settingService);
+        String baseUrl = ChatBehaviorBuilder.resolveBaseUrl(
+                provider,
+                tenantId,
+                projectId,
+                processId,
+                settingService,
+                aiModelResolver.ownEndpointsAllowed(tenantId));
         return new AiChatConfig(provider, DEFAULT_MODEL, apiKey, baseUrl);
     }
 

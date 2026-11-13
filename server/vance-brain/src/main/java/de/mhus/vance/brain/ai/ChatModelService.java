@@ -234,6 +234,9 @@ public class ChatModelService {
                 .map(t -> !t.requiresApiKey())
                 .orElse(false);
         if (keyless) {
+            if (!aiModelResolver.ownEndpointsAllowed(tenantId)) {
+                return false;
+            }
             String baseUrl = settingService.getStringValueCascade(
                     tenantId, projectId, null, String.format(SETTING_PROVIDER_BASE_URL_FMT, instance));
             return baseUrl != null && !baseUrl.isBlank();

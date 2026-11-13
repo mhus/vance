@@ -147,18 +147,27 @@ const autoLoginNotice = ref<string | null>(null);
 // localStorage on principle.
 const rememberUser = ref(false);
 
-// SSO (planning/sso-login.md §5.1). `ssoDomains`: some e-mail domain signs in
-// via SSO on this installation — ask for the work address. `ssoConsumer`: the
-// tenant this page is bound to accepts a private Google account — the button
-// works without an address. Both stay false when the server offers neither,
-// and the page looks as it always did.
+// SSO (specification/public/sso-login.md §8). Asked per tenant, once the tenant
+// is entered: `ssoOffered` — the tenant supports Google sign-in at all, only
+// then the button shows. `ssoDomains` — a work-domain rule points at it, so the
+// sign-in needs an address; `ssoConsumer` — it accepts private Google accounts
+// (no address needed). All stay false when the tenant offers nothing, and the
+// page looks as it always did.
+const ssoOffered = ref(false);
 const ssoDomains = ref(false);
 const ssoConsumer = ref(false);
 const ssoEmail = ref('');
 const ssoBusy = ref(false);
-const showSso = computed<boolean>(
-  () => (ssoDomains.value || ssoConsumer.value) && methods.value?.sso !== false,
-);
+const showSso = computed<boolean>(() => ssoOffered.value && methods.value?.sso !== false);
+
+/** The username doubles as the address when it is one — then Google gets it as the hint. */
+const usernameAsEmail = computed<string>(() => {
+  const typed = username.value.trim();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(typed) ? typed : '';
+});
+
+/** Ask for a work address only when the tenant needs one and the username is not it. */
+const askSsoEmail = computed<boolean>(() => ssoDomains.value && usernameAsEmail.value === '');
 
 /**
  * The tenant a private-Google sign-in would go to: the one the page is bound
@@ -182,10 +191,18 @@ watch(
     if (ssoOptionsTimer !== undefined) clearTimeout(ssoOptionsTimer);
     ssoOptionsTimer = setTimeout(() => {
       const seq = ++ssoOptionsSeq;
+      if (value === null) {
+        ++ssoOptionsSeq;
+        ssoOffered.value = false;
+        ssoDomains.value = false;
+        ssoConsumer.value = false;
+        return;
+      }
       void fetchSsoOptions(value).then((options) => {
         if (seq !== ssoOptionsSeq) return;
+        ssoOffered.value = options?.sso === true;
         ssoDomains.value = options?.domains === true;
-        ssoConsumer.value = options?.sso === true;
+        ssoConsumer.value = options?.consumer === true;
       });
     }, 300);
   },
@@ -392,24 +409,24 @@ function backToUsername(): void {
 }
 
 /**
- * "Continue with Google". A typed address goes by its domain; without one —
- * or with a Gmail address — only a tenant-bound page whose tenant accepts
- * private accounts can start. The decision is the server's: discover only
- * says whether the domain signs in via SSO, never where to.
+ * "Continue with Google", offered once the tenant supports it. The address —
+ * the username when it is one, else the typed work address — goes to Google as
+ * the sign-in hint and picks the domain rule. Without one only a tenant that
+ * accepts private accounts can start. The decision is the server's: discover
+ * only says whether the domain signs in via SSO, never where to.
  */
 async function onSso(): Promise<void> {
   error.value = null;
-  const email = ssoEmail.value.trim();
-  // A domain sign-in finds its tenant by the address — only a page bound by
-  // URL narrows it. A private account needs the tenant from the page or field.
-  const boundTenant = readTenantParam();
+  const email = usernameAsEmail.value || ssoEmail.value.trim();
+  // The tenant is the one entered above: a domain that belongs to another
+  // tenant is refused by the server instead of landing in the wrong one.
   const consumerTenant = ssoTenant.value;
   ssoBusy.value = true;
   try {
     if (email) {
       const found = await discoverSso(email);
       if (found?.sso) {
-        await startSso(email, boundTenant);
+        await startSso(email, consumerTenant);
         return;
       }
       const isGmail = /@(gmail|googlemail)\.com$/i.test(email);
@@ -645,7 +662,7 @@ function readNextParam(): string | null {
             <span class="h-px flex-1 bg-base-300"></span>
           </div>
           <VInput
-            v-if="ssoDomains"
+            v-if="askSsoEmail"
             v-model="ssoEmail"
             type="email"
             :label="$t('login.sso.email')"

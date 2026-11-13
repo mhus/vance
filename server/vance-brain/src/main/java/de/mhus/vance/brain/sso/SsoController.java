@@ -43,8 +43,8 @@ import org.springframework.web.util.HtmlUtils;
  *
  * <ul>
  *   <li>{@code GET discover?email=} — does this address sign in via SSO?</li>
- *   <li>{@code GET options?tenant=} — does this tenant's login page offer a
- *       private Google account?</li>
+ *   <li>{@code GET options?tenant=} — does this tenant support Google
+ *       sign-in, and does it need a work address?</li>
  *   <li>{@code GET start?email=&tenant=&next=} — off to the identity provider.
  *       With {@code app_redirect} (native app) first a confirmation page that
  *       names the app receiving the login.</li>
@@ -112,7 +112,7 @@ public class SsoController {
         if (!withinBudget(Budget.LOOKUP, request)) {
             return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).build();
         }
-        return options(ssoLoginService.providerForEmail(email), false);
+        return options(ssoLoginService.providerForEmail(email));
     }
 
     @GetMapping("/brain/_sso/options")
@@ -121,9 +121,14 @@ public class SsoController {
         if (!withinBudget(Budget.LOOKUP, request)) {
             return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).build();
         }
-        return options(
-                tenant == null ? Optional.empty() : ssoLoginService.consumerProvider(tenant),
-                ssoLoginService.domainSignInConfigured());
+        SsoLoginService.TenantOptions found = ssoLoginService.tenantOptions(tenant);
+        SsoOptionsDto body = SsoOptionsDto.builder()
+                .sso(found.sso())
+                .provider(found.provider())
+                .domains(found.domains())
+                .consumer(found.consumer())
+                .build();
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(body);
     }
 
     @GetMapping("/brain/_sso/start")
@@ -248,11 +253,10 @@ public class SsoController {
                 .build();
     }
 
-    private static ResponseEntity<SsoOptionsDto> options(Optional<String> provider, boolean domains) {
+    private static ResponseEntity<SsoOptionsDto> options(Optional<String> provider) {
         SsoOptionsDto body = SsoOptionsDto.builder()
                 .sso(provider.isPresent())
                 .provider(provider.orElse(null))
-                .domains(domains)
                 .build();
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(body);
     }

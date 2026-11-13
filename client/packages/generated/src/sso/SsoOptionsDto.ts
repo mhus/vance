@@ -7,4 +7,5 @@ export interface SsoOptionsDto {
   sso: boolean;
   provider?: string;
   domains: boolean;
+  consumer: boolean;
 }

@@ -10,8 +10,8 @@ import org.jspecify.annotations.Nullable;
 /**
  * Whether the login page offers an SSO sign-in — for a typed address
  * ({@code GET /brain/_sso/discover}) or for the tenant the page is bound to
- * ({@code GET /brain/_sso/options}, where {@link #sso} means a private Google
- * account may sign in). Never names a tenant.
+ * ({@code GET /brain/_sso/options}, asked once the person entered the tenant:
+ * {@link #sso} means the tenant supports Google sign-in). Never names a tenant.
  */
 @Data
 @Builder
@@ -27,9 +27,12 @@ public class SsoOptionsDto {
     private @Nullable String provider;
 
     /**
-     * Whether any e-mail domain signs in via SSO on this installation — the
-     * login page then asks for the work address. Says nothing about which
-     * domains or tenants.
+     * Tenant options only: a work-domain rule points at the tenant, so the
+     * sign-in needs an e-mail address (the username, if it is one, or a typed
+     * one).
      */
     private boolean domains;
+
+    /** Tenant options only: the tenant accepts prepared private Google accounts — no address needed. */
+    private boolean consumer;
 }

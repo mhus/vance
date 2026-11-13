@@ -274,8 +274,23 @@ class SsoLoginServiceTest {
         assertThat(service.providerForEmail("wile@acme.com")).contains("google");
         assertThat(service.providerForEmail("mike@gmail.com")).isEmpty();
         assertThat(service.providerForEmail("x@unknown.org")).isEmpty();
-        assertThat(service.consumerProvider("mhus")).contains("google");
-        assertThat(service.consumerProvider("acme")).isEmpty();
+    }
+
+    @Test
+    void tenantOptions_answerPerTenant_notPerInstallation() {
+        SsoLoginService.TenantOptions mhus = service.tenantOptions("mhus");
+        assertThat(mhus.sso()).isTrue();
+        assertThat(mhus.consumer()).isTrue();
+        assertThat(mhus.domains()).isFalse();
+
+        SsoLoginService.TenantOptions acme = service.tenantOptions("acme");
+        assertThat(acme.sso()).isTrue();
+        assertThat(acme.domains()).isTrue();
+        assertThat(acme.consumer()).isFalse();
+
+        assertThat(service.tenantOptions("other").sso()).isFalse();
+        assertThat(service.tenantOptions(null).sso()).isFalse();
+        assertThat(service.tenantOptions(" ").sso()).isFalse();
     }
 
     // ─── callback integrity ────────────────────────────────────────────

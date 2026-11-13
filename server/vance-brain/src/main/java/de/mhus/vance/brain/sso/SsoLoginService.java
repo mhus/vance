@@ -170,18 +170,40 @@ public class SsoLoginService {
         return configService.config().domain(ExternalEmails.domain(normalized)).map(SsoConfig.DomainRule::provider);
     }
 
-    /** Whether any e-mail domain signs in via SSO here — not which. */
-    public boolean domainSignInConfigured() {
-        return publicBaseUrl != null && !configService.config().domains().isEmpty();
+    /**
+     * What the login page of {@code tenant} may offer: whether any Google
+     * sign-in leads into it. Asked after the person entered the tenant, so
+     * this is the answer to "does this tenant support SSO" — not a list of
+     * domains or tenants.
+     */
+    public TenantOptions tenantOptions(@Nullable String tenant) {
+        SsoConfig config = configService.config();
+        if (publicBaseUrl == null || tenant == null || tenant.isBlank()) {
+            return TenantOptions.NONE;
+        }
+        Optional<SsoConfig.DomainRule> domainRule = config.domains().values().stream()
+                .filter(rule -> rule.tenant().equals(tenant))
+                .findFirst();
+        boolean consumer = config.consumerAccountsAllowed(tenant) && config.consumerAccounts() != null;
+        String provider = consumer
+                ? config.consumerAccounts().provider()
+                : domainRule.map(SsoConfig.DomainRule::provider).orElse(null);
+        return new TenantOptions(provider, domainRule.isPresent(), consumer);
     }
 
-    /** Whether the login page of {@code tenant} offers sign-in with a private Google account. */
-    public Optional<String> consumerProvider(String tenant) {
-        SsoConfig config = configService.config();
-        if (publicBaseUrl == null || !config.consumerAccountsAllowed(tenant) || config.consumerAccounts() == null) {
-            return Optional.empty();
+    /**
+     * Google sign-in offered by one tenant.
+     *
+     * @param provider provider key, {@code null} when the tenant offers none
+     * @param domains  a work-domain rule points at the tenant (sign-in needs an address)
+     * @param consumer the tenant accepts prepared private Google accounts (no address needed)
+     */
+    public record TenantOptions(@Nullable String provider, boolean domains, boolean consumer) {
+        static final TenantOptions NONE = new TenantOptions(null, false, false);
+
+        public boolean sso() {
+            return provider != null;
         }
-        return Optional.of(config.consumerAccounts().provider());
     }
 
     // ─── start ─────────────────────────────────────────────────────────

@@ -29,7 +29,6 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
-import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.UnaryOperator;
 import org.junit.jupiter.api.BeforeEach;
@@ -43,16 +42,23 @@ import org.mockito.ArgumentCaptor;
  */
 class SsoLoginServiceTest {
 
-    private static final String CONFIG = """
+    private static final String PROVIDER = """
             providers:
               google:
                 type: google
                 clientId: "%s"
                 clientSecret: "{{secret:vault:sso.google.clientSecret}}"
-            domains:
-              - {domain: acme.com, tenant: acme, provider: google, maxSessionDays: 3}
-            consumerAccounts: {provider: google, tenants: [mhus]}
             """.formatted(TestIdTokens.CLIENT_ID);
+
+    /** Tenant acme signs in a work domain, tenant mhus private Gmail accounts. */
+    private static final String ACME = PROVIDER + """
+            domains:
+              - {domain: acme.com, provider: google, maxSessionDays: 3}
+            """;
+
+    private static final String MHUS = PROVIDER + """
+            consumerAccounts: {provider: google}
+            """;
 
     private final TestIdTokens tokens = new TestIdTokens();
     private SsoOidcClient oidc;
@@ -62,15 +68,21 @@ class SsoLoginServiceTest {
     private SsoHandoffService handoffs;
     private UserService users;
     private SsoLoginService service;
+    private SsoUserOptOut optOut;
     private final AtomicReference<SsoLoginRequestDocument> stored = new AtomicReference<>();
     private final UserDocument wile =
             UserDocument.builder().tenantId("acme").name("wile").build();
 
     @BeforeEach
     void setUp() throws Exception {
-        SsoConfig config = SsoConfigParser.parse(CONFIG, Set.of("acme", "mhus")::contains);
+        SsoConfig acme = SsoConfigParser.parse("acme", ACME);
+        SsoConfig mhus = SsoConfigParser.parse("mhus", MHUS);
         SsoConfigService configService = mock(SsoConfigService.class);
-        when(configService.config()).thenReturn(config);
+        when(configService.config(anyString())).thenAnswer(inv -> switch ((String) inv.getArgument(0)) {
+            case "acme" -> acme;
+            case "mhus" -> mhus;
+            default -> SsoConfig.empty(inv.getArgument(0));
+        });
         SecretResolver secrets = mock(SecretResolver.class);
         when(secrets.resolveForConnector(any(), any())).thenReturn("client-secret");
 
@@ -100,6 +112,7 @@ class SsoLoginServiceTest {
 
         handoffs = mock(SsoHandoffService.class);
         users = mock(UserService.class);
+        optOut = mock(SsoUserOptOut.class);
         service = new SsoLoginService(
                 configService,
                 secrets,
@@ -110,6 +123,7 @@ class SsoLoginServiceTest {
                 accounts,
                 issuer,
                 mock(AuditService.class),
+                optOut,
                 "http://localhost:9901/",
                 Clock.systemUTC());
     }
@@ -132,7 +146,7 @@ class SsoLoginServiceTest {
     @Test
     void domainSignIn_withMatchingHd_succeeds_withSessionCap() throws Exception {
         SsoLoginService.Callback result =
-                signIn("wile@acme.com", null, "/projects.html", "wile@acme.com", b -> b.claim("hd", "acme.com"));
+                signIn("wile@acme.com", "acme", "/projects.html", "wile@acme.com", b -> b.claim("hd", "acme.com"));
 
         assertThat(result).isInstanceOf(SsoLoginService.Callback.Success.class);
         assertThat(((SsoLoginService.Callback.Success) result).next()).isEqualTo("/projects.html");
@@ -151,7 +165,7 @@ class SsoLoginServiceTest {
     @Test
     void start_redirectCarriesPkceNonceAndHdPreselection() {
         SsoLoginService.Start.Redirect start =
-                (SsoLoginService.Start.Redirect) service.start("wile@acme.com", null, null);
+                (SsoLoginService.Start.Redirect) service.start("wile@acme.com", "acme", null);
 
         assertThat(start.url())
                 .startsWith("https://accounts.google.com/o/oauth2/v2/auth?")
@@ -167,24 +181,24 @@ class SsoLoginServiceTest {
     void domainSignIn_withoutHd_isRejected() throws Exception {
         // A private Google account registered under someone@acme.com: verified
         // e-mail, but no hd. The classic takeover — must not get in.
-        assertRejected(signIn("wile@acme.com", null, null, "wile@acme.com", b -> b));
+        assertRejected(signIn("wile@acme.com", "acme", null, "wile@acme.com", b -> b));
     }
 
     @Test
     void domainSignIn_withForeignHd_isRejected() throws Exception {
-        assertRejected(signIn("wile@acme.com", null, null, "wile@acme.com", b -> b.claim("hd", "evil.com")));
+        assertRejected(signIn("wile@acme.com", "acme", null, "wile@acme.com", b -> b.claim("hd", "evil.com")));
     }
 
     @Test
     void domainSignIn_emailOfOtherDomain_isRejected() throws Exception {
-        assertRejected(signIn("wile@acme.com", null, null, "wile@evil.com", b -> b.claim("hd", "acme.com")));
+        assertRejected(signIn("wile@acme.com", "acme", null, "wile@evil.com", b -> b.claim("hd", "acme.com")));
     }
 
     @Test
     void unverifiedEmail_isRejected() throws Exception {
         assertRejected(signIn(
                 "wile@acme.com",
-                null,
+                "acme",
                 null,
                 "wile@acme.com",
                 b -> b.claim("hd", "acme.com").claim("email_verified", false)));
@@ -192,25 +206,31 @@ class SsoLoginServiceTest {
 
     @Test
     void plusAddress_isRejected() throws Exception {
-        assertRejected(signIn("wile@acme.com", null, null, "wile+x@acme.com", b -> b.claim("hd", "acme.com")));
+        assertRejected(signIn("wile@acme.com", "acme", null, "wile+x@acme.com", b -> b.claim("hd", "acme.com")));
     }
 
     @Test
-    void start_addressOfAnotherTenant_onTenantBoundPage_isRefused() {
+    void start_addressOfADomainTheTenantDoesNotConfigure_isRefused() {
+        // acme.com is acme's domain; tenant mhus only takes private Gmail accounts.
         assertThat(service.start("wile@acme.com", "mhus", null)).isInstanceOf(SsoLoginService.Start.Failure.class);
     }
 
     @Test
     void start_addressOfAnotherTenant_viaOAuthResumePath_isRefused() {
-        // foot authorizes tenant "mhus", the address belongs to "acme".
+        // foot authorizes tenant "mhus"; its configuration does not know acme.com.
         assertThat(service.start("wile@acme.com", null, "/brain/mhus/oauth/authorize/resume/r1"))
                 .isInstanceOf(SsoLoginService.Start.Failure.class);
     }
 
     @Test
+    void start_withoutATenant_isRefused() {
+        assertThat(service.start("wile@acme.com", null, null)).isInstanceOf(SsoLoginService.Start.Failure.class);
+    }
+
+    @Test
     void start_unparseableNext_fallsBackToRoot() throws Exception {
         SsoLoginService.Callback result =
-                signIn("wile@acme.com", null, "/a b|c", "wile@acme.com", b -> b.claim("hd", "acme.com"));
+                signIn("wile@acme.com", "acme", "/a b|c", "wile@acme.com", b -> b.claim("hd", "acme.com"));
 
         assertThat(((SsoLoginService.Callback.Success) result).next()).isEqualTo("/");
     }
@@ -220,7 +240,7 @@ class SsoLoginServiceTest {
         // Google may send iss without scheme — still the same identity.
         signIn(
                 "wile@acme.com",
-                null,
+                "acme",
                 null,
                 "wile@acme.com",
                 b -> b.issuer("accounts.google.com").claim("hd", "acme.com"));
@@ -233,7 +253,7 @@ class SsoLoginServiceTest {
     @Test
     void start_unsafeNext_isDropped() throws Exception {
         SsoLoginService.Callback result =
-                signIn("wile@acme.com", null, "//evil.example/x", "wile@acme.com", b -> b.claim("hd", "acme.com"));
+                signIn("wile@acme.com", "acme", "//evil.example/x", "wile@acme.com", b -> b.claim("hd", "acme.com"));
 
         assertThat(((SsoLoginService.Callback.Success) result).next()).isEqualTo("/");
     }
@@ -265,32 +285,54 @@ class SsoLoginServiceTest {
 
     @Test
     void consumerPath_onTenantNotOpened_isRefusedAtStart() {
+        // acme takes work domains only, no private accounts.
         assertThat(service.start(null, "acme", null)).isInstanceOf(SsoLoginService.Start.Failure.class);
+        assertThat(service.start(null, "other", null)).isInstanceOf(SsoLoginService.Start.Failure.class);
         assertThat(service.start(null, null, null)).isInstanceOf(SsoLoginService.Start.Failure.class);
     }
 
     @Test
     void discover_neverAnswersForGmail_andNeverNamesTheTenant() {
-        assertThat(service.providerForEmail("wile@acme.com")).contains("google");
-        assertThat(service.providerForEmail("mike@gmail.com")).isEmpty();
-        assertThat(service.providerForEmail("x@unknown.org")).isEmpty();
+        assertThat(service.providerForEmail("acme", "wile@acme.com")).contains("google");
+        assertThat(service.providerForEmail("acme", "mike@gmail.com")).isEmpty();
+        assertThat(service.providerForEmail("acme", "x@unknown.org")).isEmpty();
+        // The tenant's file decides: acme.com is no domain of tenant mhus.
+        assertThat(service.providerForEmail("mhus", "wile@acme.com")).isEmpty();
     }
 
     @Test
     void tenantOptions_answerPerTenant_notPerInstallation() {
-        SsoLoginService.TenantOptions mhus = service.tenantOptions("mhus");
+        SsoLoginService.TenantOptions mhus = service.tenantOptions("mhus", "mike");
         assertThat(mhus.sso()).isTrue();
         assertThat(mhus.consumer()).isTrue();
         assertThat(mhus.domains()).isFalse();
 
-        SsoLoginService.TenantOptions acme = service.tenantOptions("acme");
+        SsoLoginService.TenantOptions acme = service.tenantOptions("acme", "wile");
         assertThat(acme.sso()).isTrue();
         assertThat(acme.domains()).isTrue();
         assertThat(acme.consumer()).isFalse();
 
-        assertThat(service.tenantOptions("other").sso()).isFalse();
-        assertThat(service.tenantOptions(null).sso()).isFalse();
-        assertThat(service.tenantOptions(" ").sso()).isFalse();
+        assertThat(service.tenantOptions("other", "wile").sso()).isFalse();
+        assertThat(service.tenantOptions(null, "wile").sso()).isFalse();
+        assertThat(service.tenantOptions(" ", "wile").sso()).isFalse();
+    }
+
+    @Test
+    void tenantOptions_userTheOperatorTookOffSso_getsNone() {
+        when(optOut.deniedFor("acme", "tenant_admin")).thenReturn(true);
+
+        assertThat(service.tenantOptions("acme", "tenant_admin").sso()).isFalse();
+        assertThat(service.tenantOptions("acme", "wile").sso()).isTrue();
+        // A user who does not exist looks like everybody else: no hint whether the account is there.
+        assertThat(service.tenantOptions("acme", "ghost").sso()).isTrue();
+    }
+
+    @Test
+    void callback_accountTheOperatorTookOffSso_isRefused() throws Exception {
+        when(optOut.deniedFor("acme", "wile")).thenReturn(true);
+
+        assertRejected(signIn("wile@acme.com", "acme", null, "wile@acme.com", b -> b.claim("hd", "acme.com")));
+        verify(issuer, never()).issue(anyString(), anyString(), anyBoolean(), any());
     }
 
     // ─── callback integrity ────────────────────────────────────────────
@@ -298,7 +340,7 @@ class SsoLoginServiceTest {
     @Test
     void callback_withoutStateCookie_isRefused_beforeAnythingElse() {
         SsoLoginService.Start.Redirect start =
-                (SsoLoginService.Start.Redirect) service.start("wile@acme.com", null, null);
+                (SsoLoginService.Start.Redirect) service.start("wile@acme.com", "acme", null);
 
         SsoLoginService.Callback result = service.callback("google", "code-1", start.state(), null, null);
 
@@ -309,7 +351,7 @@ class SsoLoginServiceTest {
     @Test
     void callback_replayed_findsNoRequest() throws Exception {
         SsoLoginService.Start.Redirect start =
-                (SsoLoginService.Start.Redirect) service.start("wile@acme.com", null, null);
+                (SsoLoginService.Start.Redirect) service.start("wile@acme.com", "acme", null);
         String nonce = stored.get().getNonce();
         when(oidc.exchangeCode(any(), anyString(), anyString(), anyString(), anyString(), anyString()))
                 .thenReturn(tokens.token("sub-1", "wile@acme.com", nonce, b -> b.claim("hd", "acme.com")));
@@ -323,7 +365,7 @@ class SsoLoginServiceTest {
     @Test
     void callback_providerError_isRefused() {
         SsoLoginService.Start.Redirect start =
-                (SsoLoginService.Start.Redirect) service.start("wile@acme.com", null, null);
+                (SsoLoginService.Start.Redirect) service.start("wile@acme.com", "acme", null);
 
         assertThat(service.callback("google", null, start.state(), "access_denied", start.state()))
                 .isInstanceOf(SsoLoginService.Callback.Failure.class);
@@ -333,7 +375,7 @@ class SsoLoginServiceTest {
     void resolverRefusal_isRejected() throws Exception {
         when(accounts.resolve(any())).thenReturn(new SsoAccountResolver.Outcome(null, "not-prepared"));
 
-        assertRejected(signIn("wile@acme.com", null, null, "wile@acme.com", b -> b.claim("hd", "acme.com")));
+        assertRejected(signIn("wile@acme.com", "acme", null, "wile@acme.com", b -> b.claim("hd", "acme.com")));
     }
 
     @Test
@@ -342,7 +384,7 @@ class SsoLoginServiceTest {
                 .thenReturn(new SsoAccountResolver.Outcome(null, SsoAccountResolver.REJECT_NO_SEATS));
 
         SsoLoginService.Callback result =
-                signIn("wile@acme.com", null, null, "wile@acme.com", b -> b.claim("hd", "acme.com"));
+                signIn("wile@acme.com", "acme", null, "wile@acme.com", b -> b.claim("hd", "acme.com"));
 
         assertThat(result).isInstanceOf(SsoLoginService.Callback.Failure.class);
         assertThat(((SsoLoginService.Callback.Failure) result).code()).isEqualTo(SsoLoginService.FAIL_NO_SEATS);
@@ -392,13 +434,13 @@ class SsoLoginServiceTest {
 
     @Test
     void appStart_needsRedirectAndChallengeTogether() {
-        assertThat(service.start("wile@acme.com", null, null, "vance-facelift://sso-done", null))
+        assertThat(service.start("wile@acme.com", "acme", null, "vance-facelift://sso-done", null))
                 .isInstanceOf(SsoLoginService.Start.Failure.class);
-        assertThat(service.start("wile@acme.com", null, null, null, CHALLENGE))
+        assertThat(service.start("wile@acme.com", "acme", null, null, CHALLENGE))
                 .isInstanceOf(SsoLoginService.Start.Failure.class);
-        assertThat(service.start("wile@acme.com", null, null, "https://evil.example/x", CHALLENGE))
+        assertThat(service.start("wile@acme.com", "acme", null, "https://evil.example/x", CHALLENGE))
                 .isInstanceOf(SsoLoginService.Start.Failure.class);
-        assertThat(service.start("wile@acme.com", null, null, "vance-facelift://sso-done", "short"))
+        assertThat(service.start("wile@acme.com", "acme", null, "vance-facelift://sso-done", "short"))
                 .isInstanceOf(SsoLoginService.Start.Failure.class);
     }
 
@@ -406,7 +448,7 @@ class SsoLoginServiceTest {
     void appSignIn_handsOverACode_insteadOfIssuingCookies() throws Exception {
         when(handoffs.create(eq("acme"), eq("wile"), any(), eq(CHALLENGE))).thenReturn("handoff-1");
         SsoLoginService.Start.ConfirmApp start = (SsoLoginService.Start.ConfirmApp)
-                service.start("wile@acme.com", null, null, "http://127.0.0.1:53123/sso-done", CHALLENGE);
+                service.start("wile@acme.com", "acme", null, "http://127.0.0.1:53123/sso-done", CHALLENGE);
         when(oidc.exchangeCode(any(), anyString(), anyString(), anyString(), anyString(), anyString()))
                 .thenReturn(tokens.token(
                         "sub-1", "wile@acme.com", stored.get().getNonce(), b -> b.claim("hd", "acme.com")));
@@ -422,7 +464,7 @@ class SsoLoginServiceTest {
     @Test
     void appSignIn_refusal_goesBackToTheApp() throws Exception {
         SsoLoginService.Start.ConfirmApp start = (SsoLoginService.Start.ConfirmApp)
-                service.start("wile@acme.com", null, null, "vance-facelift://sso-done", CHALLENGE);
+                service.start("wile@acme.com", "acme", null, "vance-facelift://sso-done", CHALLENGE);
         when(oidc.exchangeCode(any(), anyString(), anyString(), anyString(), anyString(), anyString()))
                 .thenReturn(tokens.token("sub-1", "wile@acme.com", stored.get().getNonce(), b -> b));
 
@@ -437,9 +479,9 @@ class SsoLoginServiceTest {
         // Anybody can build an app start link with a challenge of their own;
         // the person in the browser must see where the login goes first.
         SsoLoginService.Start mobile =
-                service.start("wile@acme.com", null, null, "vance-facelift://sso-done", CHALLENGE);
+                service.start("wile@acme.com", "acme", null, "vance-facelift://sso-done", CHALLENGE);
         SsoLoginService.Start desktop =
-                service.start("wile@acme.com", null, null, "http://127.0.0.1:53123/sso-done", CHALLENGE);
+                service.start("wile@acme.com", "acme", null, "http://127.0.0.1:53123/sso-done", CHALLENGE);
 
         assertThat(mobile).isInstanceOf(SsoLoginService.Start.ConfirmApp.class);
         SsoLoginService.Start.ConfirmApp m = (SsoLoginService.Start.ConfirmApp) mobile;

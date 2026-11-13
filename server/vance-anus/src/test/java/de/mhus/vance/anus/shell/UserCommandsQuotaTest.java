@@ -121,10 +121,9 @@ class UserCommandsQuotaTest {
         when(userService.findByTenantAndName("acme", "alice")).thenReturn(Optional.of(alice));
         when(quotaService.status("acme", UserQuotaKind.SEATS)).thenReturn(new UserQuotaService.Usage(6, 5));
         SsoConfig.Provider google = new SsoConfig.Provider("google", "google", "id", "secret", "iss", "disc");
-        SsoConfig.DomainRule rule =
-                new SsoConfig.DomainRule("acme.com", "acme", "google", false, null, Duration.ofDays(1));
-        when(ssoConfigService.config())
-                .thenReturn(new SsoConfig(Map.of("google", google), Map.of("acme.com", rule), null));
+        SsoConfig.DomainRule rule = new SsoConfig.DomainRule("acme.com", "google", false, null, Duration.ofDays(1));
+        when(ssoConfigService.config("acme"))
+                .thenReturn(new SsoConfig("acme", Map.of("google", google), Map.of("acme.com", rule), null));
     }
 
     private static UserQuotaService.UserQuotaExceededException full(UserQuotaKind kind) {

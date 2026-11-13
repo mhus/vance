@@ -19,18 +19,21 @@ async function getOptions(path: string): Promise<SsoOptionsDto | null> {
 }
 
 /**
- * What the login page may offer: `domains` — some e-mail domain signs in via
- * SSO here (ask for the work address); `sso` — the bound `tenant` accepts a
- * private Google account (offer the button directly).
+ * What the login page may offer once tenant and username are entered: `sso` —
+ * the tenant supports Google sign-in for this user; `domains` — it signs in work
+ * domains (ask for the address unless the username is one); `consumer` — it
+ * accepts private Google accounts (the button works without an address).
  */
-export function fetchSsoOptions(tenant: string | null): Promise<SsoOptionsDto | null> {
-  const query = tenant ? `?tenant=${encodeURIComponent(tenant)}` : '';
+export function fetchSsoOptions(tenant: string, username: string): Promise<SsoOptionsDto | null> {
+  const query = `?tenant=${encodeURIComponent(tenant)}&username=${encodeURIComponent(username)}`;
   return getOptions(`/brain/_sso/options${query}`);
 }
 
-/** Whether `email` signs in via SSO — by its domain only; never names the tenant. */
-export function discoverSso(email: string): Promise<SsoOptionsDto | null> {
-  return getOptions(`/brain/_sso/discover?email=${encodeURIComponent(email)}`);
+/** Whether `email` signs in to `tenant` via SSO — by its domain only. */
+export function discoverSso(email: string, tenant: string): Promise<SsoOptionsDto | null> {
+  return getOptions(
+    `/brain/_sso/discover?tenant=${encodeURIComponent(tenant)}&email=${encodeURIComponent(email)}`,
+  );
 }
 
 /**

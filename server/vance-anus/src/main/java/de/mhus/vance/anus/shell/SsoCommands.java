@@ -15,10 +15,10 @@ import org.springframework.shell.core.command.annotation.Option;
 import org.springframework.stereotype.Component;
 
 /**
- * The installation-wide SSO config {@code _vance/config/sso.yaml}
- * ({@code specification/public/sso-login.md} §2). It lives in the system
- * tenant, and writing it decides which e-mail domain's sign-ins land in which
- * tenant — an operator decision, so the shell is the way to write it.
+ * The per-tenant SSO config {@code _vance/config/sso/<tenant>.yaml}
+ * ({@code specification/public/sso-login.md} §2). The files live in the system
+ * tenant, and writing one decides which e-mail domains sign in to that tenant
+ * — an operator decision, so the shell is the way to write it.
  *
  * <p>{@code import} validates first and refuses a file in which any entry
  * would be dropped: the Brain loads fail-closed, so a typo would otherwise
@@ -37,15 +37,16 @@ public class SsoCommands {
     @Command(
             name = {"sso", "config", "show"},
             description = "Show the SSO config as stored and as the Brain reads it.")
-    public String show() {
-        String raw = configService.readRaw().orElse(null);
+    public String show(
+            @Option(longName = "tenant", shortName = 'T', required = true, description = "Tenant name") String tenant) {
+        String path = SsoConfigService.configPath(tenant);
+        String raw = configService.readRaw(tenant).orElse(null);
         if (raw == null) {
-            return "No " + SsoConfigService.CONFIG_PATH + " in the system tenant — SSO is off.";
+            return "No " + path + " in the system tenant — SSO of '" + tenant + "' is off.";
         }
         List<String> problems = new ArrayList<>();
-        SsoConfig config = configService.validate(raw, problems);
-        return "--- " + SsoConfigService.CONFIG_PATH + " ---\n" + raw.stripTrailing() + "\n---\n"
-                + render(config, problems);
+        SsoConfig config = configService.validate(tenant, raw, problems);
+        return "--- " + path + " ---\n" + raw.stripTrailing() + "\n---\n" + render(config, problems);
     }
 
     @Command(
@@ -53,7 +54,12 @@ public class SsoCommands {
             description = "Validate a local YAML file and store it as the SSO config. Refuses when any entry"
                     + " would be dropped.")
     public String importConfig(
-            @Option(longName = "file", shortName = 'f', required = true, description = "Path to the sso.yaml")
+            @Option(longName = "tenant", shortName = 'T', required = true, description = "Tenant name") String tenant,
+            @Option(
+                            longName = "file",
+                            shortName = 'f',
+                            required = true,
+                            description = "Path to the YAML file for this tenant")
                     String file,
             @Option(longName = "dry-run", description = "Validate only, write nothing.", defaultValue = "false")
                     boolean dryRun) {
@@ -64,7 +70,7 @@ public class SsoCommands {
             return "Import FAILED — cannot read '" + file + "': " + e.getMessage();
         }
         List<String> problems = new ArrayList<>();
-        SsoConfig config = configService.validate(yaml, problems);
+        SsoConfig config = configService.validate(tenant, yaml, problems);
         String summary = render(config, problems);
         if (!problems.isEmpty()) {
             return "Import REFUSED — fix these entries first (the Brain would drop them):\n" + summary;
@@ -72,8 +78,12 @@ public class SsoCommands {
         if (dryRun) {
             return "Dry run — valid, nothing written.\n" + summary;
         }
-        configService.write(yaml, "anus");
-        return "Import OK — " + SsoConfigService.CONFIG_PATH + " written. The Brain picks it up within"
+        try {
+            configService.write(tenant, yaml, "anus");
+        } catch (IllegalArgumentException e) {
+            return "Import REFUSED — " + e.getMessage();
+        }
+        return "Import OK — " + SsoConfigService.configPath(tenant) + " written. The Brain picks it up within"
                 + " 30 seconds.\n" + summary
                 + "\nThe client secret is read from its reference at sign-in, e.g. for"
                 + " {{secret:tenant:sso.google.clientSecret}}:\n"
@@ -100,8 +110,6 @@ public class SsoCommands {
                 .values()
                 .forEach(d -> out.append("domain    : ")
                         .append(d.domain())
-                        .append(" → tenant ")
-                        .append(d.tenant())
                         .append(" via ")
                         .append(d.provider())
                         .append(d.autoCreate() ? ", autoCreate" : "")
@@ -114,11 +122,7 @@ public class SsoCommands {
                         .append(d.maxSession().toDays())
                         .append("d\n"));
         if (config.consumerAccounts() != null) {
-            out.append("gmail     : tenants ")
-                    .append(config.consumerAccounts().tenants().stream()
-                            .sorted()
-                            .collect(Collectors.joining(",")))
-                    .append(" via ")
+            out.append("gmail     : private accounts via ")
                     .append(config.consumerAccounts().provider())
                     .append(", max session ")
                     .append(config.consumerAccounts().maxSession().toDays())

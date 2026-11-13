@@ -96,6 +96,7 @@ public class SsoLoginService {
     private final SsoAccountResolver accounts;
     private final LoginTokenIssuer tokenIssuer;
     private final AuditService audit;
+    private final SsoUserOptOut optOut;
     private final @Nullable String publicBaseUrl;
     private final Clock clock;
 
@@ -110,6 +111,7 @@ public class SsoLoginService {
             SsoAccountResolver accounts,
             LoginTokenIssuer tokenIssuer,
             AuditService audit,
+            SsoUserOptOut optOut,
             @Value("${vance.web.public-base-url:}") String publicBaseUrl) {
         this(
                 configService,
@@ -121,6 +123,7 @@ public class SsoLoginService {
                 accounts,
                 tokenIssuer,
                 audit,
+                optOut,
                 publicBaseUrl,
                 Clock.systemUTC());
     }
@@ -135,6 +138,7 @@ public class SsoLoginService {
             SsoAccountResolver accounts,
             LoginTokenIssuer tokenIssuer,
             AuditService audit,
+            SsoUserOptOut optOut,
             String publicBaseUrl,
             Clock clock) {
         this.configService = configService;
@@ -146,6 +150,7 @@ public class SsoLoginService {
         this.accounts = accounts;
         this.tokenIssuer = tokenIssuer;
         this.audit = audit;
+        this.optOut = optOut;
         String trimmed = publicBaseUrl == null ? "" : publicBaseUrl.trim();
         while (trimmed.endsWith("/")) {
             trimmed = trimmed.substring(0, trimmed.length() - 1);
@@ -157,45 +162,49 @@ public class SsoLoginService {
     // ─── discovery ─────────────────────────────────────────────────────
 
     /**
-     * Whether an address signs in via SSO — by its domain only. Never names
-     * the tenant (that would enumerate tenants over domains), and private
-     * Gmail addresses always answer {@code false}: whether one is prepared
-     * somewhere is nobody's business.
+     * Whether an address signs in to {@code tenant} via SSO — by its domain
+     * only. Private Gmail addresses always answer empty: whether one is
+     * prepared somewhere is nobody's business.
      */
-    public Optional<String> providerForEmail(@Nullable String email) {
+    public Optional<String> providerForEmail(String tenant, @Nullable String email) {
         String normalized = ExternalEmails.normalize(email);
         if (normalized == null || publicBaseUrl == null) {
             return Optional.empty();
         }
-        return configService.config().domain(ExternalEmails.domain(normalized)).map(SsoConfig.DomainRule::provider);
+        return configService
+                .config(tenant)
+                .domain(ExternalEmails.domain(normalized))
+                .map(SsoConfig.DomainRule::provider);
     }
 
     /**
-     * What the login page of {@code tenant} may offer: whether any Google
-     * sign-in leads into it. Asked after the person entered the tenant, so
-     * this is the answer to "does this tenant support SSO" — not a list of
-     * domains or tenants.
+     * What the login page of {@code tenant} may offer: whether a Google sign-in
+     * leads into it. Asked once the person entered the tenant (and a username),
+     * so this answers "does this tenant support SSO for this sign-in" — not a
+     * list of domains or tenants. A user the operator took off SSO
+     * ({@link SsoUserOptOut}) gets none; everybody else, known or not, gets the
+     * tenant's answer, so the answer does not tell whether the account exists.
      */
-    public TenantOptions tenantOptions(@Nullable String tenant) {
-        SsoConfig config = configService.config();
+    public TenantOptions tenantOptions(@Nullable String tenant, @Nullable String username) {
         if (publicBaseUrl == null || tenant == null || tenant.isBlank()) {
             return TenantOptions.NONE;
         }
-        Optional<SsoConfig.DomainRule> domainRule = config.domains().values().stream()
-                .filter(rule -> rule.tenant().equals(tenant))
-                .findFirst();
-        boolean consumer = config.consumerAccountsAllowed(tenant) && config.consumerAccounts() != null;
+        SsoConfig config = configService.config(tenant);
+        if (!config.offersSignIn() || optOut.deniedFor(tenant, username)) {
+            return TenantOptions.NONE;
+        }
+        boolean consumer = config.consumerAccounts() != null;
         String provider = consumer
                 ? config.consumerAccounts().provider()
-                : domainRule.map(SsoConfig.DomainRule::provider).orElse(null);
-        return new TenantOptions(provider, domainRule.isPresent(), consumer);
+                : config.domains().values().iterator().next().provider();
+        return new TenantOptions(provider, !config.domains().isEmpty(), consumer);
     }
 
     /**
      * Google sign-in offered by one tenant.
      *
      * @param provider provider key, {@code null} when the tenant offers none
-     * @param domains  a work-domain rule points at the tenant (sign-in needs an address)
+     * @param domains  a work-domain rule of the tenant exists (sign-in needs an address)
      * @param consumer the tenant accepts prepared private Google accounts (no address needed)
      */
     public record TenantOptions(@Nullable String provider, boolean domains, boolean consumer) {
@@ -304,7 +313,12 @@ public class SsoLoginService {
             log.warn("SSO start refused: vance.web.public-base-url is not set — no redirect URI");
             return new Start.Failure(FAIL_ERROR, expectedTenant);
         }
-        SsoConfig config = configService.config();
+        if (expectedTenant == null) {
+            // The tenant is part of the sign-in: its configuration is the only
+            // thing that can admit anybody.
+            return new Start.Failure(FAIL_REJECTED, null);
+        }
+        SsoConfig config = configService.config(expectedTenant);
         String normalized = ExternalEmails.normalize(email);
 
         String mode;
@@ -314,18 +328,10 @@ public class SsoLoginService {
                 && config.domain(ExternalEmails.domain(normalized)).isPresent()) {
             SsoConfig.DomainRule rule =
                     config.domain(ExternalEmails.domain(normalized)).get();
-            if (expectedTenant != null && !expectedTenant.equals(rule.tenant())) {
-                // The page belongs to one tenant, the address to another: the
-                // sign-in must not end in a session the caller did not ask for.
-                audit.authSsoRejected(expectedTenant, null, rule.provider(), "tenant-mismatch");
-                return new Start.Failure(FAIL_REJECTED, expectedTenant);
-            }
             mode = MODE_DOMAIN;
             providerKey = rule.provider();
             domain = rule.domain();
-        } else if (expectedTenant != null
-                && config.consumerAccountsAllowed(expectedTenant)
-                && config.consumerAccounts() != null
+        } else if (config.consumerAccountsAllowed()
                 && (normalized == null || ExternalEmails.isGmail(ExternalEmails.domain(normalized)))) {
             mode = MODE_CONSUMER;
             providerKey = config.consumerAccounts().provider();
@@ -457,7 +463,10 @@ public class SsoLoginService {
             return new Callback.Failure(FAIL_ERROR, tenantHint, request.getAppRedirect());
         }
 
-        SsoConfig config = configService.config();
+        if (tenantHint == null) {
+            return new Callback.Failure(FAIL_ERROR, null, request.getAppRedirect());
+        }
+        SsoConfig config = configService.config(tenantHint);
         SsoConfig.Provider provider = config.provider(providerKey).orElse(null);
         String clientSecret = provider == null ? null : clientSecret(provider);
         if (provider == null || clientSecret == null) {
@@ -526,6 +535,11 @@ public class SsoLoginService {
             return new Callback.Failure(failure, tenantHint, request.getAppRedirect());
         }
         UserDocument user = outcome.user();
+        if (optOut.deniedFor(tenant, user.getName())) {
+            log.info("SSO sign-in refused provider='{}' tenant='{}': account is off SSO", providerKey, tenant);
+            audit.authSsoRejected(tenant, user.getName(), providerKey, "sso-denied-for-user");
+            return new Callback.Failure(FAIL_REJECTED, tenantHint, request.getAppRedirect());
+        }
 
         Instant sessionEnd = clock.instant().plus(policy.maxSession());
         audit.authSsoLoginSuccess(tenant, user.getName(), providerKey, issuer, request.getMode());
@@ -586,13 +600,13 @@ public class SsoLoginService {
     }
 
     private Policy policy(SsoLoginRequestDocument request, SsoConfig config, IdTokenVerifier.IdToken token) {
-        String expectedTenant = request.getExpectedTenant();
+        String tenant = config.tenant();
         if (!token.emailVerified()) {
-            return Policy.reject(expectedTenant, "email-not-verified");
+            return Policy.reject(tenant, "email-not-verified");
         }
         String normalized = ExternalEmails.normalize(token.email());
         if (normalized == null || ExternalEmails.hasPlusTag(normalized)) {
-            return Policy.reject(expectedTenant, "email-unusable");
+            return Policy.reject(tenant, "email-unusable");
         }
         String emailDomain = ExternalEmails.domain(normalized);
 
@@ -601,43 +615,38 @@ public class SsoLoginService {
             SsoConfig.DomainRule rule =
                     domain == null ? null : config.domain(domain).orElse(null);
             if (rule == null) {
-                return Policy.reject(expectedTenant, "domain-not-configured");
+                return Policy.reject(tenant, "domain-not-configured");
             }
             // hd is the protection: only the domain's own Workspace sets it.
             if (token.hostedDomain() == null || !domain.equalsIgnoreCase(token.hostedDomain())) {
-                return Policy.reject(rule.tenant(), "hosted-domain-mismatch");
+                return Policy.reject(tenant, "hosted-domain-mismatch");
             }
             if (!domain.equals(emailDomain)) {
-                return Policy.reject(rule.tenant(), "email-domain-mismatch");
-            }
-            if (expectedTenant != null && !expectedTenant.equals(rule.tenant())) {
-                return Policy.reject(expectedTenant, "tenant-mismatch");
+                return Policy.reject(tenant, "email-domain-mismatch");
             }
             if (!rule.allows(ExternalEmails.localPart(normalized))) {
-                return Policy.reject(rule.tenant(), "not-allowed");
+                return Policy.reject(tenant, "not-allowed");
             }
-            return new Policy(rule.tenant(), normalized, rule.autoCreate(), rule.maxSession(), null);
+            return new Policy(tenant, normalized, rule.autoCreate(), rule.maxSession(), null);
         }
 
         if (MODE_CONSUMER.equals(request.getMode())) {
-            if (expectedTenant == null
-                    || !config.consumerAccountsAllowed(expectedTenant)
-                    || config.consumerAccounts() == null) {
-                return Policy.reject(expectedTenant, "consumer-not-allowed");
+            if (config.consumerAccounts() == null) {
+                return Policy.reject(tenant, "consumer-not-allowed");
             }
             // An account with hd belongs to a Workspace and takes the domain
             // path; an account without hd under a foreign domain is exactly the
             // forgery hd protects against.
             if (token.hostedDomain() != null) {
-                return Policy.reject(expectedTenant, "workspace-account-on-consumer-path");
+                return Policy.reject(tenant, "workspace-account-on-consumer-path");
             }
             if (!ExternalEmails.GMAIL.equals(emailDomain)) {
-                return Policy.reject(expectedTenant, "not-a-gmail-address");
+                return Policy.reject(tenant, "not-a-gmail-address");
             }
             return new Policy(
-                    expectedTenant, normalized, false, config.consumerAccounts().maxSession(), null);
+                    tenant, normalized, false, config.consumerAccounts().maxSession(), null);
         }
-        return Policy.reject(expectedTenant, "unknown-mode");
+        return Policy.reject(tenant, "unknown-mode");
     }
 
     // ─── helpers ───────────────────────────────────────────────────────

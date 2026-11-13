@@ -72,15 +72,18 @@ class SsoControllerTest {
 
     @Test
     void budgets_areCountedPerKind_andTheCallbackIsNotBudgeted() {
-        when(service.providerForEmail(anyString())).thenReturn(java.util.Optional.empty());
+        when(service.providerForEmail(anyString(), anyString())).thenReturn(java.util.Optional.empty());
         when(service.callback(anyString(), any(), any(), any(), any()))
                 .thenReturn(new SsoLoginService.Callback.Failure(SsoLoginService.FAIL_ERROR, null));
         MockHttpServletRequest nat = request("198.51.100.7");
 
         // Lookups use up their own budget (2 in this test) …
-        assertThat(controller.discover("a@acme.com", nat).getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(controller.discover("a@acme.com", nat).getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(controller.discover("a@acme.com", nat).getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
+        assertThat(controller.discover("a@acme.com", "acme", nat).getStatusCode())
+                .isEqualTo(HttpStatus.OK);
+        assertThat(controller.discover("a@acme.com", "acme", nat).getStatusCode())
+                .isEqualTo(HttpStatus.OK);
+        assertThat(controller.discover("a@acme.com", "acme", nat).getStatusCode())
+                .isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
 
         // … which leaves the starts and redeems of that address alone.
         assertThat(controller.withinBudget(SsoController.Budget.START, nat)).isTrue();

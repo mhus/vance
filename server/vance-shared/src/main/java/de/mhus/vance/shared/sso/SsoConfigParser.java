@@ -10,7 +10,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.function.Predicate;
 import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -18,7 +17,7 @@ import org.slf4j.helpers.MessageFormatter;
 import org.yaml.snakeyaml.Yaml;
 
 /**
- * Reads {@code _vance/config/sso.yaml} into an {@link SsoConfig}.
+ * Reads {@code _vance/config/sso/<tenant>.yaml} into an {@link SsoConfig} of that tenant.
  *
  * <p><b>Fail-closed, per entry.</b> A broken provider takes its domains with
  * it, a broken domain entry is dropped alone — each with an ERROR log. Nothing
@@ -51,41 +50,38 @@ public final class SsoConfigParser {
     private static final Set<String> ROOT_KEYS = Set.of("providers", "domains", "consumerAccounts");
     private static final Set<String> PROVIDER_FIELDS = Set.of("type", "clientId", "clientSecret", "issuer");
     private static final Set<String> DOMAIN_FIELDS =
-            Set.of("domain", "tenant", "provider", "autoCreate", "allow", "maxSessionDays");
-    private static final Set<String> CONSUMER_FIELDS = Set.of("provider", "tenants", "maxSessionDays");
-
-    /** The system tenant holds the config and is never a sign-in target. */
-    private static final String SYSTEM_TENANT = "_vance";
+            Set.of("domain", "provider", "autoCreate", "allow", "maxSessionDays");
+    private static final Set<String> CONSUMER_FIELDS = Set.of("provider", "maxSessionDays");
 
     private SsoConfigParser() {}
 
     /**
-     * @param yamlBody     document content
-     * @param tenantExists whether a tenant name exists
+     * @param tenant   the tenant the file belongs to (its name in the path)
+     * @param yamlBody document content
      */
-    public static SsoConfig parse(String yamlBody, Predicate<String> tenantExists) {
-        return parse(yamlBody, tenantExists, new ArrayList<>());
+    public static SsoConfig parse(String tenant, String yamlBody) {
+        return parse(tenant, yamlBody, new ArrayList<>());
     }
 
     /**
-     * Same as {@link #parse(String, Predicate)}, and every dropped entry is
-     * also added to {@code problems} — the admin shell shows them before it
-     * writes the file, so a typo does not silently disable a domain.
+     * Same as {@link #parse(String, String)}, and every dropped entry is also
+     * added to {@code problems} — the admin shell shows them before it writes
+     * the file, so a typo does not silently disable a domain.
      */
-    public static SsoConfig parse(String yamlBody, Predicate<String> tenantExists, List<String> problems) {
+    public static SsoConfig parse(String tenant, String yamlBody, List<String> problems) {
         Object parsed;
         try {
             parsed = new Yaml().load(yamlBody);
         } catch (RuntimeException e) {
             problem(problems, "SSO config: YAML does not parse — SSO disabled: {}", e.getMessage());
-            return SsoConfig.EMPTY;
+            return SsoConfig.empty(tenant);
         }
         if (parsed == null) {
-            return SsoConfig.EMPTY;
+            return SsoConfig.empty(tenant);
         }
         if (!(parsed instanceof Map<?, ?> root)) {
             problem(problems, "SSO config: top level must be a map — SSO disabled");
-            return SsoConfig.EMPTY;
+            return SsoConfig.empty(tenant);
         }
         for (Object key : root.keySet()) {
             if (!ROOT_KEYS.contains(String.valueOf(key))) {
@@ -97,11 +93,9 @@ public final class SsoConfigParser {
             }
         }
         Map<String, SsoConfig.Provider> providers = parseProviders(root.get("providers"), problems);
-        Map<String, SsoConfig.DomainRule> domains =
-                parseDomains(root.get("domains"), providers, tenantExists, problems);
-        SsoConfig.ConsumerAccounts consumer =
-                parseConsumerAccounts(root.get("consumerAccounts"), providers, tenantExists, problems);
-        return new SsoConfig(providers, domains, consumer);
+        Map<String, SsoConfig.DomainRule> domains = parseDomains(root.get("domains"), providers, problems);
+        SsoConfig.ConsumerAccounts consumer = parseConsumerAccounts(root.get("consumerAccounts"), providers, problems);
+        return new SsoConfig(tenant, providers, domains, consumer);
     }
 
     private static Map<String, SsoConfig.Provider> parseProviders(@Nullable Object raw, List<String> problems) {
@@ -155,10 +149,7 @@ public final class SsoConfigParser {
     }
 
     private static Map<String, SsoConfig.DomainRule> parseDomains(
-            @Nullable Object raw,
-            Map<String, SsoConfig.Provider> providers,
-            Predicate<String> tenantExists,
-            List<String> problems) {
+            @Nullable Object raw, Map<String, SsoConfig.Provider> providers, List<String> problems) {
         Map<String, SsoConfig.DomainRule> out = new LinkedHashMap<>();
         if (raw == null) {
             return out;
@@ -171,9 +162,9 @@ public final class SsoConfigParser {
         for (Object item : list) {
             String label = item instanceof Map<?, ?> m ? String.valueOf(m.get("domain")) : String.valueOf(item);
             try {
-                SsoConfig.DomainRule rule = parseDomain(item, providers, tenantExists);
+                SsoConfig.DomainRule rule = parseDomain(item, providers);
                 if (out.containsKey(rule.domain()) || duplicates.contains(rule.domain())) {
-                    // Two tenants claiming one domain: neither wins.
+                    // The same domain twice in one file: neither entry wins.
                     out.remove(rule.domain());
                     duplicates.add(rule.domain());
                     problem(problems, "SSO config: domain '{}' is listed more than once — dropped", rule.domain());
@@ -187,8 +178,7 @@ public final class SsoConfigParser {
         return out;
     }
 
-    private static SsoConfig.DomainRule parseDomain(
-            @Nullable Object raw, Map<String, SsoConfig.Provider> providers, Predicate<String> tenantExists) {
+    private static SsoConfig.DomainRule parseDomain(@Nullable Object raw, Map<String, SsoConfig.Provider> providers) {
         if (!(raw instanceof Map<?, ?> spec)) {
             throw new IllegalStateException("must be a map");
         }
@@ -201,7 +191,6 @@ public final class SsoConfigParser {
             throw new IllegalStateException(
                     "'" + domain + "' belongs to everybody — private accounts go through 'consumerAccounts'");
         }
-        String tenant = checkedTenant(requiredString(spec, "tenant"), tenantExists);
         String provider = providerKey(spec, providers);
         Object rawAutoCreate = spec.get("autoCreate");
         if (rawAutoCreate != null && !(rawAutoCreate instanceof Boolean)) {
@@ -210,14 +199,11 @@ public final class SsoConfigParser {
         boolean autoCreate = Boolean.TRUE.equals(rawAutoCreate);
         Set<String> allow = parseAllow(spec.get("allow"));
         Duration maxSession = maxSession(spec.get("maxSessionDays"));
-        return new SsoConfig.DomainRule(domain, tenant, provider, autoCreate, allow, maxSession);
+        return new SsoConfig.DomainRule(domain, provider, autoCreate, allow, maxSession);
     }
 
     private static SsoConfig.@Nullable ConsumerAccounts parseConsumerAccounts(
-            @Nullable Object raw,
-            Map<String, SsoConfig.Provider> providers,
-            Predicate<String> tenantExists,
-            List<String> problems) {
+            @Nullable Object raw, Map<String, SsoConfig.Provider> providers, List<String> problems) {
         if (raw == null) {
             return null;
         }
@@ -227,17 +213,7 @@ public final class SsoConfigParser {
             }
             onlyKnownFields(spec, CONSUMER_FIELDS);
             String provider = providerKey(spec, providers);
-            if (!(spec.get("tenants") instanceof List<?> list) || list.isEmpty()) {
-                throw new IllegalStateException("'tenants' must be a non-empty list");
-            }
-            Set<String> tenants = new HashSet<>();
-            for (Object t : list) {
-                if (!(t instanceof String s) || s.isBlank()) {
-                    throw new IllegalStateException("'tenants' contains a blank or non-string entry");
-                }
-                tenants.add(checkedTenant(s, tenantExists));
-            }
-            return new SsoConfig.ConsumerAccounts(provider, tenants, maxSession(spec.get("maxSessionDays")));
+            return new SsoConfig.ConsumerAccounts(provider, maxSession(spec.get("maxSessionDays")));
         } catch (IllegalStateException ex) {
             problem(problems, "SSO config: 'consumerAccounts' dropped: {}", ex.getMessage());
             return null;
@@ -266,17 +242,6 @@ public final class SsoConfigParser {
             throw new IllegalStateException("provider '" + provider + "' is not configured (or was dropped)");
         }
         return provider;
-    }
-
-    private static String checkedTenant(String tenant, Predicate<String> tenantExists) {
-        String t = tenant.trim();
-        if (SYSTEM_TENANT.equals(t)) {
-            throw new IllegalStateException("tenant '" + SYSTEM_TENANT + "' is not a sign-in target");
-        }
-        if (!tenantExists.test(t)) {
-            throw new IllegalStateException("tenant '" + t + "' does not exist");
-        }
-        return t;
     }
 
     /**

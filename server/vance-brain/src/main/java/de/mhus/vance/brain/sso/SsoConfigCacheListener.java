@@ -9,7 +9,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
-/** Evicts the SSO config cache when {@code _vance/config/sso.yaml} changes — on every pod. */
+/** Evicts the cached SSO config of a tenant when its {@code _vance/config/sso/<tenant>.yaml} changes — on every pod. */
 @Component
 @RequiredArgsConstructor
 @Slf4j
@@ -19,11 +19,13 @@ public class SsoConfigCacheListener {
 
     @EventListener
     public void onRoutedDocumentChanged(RoutedDocumentChangedEvent event) {
-        if (SsoConfigService.CONFIG_PATH.equals(event.path())
-                && TenantService.SYSTEM_TENANT.equals(event.tenantId())
-                && HomeBootstrapService.TENANT_PROJECT_NAME.equals(event.projectId())) {
-            configService.invalidate();
-            log.debug("SSO config changed, cache evicted");
+        if (!TenantService.SYSTEM_TENANT.equals(event.tenantId())
+                || !HomeBootstrapService.TENANT_PROJECT_NAME.equals(event.projectId())) {
+            return;
         }
+        SsoConfigService.tenantOfPath(event.path()).ifPresent(tenant -> {
+            configService.invalidate(tenant);
+            log.debug("SSO config of '{}' changed, cache evicted", tenant);
+        });
     }
 }

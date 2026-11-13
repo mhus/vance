@@ -283,8 +283,8 @@ public class UserCommands {
                             shortName = 'e',
                             required = true,
                             description = "Full address the person signs in with. Its domain must be mapped to"
-                                    + " this tenant in _vance/config/sso.yaml, or it is a Gmail address and the"
-                                    + " tenant is open for private accounts.")
+                                    + " this tenant's _vance/config/sso/<tenant>.yaml, or it is a Gmail address and"
+                                    + " the tenant is open for private accounts.")
                     String email,
             @Option(
                             longName = "ignore-quota",
@@ -296,13 +296,11 @@ public class UserCommands {
         if (normalized == null || ExternalEmails.hasPlusTag(normalized)) {
             return "Refused: '" + email + "' is not a usable address (plus addressing is not allowed).";
         }
-        SsoConfig.Provider provider = ssoConfigService
-                .config()
-                .preparationProvider(tenant, normalized)
-                .orElse(null);
+        SsoConfig.Provider provider =
+                ssoConfigService.config(tenant).preparationProvider(normalized).orElse(null);
         if (provider == null) {
             return "Refused: '" + normalized + "' cannot sign in to tenant '" + tenant + "' — its domain is"
-                    + " not mapped to this tenant in " + SsoConfigService.CONFIG_PATH
+                    + " not configured for this tenant in " + SsoConfigService.configPath(tenant)
                     + " (or, for Gmail, the tenant is not listed under consumerAccounts).";
         }
         // Preparing a missing account creates it — that takes a seat, which the

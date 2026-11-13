@@ -18,7 +18,7 @@
  * workspace shell is another bundle, and it wants a clean boot with the
  * cookies that were just set.
  */
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import {
   clearLegacyAuth,
@@ -97,6 +97,12 @@ const serverBacklink = computed<string>(() => runtimeCfg.value?.backlink?.trim()
 const methods = ref<LoginMethodsResponse | null>(null);
 /** Step two with the password field open (the tenant signs in with the password). */
 const passwordStep = ref(false);
+/**
+ * Step two of a tenant that signs in with the e-mail code and offers Google too:
+ * the person picks "Send code" or Google, no mail goes out before. Without
+ * Google the code is sent right after step one.
+ */
+const codeChoice = ref(false);
 
 /**
  * The open e-mail code, once one was asked for: the handle the server wants back
@@ -147,9 +153,9 @@ const autoLoginNotice = ref<string | null>(null);
 // localStorage on principle.
 const rememberUser = ref(false);
 
-// SSO (specification/public/sso-login.md §8). Asked per tenant, once the tenant
-// is entered: `ssoOffered` — the tenant supports Google sign-in at all, only
-// then the button shows. `ssoDomains` — a work-domain rule points at it, so the
+// SSO (specification/public/sso-login.md §8). Asked once tenant and username are
+// entered (step one): `ssoOffered` — the tenant supports Google sign-in for this
+// user, only then the button shows. `ssoDomains` — a work-domain rule points at it, so the
 // sign-in needs an address; `ssoConsumer` — it accepts private Google accounts
 // (no address needed). All stay false when the tenant offers nothing, and the
 // page looks as it always did.
@@ -158,7 +164,14 @@ const ssoDomains = ref(false);
 const ssoConsumer = ref(false);
 const ssoEmail = ref('');
 const ssoBusy = ref(false);
-const showSso = computed<boolean>(() => ssoOffered.value && methods.value?.sso !== false);
+// Google is one more way in next to the password or the code, so it shows in
+// step two, after tenant and username were entered — not before.
+const showSso = computed<boolean>(
+  () =>
+    ssoOffered.value
+    && methods.value?.sso !== false
+    && (passwordStep.value || codeChoice.value || openCode.value !== null),
+);
 
 /** The username doubles as the address when it is one — then Google gets it as the hint. */
 const usernameAsEmail = computed<string>(() => {
@@ -181,33 +194,6 @@ const ssoTenant = computed<string | null>(() => {
   const typed = tenant.value.trim();
   return /^[A-Za-z0-9_.-]+$/.test(typed) ? typed : null;
 });
-
-// Ask again when the tenant changes — debounced, the field is typed into.
-let ssoOptionsTimer: ReturnType<typeof setTimeout> | undefined;
-let ssoOptionsSeq = 0;
-watch(
-  ssoTenant,
-  (value) => {
-    if (ssoOptionsTimer !== undefined) clearTimeout(ssoOptionsTimer);
-    ssoOptionsTimer = setTimeout(() => {
-      const seq = ++ssoOptionsSeq;
-      if (value === null) {
-        ++ssoOptionsSeq;
-        ssoOffered.value = false;
-        ssoDomains.value = false;
-        ssoConsumer.value = false;
-        return;
-      }
-      void fetchSsoOptions(value).then((options) => {
-        if (seq !== ssoOptionsSeq) return;
-        ssoOffered.value = options?.sso === true;
-        ssoDomains.value = options?.domains === true;
-        ssoConsumer.value = options?.consumer === true;
-      });
-    }, 300);
-  },
-  { immediate: true },
-);
 
 onMounted(async () => {
   void loadRuntimeConfig().then((cfg) => {
@@ -288,6 +274,10 @@ async function syncUiLocaleFromSession(): Promise<void> {
 }
 
 async function onSubmit(): Promise<void> {
+  if (codeChoice.value) {
+    await requestCode();
+    return;
+  }
   if (openCode.value === null && !passwordStep.value) {
     await identify();
     return;
@@ -357,9 +347,19 @@ async function identify(): Promise<void> {
   error.value = null;
   submitting.value = true;
   try {
-    const answer = await fetchLoginMethods(tenant.value.trim());
+    const [answer, options] = await Promise.all([
+      fetchLoginMethods(tenant.value.trim()),
+      fetchSsoOptions(tenant.value.trim(), username.value.trim()),
+    ]);
     if (answer !== null) methods.value = answer;
+    ssoOffered.value = options?.sso === true;
+    ssoDomains.value = options?.domains === true;
+    ssoConsumer.value = options?.consumer === true;
     if (answer?.emailToken === true) {
+      if (ssoOffered.value && methods.value?.sso !== false) {
+        codeChoice.value = true;
+        return;
+      }
       submitting.value = false;
       await requestCode();
       return;
@@ -383,6 +383,7 @@ async function requestCode(): Promise<void> {
       tenant: tenant.value.trim(),
       username: username.value.trim(),
     });
+    codeChoice.value = false;
     openCode.value = { transactionId: started.transactionId, expiresAt: started.expiresAtTimestamp };
     code.value = '';
     codeNotice.value = t('login.emailToken.sent', {
@@ -402,6 +403,10 @@ async function requestCode(): Promise<void> {
 function backToUsername(): void {
   openCode.value = null;
   passwordStep.value = false;
+  codeChoice.value = false;
+  ssoOffered.value = false;
+  ssoDomains.value = false;
+  ssoConsumer.value = false;
   password.value = '';
   code.value = '';
   codeNotice.value = null;
@@ -421,10 +426,11 @@ async function onSso(): Promise<void> {
   // The tenant is the one entered above: a domain that belongs to another
   // tenant is refused by the server instead of landing in the wrong one.
   const consumerTenant = ssoTenant.value;
+  if (consumerTenant === null) return;
   ssoBusy.value = true;
   try {
     if (email) {
-      const found = await discoverSso(email);
+      const found = await discoverSso(email, consumerTenant);
       if (found?.sso) {
         await startSso(email, consumerTenant);
         return;
@@ -596,7 +602,7 @@ function readNextParam(): string | null {
             required
             autocomplete="organization"
             autocapitalize="none"
-            :disabled="submitting || openCode !== null || passwordStep"
+            :disabled="submitting || openCode !== null || passwordStep || codeChoice"
           />
           <VInput
             v-model="username"
@@ -604,7 +610,7 @@ function readNextParam(): string | null {
             required
             autocomplete="username"
             autocapitalize="none"
-            :disabled="submitting || openCode !== null || passwordStep"
+            :disabled="submitting || openCode !== null || passwordStep || codeChoice"
           />
           <VInput
             v-if="passwordStep"
@@ -644,9 +650,9 @@ function readNextParam(): string | null {
             class="mt-2"
             block
           >
-            {{ openCode === null && !passwordStep ? $t('login.continue') : $t('common.signIn') }}
+            {{ codeChoice ? $t('login.emailToken.sendCode') : openCode === null && !passwordStep ? $t('login.continue') : $t('common.signIn') }}
           </VButton>
-          <div v-if="openCode !== null || passwordStep" class="flex items-center justify-between gap-3">
+          <div v-if="openCode !== null || passwordStep || codeChoice" class="flex items-center justify-between gap-3">
             <VButton variant="plain" :disabled="submitting" @click="backToUsername">
               {{ $t('login.emailToken.back') }}
             </VButton>

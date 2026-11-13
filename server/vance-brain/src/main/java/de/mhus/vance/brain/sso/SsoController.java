@@ -42,9 +42,10 @@ import org.springframework.web.util.HtmlUtils;
  * filter; budgeted per client address instead.
  *
  * <ul>
- *   <li>{@code GET discover?email=} — does this address sign in via SSO?</li>
- *   <li>{@code GET options?tenant=} — does this tenant support Google
- *       sign-in, and does it need a work address?</li>
+ *   <li>{@code GET discover?email=&tenant=} — does this address sign in to
+ *       this tenant via SSO?</li>
+ *   <li>{@code GET options?tenant=&username=} — does this tenant support Google
+ *       sign-in (for this user), and does it need a work address?</li>
  *   <li>{@code GET start?email=&tenant=&next=} — off to the identity provider.
  *       With {@code app_redirect} (native app) first a confirmation page that
  *       names the app receiving the login.</li>
@@ -108,20 +109,24 @@ public class SsoController {
 
     @GetMapping("/brain/_sso/discover")
     public ResponseEntity<SsoOptionsDto> discover(
-            @RequestParam(value = "email", required = false) @Nullable String email, HttpServletRequest request) {
+            @RequestParam(value = "email", required = false) @Nullable String email,
+            @RequestParam(value = "tenant", required = false) @Nullable String tenant,
+            HttpServletRequest request) {
         if (!withinBudget(Budget.LOOKUP, request)) {
             return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).build();
         }
-        return options(ssoLoginService.providerForEmail(email));
+        return options(tenant == null ? Optional.empty() : ssoLoginService.providerForEmail(tenant, email));
     }
 
     @GetMapping("/brain/_sso/options")
     public ResponseEntity<SsoOptionsDto> tenantOptions(
-            @RequestParam(value = "tenant", required = false) @Nullable String tenant, HttpServletRequest request) {
+            @RequestParam(value = "tenant", required = false) @Nullable String tenant,
+            @RequestParam(value = "username", required = false) @Nullable String username,
+            HttpServletRequest request) {
         if (!withinBudget(Budget.LOOKUP, request)) {
             return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).build();
         }
-        SsoLoginService.TenantOptions found = ssoLoginService.tenantOptions(tenant);
+        SsoLoginService.TenantOptions found = ssoLoginService.tenantOptions(tenant, username);
         SsoOptionsDto body = SsoOptionsDto.builder()
                 .sso(found.sso())
                 .provider(found.provider())

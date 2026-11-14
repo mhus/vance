@@ -341,7 +341,7 @@ class WowbaggerPoolServiceTest {
 
         verify(documentService, timeout(20_000).times(4))
                 .createText(eq(TENANT), eq(PROJECT), anyString(), any(), any(), anyString(), any(), any());
-        waitFor(20_000, () -> !stubPool.isRunning(PROC_ID));
+        waitFor(30_000, () -> !stubPool.isRunning(PROC_ID));
         assertThat(commits.get()).as("one commit hook per published chunk").isEqualTo(3);
         WowbaggerState s = persistedState();
         assertThat(s.getWorkerKind()).isEqualTo("stub");
@@ -390,7 +390,7 @@ class WowbaggerPoolServiceTest {
         assertThatThrownBy(() -> pool.switchWorker(process, "other-worker", null, false))
                 .hasMessageContaining("the pool is running");
         pool.stop(PROC_ID);
-        waitFor(20_000, () -> !pool.isRunning(PROC_ID));
+        waitFor(30_000, () -> !pool.isRunning(PROC_ID));
     }
 
     @Test
@@ -402,7 +402,7 @@ class WowbaggerPoolServiceTest {
         // 5 records / chunk 2 = 3 chunk docs + the merged result doc.
         verify(documentService, timeout(20_000).times(4))
                 .createText(eq(TENANT), eq(PROJECT), anyString(), any(), any(), anyString(), any(), any());
-        waitFor(20_000, () -> !pool.isRunning(PROC_ID));
+        waitFor(30_000, () -> !pool.isRunning(PROC_ID));
 
         WowbaggerState s = persistedState();
         assertThat(s.getRecordsDone()).isEqualTo(5);
@@ -413,7 +413,7 @@ class WowbaggerPoolServiceTest {
         // releases the run *before* it sends the finish wakeup (an agent that
         // reacts to the note must already see the pool as stopped), so
         // "not running" does not yet mean "note sent" — wait for the note.
-        waitFor(20_000, () -> !pendingNotes("run finished").isEmpty());
+        waitFor(30_000, () -> !pendingNotes("run finished").isEmpty());
         verify(thinkProcessService, atLeast(2)).appendPending(eq(PROC_ID), any(), anyString());
     }
 
@@ -424,9 +424,9 @@ class WowbaggerPoolServiceTest {
 
         pool.start(process);
 
-        waitFor(20_000, () -> !persistedState().getFailedChunks().isEmpty());
+        waitFor(30_000, () -> !persistedState().getFailedChunks().isEmpty());
         // The runner keeps rotating: chunks 0–2 all fail into the ledger.
-        waitFor(20_000, () -> !pool.isRunning(PROC_ID));
+        waitFor(30_000, () -> !pool.isRunning(PROC_ID));
 
         WowbaggerState s = persistedState();
         assertThat(s.getFailedChunks()).hasSize(3);
@@ -443,7 +443,7 @@ class WowbaggerPoolServiceTest {
         when(lightLlmService.callWithUsage(any(LightLlmRequest.class)))
                 .thenThrow(new de.mhus.vance.brain.ai.light.LightLlmException("provider down"));
         pool.start(process);
-        waitFor(20_000, () -> !pool.isRunning(PROC_ID));
+        waitFor(30_000, () -> !pool.isRunning(PROC_ID));
         assertThat(persistedState().getFailedChunks()).hasSize(3);
         assertThat(persistedState().getFailureCount()).isEqualTo(3);
 
@@ -451,7 +451,7 @@ class WowbaggerPoolServiceTest {
         stubEchoWorker();
         pool.reRunFailed(process);
 
-        waitFor(20_000, () -> !pool.isRunning(PROC_ID));
+        waitFor(30_000, () -> !pool.isRunning(PROC_ID));
         WowbaggerState s = persistedState();
         assertThat(s.getFailedChunks()).isEmpty();
         assertThat(s.getRetryQueue()).isEmpty();
@@ -508,7 +508,7 @@ class WowbaggerPoolServiceTest {
         process.setEngineParams(params);
 
         pool.start(process);
-        waitFor(20_000, () -> !pool.isRunning(PROC_ID));
+        waitFor(30_000, () -> !pool.isRunning(PROC_ID));
 
         var captor = org.mockito.ArgumentCaptor.forClass(de.mhus.vance.brain.ai.light.LightLlmRequest.class);
         verify(lightLlmService, org.mockito.Mockito.atLeastOnce()).callWithUsage(captor.capture());
@@ -521,7 +521,7 @@ class WowbaggerPoolServiceTest {
     void tokenCountersAccumulateAcrossWorkerCalls() throws IOException {
         stubEchoWorker();
         pool.start(process);
-        waitFor(20_000, () -> !pool.isRunning(PROC_ID));
+        waitFor(30_000, () -> !pool.isRunning(PROC_ID));
 
         WowbaggerState s = persistedState();
         // 3 chunks x (100 in / 200 out) tokens per answered call.
@@ -535,7 +535,7 @@ class WowbaggerPoolServiceTest {
     void forceReRunResetsAndOverwritesPublishedChunks() throws IOException {
         stubEchoWorker();
         pool.start(process);
-        waitFor(20_000, () -> !pool.isRunning(PROC_ID));
+        waitFor(30_000, () -> !pool.isRunning(PROC_ID));
         assertThat(persistedState().getRecordsDone()).isEqualTo(5);
         assertThat(persistedState().getCounters().getTokensIn()).isEqualTo(300);
 
@@ -546,7 +546,7 @@ class WowbaggerPoolServiceTest {
                 .when(documentService.replaceContent(anyString(), any(InputStream.class), any(), any(), any()))
                 .thenReturn(null);
         pool.start(process, true, ctx());
-        waitFor(20_000, () -> !pool.isRunning(PROC_ID));
+        waitFor(30_000, () -> !pool.isRunning(PROC_ID));
 
         WowbaggerState s = persistedState();
         assertThat(s.getRecordsDone()).isEqualTo(5);
@@ -576,7 +576,7 @@ class WowbaggerPoolServiceTest {
 
         stubEchoWorker(); // must never be reached
         pool.start(process);
-        waitFor(20_000, () -> !pool.isRunning(PROC_ID));
+        waitFor(30_000, () -> !pool.isRunning(PROC_ID));
 
         WowbaggerState s = persistedState();
         assertThat(s.getRecordsDone()).isZero();
@@ -597,7 +597,7 @@ class WowbaggerPoolServiceTest {
         assertThat(persistedState().getInputFormat()).isEqualTo("lines");
         stubEchoWorker();
         pool.start(process);
-        waitFor(20_000, () -> !pool.isRunning(PROC_ID));
+        waitFor(30_000, () -> !pool.isRunning(PROC_ID));
         assertThat(persistedState().getRecordsDone()).isEqualTo(5);
         pool.stop(PROC_ID);
     }
@@ -712,7 +712,7 @@ class WowbaggerPoolServiceTest {
         stubEchoWorker();
 
         pool.start(process, false, ctx());
-        waitFor(20_000, () -> !pool.isRunning(PROC_ID));
+        waitFor(30_000, () -> !pool.isRunning(PROC_ID));
 
         assertThat(docContents.get("doc-_wowbagger/proc0001/source.txt")).isEqualTo("r1\nr2\nr3\nr4\nr5\n");
         assertThat(persistedState().getRecordsDone()).isEqualTo(5);
@@ -727,7 +727,7 @@ class WowbaggerPoolServiceTest {
         stubEchoWorker();
 
         pool.start(process);
-        waitFor(20_000, () -> !pool.isRunning(PROC_ID));
+        waitFor(30_000, () -> !pool.isRunning(PROC_ID));
 
         assertThat(persistedState().getRecordsDone()).isEqualTo(5);
         org.mockito.Mockito.verifyNoInteractions(toolDispatcher);
@@ -758,7 +758,7 @@ class WowbaggerPoolServiceTest {
         stubEchoWorker();
 
         pool.start(process, true, ctx());
-        waitFor(20_000, () -> !pool.isRunning(PROC_ID));
+        waitFor(30_000, () -> !pool.isRunning(PROC_ID));
 
         assertThat(docContents.get("doc-_wowbagger/proc0001/source.txt")).isEqualTo("n1\nn2\nn3\n");
         assertThat(persistedState().getRecordsDone()).isEqualTo(3);
@@ -805,7 +805,7 @@ class WowbaggerPoolServiceTest {
 
         pool.start(process);
 
-        waitFor(20_000, () -> !pool.isRunning(PROC_ID));
+        waitFor(30_000, () -> !pool.isRunning(PROC_ID));
         assertThat(pendingNotes("heartbeat")).isNotEmpty();
     }
 
@@ -845,7 +845,7 @@ class WowbaggerPoolServiceTest {
 
         pool.start(process);
 
-        waitFor(20_000, () -> !pool.isRunning(PROC_ID));
+        waitFor(30_000, () -> !pool.isRunning(PROC_ID));
         WowbaggerState end = persistedState();
         assertThat(end.isFinished()).as("state=%s", end).isTrue();
         assertThat(end.getRecordsDone()).isEqualTo(20);
@@ -885,7 +885,7 @@ class WowbaggerPoolServiceTest {
 
         pool.start(process);
 
-        waitFor(20_000, () -> !pool.isRunning(PROC_ID));
+        waitFor(30_000, () -> !pool.isRunning(PROC_ID));
         WowbaggerState end = persistedState();
         assertThat(end.isFinished()).as("state=%s", end).isTrue();
         // Chunks 0 and 1 committed directly; the orphaned chunk 2 was requeued
@@ -926,7 +926,7 @@ class WowbaggerPoolServiceTest {
 
         pool.start(process);
 
-        waitFor(20_000, () -> !pool.isRunning(PROC_ID));
+        waitFor(30_000, () -> !pool.isRunning(PROC_ID));
         WowbaggerState end = persistedState();
         assertThat(end.isFinished()).as("state=%s", end).isTrue();
         // Chunks 0 and 1 committed; the orphaned chunk 2 failed into the ledger.
@@ -976,7 +976,7 @@ class WowbaggerPoolServiceTest {
 
         pool.start(process);
 
-        waitFor(20_000, () -> !pool.isRunning(PROC_ID));
+        waitFor(30_000, () -> !pool.isRunning(PROC_ID));
         WowbaggerState s = persistedState();
         assertThat(s.getFailedChunks()).hasSize(1);
         assertThat(s.getFailedChunks().get(0).getStartRecord()).isEqualTo(50);
@@ -1004,10 +1004,14 @@ class WowbaggerPoolServiceTest {
         return out;
     }
 
-    /** Polls the condition until true or the timeout — async pool code under test. */
+    /**
+     * Polls the condition until true or the timeout — async pool code under test.
+     * The deadline runs on the monotonic clock: a wall-clock deadline jumps when the
+     * machine sleeps or its clock is corrected, and fails a test that did not hang.
+     */
     private static void waitFor(long timeoutMs, java.util.function.BooleanSupplier condition) {
-        long deadline = System.currentTimeMillis() + timeoutMs;
-        while (System.currentTimeMillis() < deadline) {
+        long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(timeoutMs);
+        while (System.nanoTime() - deadline < 0) {
             if (condition.getAsBoolean()) {
                 return;
             }

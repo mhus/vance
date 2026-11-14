@@ -98,11 +98,11 @@ const methods = ref<LoginMethodsResponse | null>(null);
 /** Step two with the password field open (the tenant signs in with the password). */
 const passwordStep = ref(false);
 /**
- * Step two of a tenant that signs in with the e-mail code and offers Google too:
- * the person picks "Send code" or Google, no mail goes out before. Without
- * Google the code is sent right after step one.
+ * Step two of a tenant that signs in through Google (for this user): Google is
+ * the way in, instead of the password or the code. Users the operator took off
+ * SSO never get here — they see the password or the code.
  */
-const codeChoice = ref(false);
+const ssoStep = ref(false);
 
 /**
  * The open e-mail code, once one was asked for: the handle the server wants back
@@ -164,14 +164,9 @@ const ssoDomains = ref(false);
 const ssoConsumer = ref(false);
 const ssoEmail = ref('');
 const ssoBusy = ref(false);
-// Google is one more way in next to the password or the code, so it shows in
-// step two, after tenant and username were entered — not before.
-const showSso = computed<boolean>(
-  () =>
-    ssoOffered.value
-    && methods.value?.sso !== false
-    && (passwordStep.value || codeChoice.value || openCode.value !== null),
-);
+// Step two shows either Google or the password / the code — whichever the
+// tenant signs this user in with — after tenant and username were entered.
+const showSso = computed<boolean>(() => ssoStep.value);
 
 /** The username doubles as the address when it is one — then Google gets it as the hint. */
 const usernameAsEmail = computed<string>(() => {
@@ -274,10 +269,6 @@ async function syncUiLocaleFromSession(): Promise<void> {
 }
 
 async function onSubmit(): Promise<void> {
-  if (codeChoice.value) {
-    await requestCode();
-    return;
-  }
   if (openCode.value === null && !passwordStep.value) {
     await identify();
     return;
@@ -355,11 +346,11 @@ async function identify(): Promise<void> {
     ssoOffered.value = options?.sso === true;
     ssoDomains.value = options?.domains === true;
     ssoConsumer.value = options?.consumer === true;
+    if (ssoOffered.value && methods.value?.sso !== false) {
+      ssoStep.value = true;
+      return;
+    }
     if (answer?.emailToken === true) {
-      if (ssoOffered.value && methods.value?.sso !== false) {
-        codeChoice.value = true;
-        return;
-      }
       submitting.value = false;
       await requestCode();
       return;
@@ -383,7 +374,6 @@ async function requestCode(): Promise<void> {
       tenant: tenant.value.trim(),
       username: username.value.trim(),
     });
-    codeChoice.value = false;
     openCode.value = { transactionId: started.transactionId, expiresAt: started.expiresAtTimestamp };
     code.value = '';
     codeNotice.value = t('login.emailToken.sent', {
@@ -403,7 +393,7 @@ async function requestCode(): Promise<void> {
 function backToUsername(): void {
   openCode.value = null;
   passwordStep.value = false;
-  codeChoice.value = false;
+  ssoStep.value = false;
   ssoOffered.value = false;
   ssoDomains.value = false;
   ssoConsumer.value = false;
@@ -602,7 +592,7 @@ function readNextParam(): string | null {
             required
             autocomplete="organization"
             autocapitalize="none"
-            :disabled="submitting || openCode !== null || passwordStep || codeChoice"
+            :disabled="submitting || openCode !== null || passwordStep || ssoStep"
           />
           <VInput
             v-model="username"
@@ -610,7 +600,7 @@ function readNextParam(): string | null {
             required
             autocomplete="username"
             autocapitalize="none"
-            :disabled="submitting || openCode !== null || passwordStep || codeChoice"
+            :disabled="submitting || openCode !== null || passwordStep || ssoStep"
           />
           <VInput
             v-if="passwordStep"
@@ -644,15 +634,16 @@ function readNextParam(): string | null {
             :disabled="submitting"
           />
           <VButton
+            v-if="!ssoStep"
             type="submit"
             variant="primary"
             :loading="submitting"
             class="mt-2"
             block
           >
-            {{ codeChoice ? $t('login.emailToken.sendCode') : openCode === null && !passwordStep ? $t('login.continue') : $t('common.signIn') }}
+            {{ openCode === null && !passwordStep ? $t('login.continue') : $t('common.signIn') }}
           </VButton>
-          <div v-if="openCode !== null || passwordStep || codeChoice" class="flex items-center justify-between gap-3">
+          <div v-if="openCode !== null || passwordStep || ssoStep" class="flex items-center justify-between gap-3">
             <VButton variant="plain" :disabled="submitting" @click="backToUsername">
               {{ $t('login.emailToken.back') }}
             </VButton>
@@ -662,11 +653,6 @@ function readNextParam(): string | null {
           </div>
         </form>
         <form v-if="showSso" class="mt-3 flex flex-col gap-3" @submit.prevent="onSso">
-          <div class="flex items-center gap-3 text-xs opacity-60">
-            <span class="h-px flex-1 bg-base-300"></span>
-            <span>{{ $t('login.sso.or') }}</span>
-            <span class="h-px flex-1 bg-base-300"></span>
-          </div>
           <VInput
             v-if="askSsoEmail"
             v-model="ssoEmail"
@@ -676,7 +662,7 @@ function readNextParam(): string | null {
             autocapitalize="none"
             :disabled="ssoBusy"
           />
-          <VButton type="submit" variant="secondary" :loading="ssoBusy" block>
+          <VButton type="submit" variant="primary" :loading="ssoBusy" block>
             {{ $t('login.sso.continueWithGoogle') }}
           </VButton>
         </form>
